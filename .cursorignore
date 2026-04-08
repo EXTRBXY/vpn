@@ -1,0 +1,20 @@
+## Build artifacts
+**/bin/**
+**/obj/**
+**/.vs/**
+
+## Publish outputs
+**/publish/**
+
+## Installer outputs
+installer/Output/**
+NothingVpnSetup.exe
+
+## Large binaries (avoid indexing)
+**/sing-box.exe
+**/*.pdb
+**/*.dll
+**/*.deps.json
+
+## Logs
+**/*.log

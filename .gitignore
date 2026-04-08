@@ -1,0 +1,32 @@
+## .NET / Visual Studio
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Build outputs / publishes
+**/bin/Release/**/publish/
+**/bin/Debug/**/publish/
+**/bin/Release/**/win-*/publish/
+**/bin/Debug/**/win-*/publish/
+
+## Rider / VSCode
+.idea/
+.vscode/
+
+## Windows
+Thumbs.db
+Desktop.ini
+
+## Logs / local app data artifacts
+*.log
+
+## Optional: if you keep external binaries in repo, remove these lines.
+NothingVpn.Tray/bin/**/sing-box.exe
+
+## Inno Setup output (default OutputBaseFilename)
+installer/Output/
+NothingVpnSetup.exe
