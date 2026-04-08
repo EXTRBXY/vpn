@@ -7,7 +7,8 @@
 #define MyAppName "Nothing VPN"
 #define MyAppExeName "NothingVpn.Tray.exe"
 #define MyAppPublisher "NothingVpn"
-#define MyAppURL "https://example.invalid"
+; URL и версию при CI переопределяют: ISCC /DMyAppURL=... /DMyAppVersion=...
+#define MyAppURL "https://github.com/"
 #define MyAppVersion "0.1.0"
 
 [Setup]
@@ -21,6 +22,7 @@ AppUpdatesURL={#MyAppURL}
 DefaultDirName={localappdata}\Programs\NothingVpn
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
+OutputDir=Output
 OutputBaseFilename=NothingVpnSetup
 Compression=lzma2
 SolidCompression=yes
