@@ -149,13 +149,18 @@ internal sealed class SingBoxRunner : IDisposable
     }
 
     private static readonly Regex SingBoxLevelPrefix = new(@"^(TRAC|DEBU|INFO|WARN|ERRO|FATA|PANI)\[\d+\]", RegexOptions.Compiled);
+    private static readonly Regex BracketLevelPrefix = new(@"^\[(TRACE|DEBUG|INFO|WARN|WARNING|ERROR|FATAL|PANIC)\]\s*", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex WordLevelPrefix = new(@"^(TRACE|DEBUG|INFO|WARN|WARNING|ERROR|FATAL|PANIC)\b[:\s\-]*", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex LevelKeyValue = new(@"\blevel=(trace|debug|info|warn|warning|error|fatal|panic)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static (int Level, string Text) DetectLevel(string s)
     {
         // sing-box format: INFO[0001] ..., WARN[0001] ..., ERRO[0001] ..., DEBU[0001] ...
         if (string.IsNullOrEmpty(s)) return (2, "INFO");
 
-        var m = SingBoxLevelPrefix.Match(s);
+        var t = s.TrimStart();
+
+        var m = SingBoxLevelPrefix.Match(t);
         if (m.Success)
         {
             return m.Groups[1].Value switch
@@ -167,6 +172,60 @@ internal sealed class SingBoxRunner : IDisposable
                 "ERRO" => (4, "ERROR"),
                 "FATA" => (5, "FATAL"),
                 "PANI" => (6, "PANIC"),
+                _ => (2, "INFO")
+            };
+        }
+
+        var m2 = BracketLevelPrefix.Match(t);
+        if (m2.Success)
+        {
+            var v = m2.Groups[1].Value.ToUpperInvariant();
+            if (v == "WARNING") v = "WARN";
+            return v switch
+            {
+                "TRACE" => (0, "TRACE"),
+                "DEBUG" => (1, "DEBUG"),
+                "INFO" => (2, "INFO"),
+                "WARN" => (3, "WARN"),
+                "ERROR" => (4, "ERROR"),
+                "FATAL" => (5, "FATAL"),
+                "PANIC" => (6, "PANIC"),
+                _ => (2, "INFO")
+            };
+        }
+
+        var m3 = WordLevelPrefix.Match(t);
+        if (m3.Success)
+        {
+            var v = m3.Groups[1].Value.ToUpperInvariant();
+            if (v == "WARNING") v = "WARN";
+            return v switch
+            {
+                "TRACE" => (0, "TRACE"),
+                "DEBUG" => (1, "DEBUG"),
+                "INFO" => (2, "INFO"),
+                "WARN" => (3, "WARN"),
+                "ERROR" => (4, "ERROR"),
+                "FATAL" => (5, "FATAL"),
+                "PANIC" => (6, "PANIC"),
+                _ => (2, "INFO")
+            };
+        }
+
+        var m4 = LevelKeyValue.Match(t);
+        if (m4.Success)
+        {
+            var v = m4.Groups[1].Value.ToLowerInvariant();
+            return v switch
+            {
+                "trace" => (0, "TRACE"),
+                "debug" => (1, "DEBUG"),
+                "info" => (2, "INFO"),
+                "warn" => (3, "WARN"),
+                "warning" => (3, "WARN"),
+                "error" => (4, "ERROR"),
+                "fatal" => (5, "FATAL"),
+                "panic" => (6, "PANIC"),
                 _ => (2, "INFO")
             };
         }

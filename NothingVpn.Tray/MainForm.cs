@@ -62,7 +62,12 @@ internal sealed class MainForm : Form
     private readonly TextBox _dohServerBox;
     private readonly TextBox _dohPathBox;
     private readonly TextBox _dohSniBox;
-    private readonly Button _dnsApplyBtn;
+    private readonly Label _dnsNotice;
+    private readonly System.Windows.Forms.Timer _dnsDebounceTimer;
+    private bool _dnsUiReady;
+
+    private int _lastLogVersion = -1;
+    private int _lastLogMinLevel = -1;
 
     public MainForm(AppPaths paths, JsonProfileStore profileStore, JsonStateStore stateStore, SingBoxRunner runner, WinInetProxyController proxy, InMemoryLogStore logStore, Action? requestExit = null, Action<bool>? vpnConnectionStateChanged = null)
     {
@@ -78,8 +83,8 @@ internal sealed class MainForm : Form
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;
         Text = "Nothing VPN (прокси)";
         Width = 640;
-        Height = 480;
-        MinimumSize = new Size(520, 360);
+        Height = 600;
+        MinimumSize = new Size(520, 520);
         StartPosition = FormStartPosition.CenterScreen;
 
         _tabs = new TabControl { Dock = DockStyle.Fill };
@@ -93,6 +98,7 @@ internal sealed class MainForm : Form
 
         // Main tab: no SplitContainer -> no forced empty space
         tabMain.AutoScroll = true;
+        tabAdvanced.AutoScroll = true;
 
         var layout = new TableLayoutPanel
         {
@@ -141,9 +147,8 @@ internal sealed class MainForm : Form
         layout.Controls.Add(new Label { Text = "Локальный порт", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
         _port = new NumericUpDown { Minimum = 1, Maximum = 65535, Anchor = AnchorStyles.Left | AnchorStyles.Right };
         layout.Controls.Add(_port, 1, 2);
-        layout.Controls.Add(new Label { Text = "Логи", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 3);
-        _debugLogs = new CheckBox { Text = "Debug (без редактирования)", AutoSize = true, Anchor = AnchorStyles.Left };
-        layout.Controls.Add(_debugLogs, 1, 3);
+        layout.Controls.Add(new Label { Text = "", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 3);
+        layout.Controls.Add(new Label { Text = "", AutoSize = true, Anchor = AnchorStyles.Left }, 1, 3);
         // (Trust moved to Advanced tab)
         _trustSingBoxBtn = new Button { Text = "Доверять sing-box.exe", Anchor = AnchorStyles.Left };
         _singBoxHashLabel = new Label { Text = "", AutoSize = true, Anchor = AnchorStyles.Left };
@@ -257,6 +262,9 @@ internal sealed class MainForm : Form
         _logFilterCombo.Items.AddRange(new object[] { "TRACE", "DEBUG", "INFO", "WARN", "ERROR" });
         logsTop.Controls.Add(_logFilterCombo);
 
+        _debugLogs = new CheckBox { Text = "Debug", AutoSize = true, Margin = new Padding(12, 6, 6, 0) };
+        logsTop.Controls.Add(_debugLogs);
+
         _copyLogsBtn = new Button { Text = "Копировать", AutoSize = true, Margin = new Padding(12, 4, 6, 0) };
         logsTop.Controls.Add(_copyLogsBtn);
         _downloadLogsBtn = new Button { Text = "Скачать…", AutoSize = true, Margin = new Padding(6, 4, 6, 0) };
@@ -311,13 +319,14 @@ internal sealed class MainForm : Form
             ColumnCount = 1,
             RowCount = 2
         };
-        rsLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 160));
+        // Keep Advanced tab content fitting into default window height.
+        rsLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
         rsLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         _ruleSetsGrid = new DataGridView
         {
             Dock = DockStyle.Fill,
-            Height = 160,
+            Height = 112,
             AllowUserToAddRows = false,
             AllowUserToDeleteRows = false,
             AllowUserToResizeRows = false,
@@ -425,12 +434,18 @@ internal sealed class MainForm : Form
         dnsLayout.Controls.Add(new Label { Text = "DoH SNI", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 4);
         dnsLayout.Controls.Add(_dohSniBox, 1, 4);
 
-        _dnsApplyBtn = new Button { Text = "Применить", AutoSize = true };
-        var dnsBtns = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = false, Margin = new Padding(0, 8, 0, 0) };
-        dnsBtns.Controls.Add(_dnsApplyBtn);
+        _dnsNotice = new Label
+        {
+            Text = "",
+            AutoSize = true,
+            ForeColor = SystemColors.GrayText,
+            Dock = DockStyle.Top,
+            Padding = new Padding(2, 6, 2, 0),
+            Visible = false
+        };
 
         dnsGroup.Controls.Add(dnsLayout);
-        dnsGroup.Controls.Add(dnsBtns);
+        dnsGroup.Controls.Add(_dnsNotice);
 
         tabAdvanced.Controls.Add(rsGroup);
         tabAdvanced.Controls.Add(dnsGroup);
@@ -438,6 +453,14 @@ internal sealed class MainForm : Form
 
         _logTimer = new System.Windows.Forms.Timer { Interval = 1000 };
         _logTimer.Tick += (_, _) => RefreshLog();
+
+        _dnsDebounceTimer = new System.Windows.Forms.Timer { Interval = 350 };
+        _dnsDebounceTimer.Tick += (_, _) =>
+        {
+            _dnsDebounceTimer.Stop();
+            if (!_dnsUiReady) return;
+            SaveDnsFromUi(showDialogs: false);
+        };
 
         _importBtn.Click += (_, _) => ImportFromClipboard();
         _startBtn.Click += async (_, _) => await StartAsync();
@@ -488,8 +511,15 @@ internal sealed class MainForm : Form
         _ruleSetsGrid.CellValueChanged += (_, _) => SaveRuleSetsFromGrid();
         _ruleSetsGrid.DataError += (_, _) => { };
 
-        _dnsPresetCombo.SelectedIndexChanged += (_, _) => ApplyDnsPresetToBoxes();
-        _dnsApplyBtn.Click += (_, _) => SaveDnsFromUi();
+        _dnsPresetCombo.SelectedIndexChanged += (_, _) =>
+        {
+            ApplyDnsPresetToBoxes();
+            if (_dnsUiReady) RestartDnsDebounce();
+        };
+        _dnsDetourCombo.SelectedIndexChanged += (_, _) => { if (_dnsUiReady) RestartDnsDebounce(); };
+        _dohServerBox.TextChanged += (_, _) => { if (_dnsUiReady) RestartDnsDebounce(); };
+        _dohPathBox.TextChanged += (_, _) => { if (_dnsUiReady) RestartDnsDebounce(); };
+        _dohSniBox.TextChanged += (_, _) => { if (_dnsUiReady) RestartDnsDebounce(); };
 
         _runner.ProcessExited += (_, _) =>
         {
@@ -629,7 +659,14 @@ internal sealed class MainForm : Form
         if (_logFilterCombo.SelectedIndex < 0) _logFilterCombo.SelectedIndex = 2; // INFO
         UpdateSingBoxHashLabel();
         SyncDnsUiFromState();
+        _dnsUiReady = true;
         UpdateTitle();
+    }
+
+    private void RestartDnsDebounce()
+    {
+        _dnsDebounceTimer.Stop();
+        _dnsDebounceTimer.Start();
     }
 
     private void SyncDnsUiFromState()
@@ -639,7 +676,18 @@ internal sealed class MainForm : Form
         _dohSniBox.Text = _state.DohSni ?? "";
         var detour = (_state.DnsDetour ?? "direct").Trim().ToLowerInvariant();
         _dnsDetourCombo.SelectedItem = detour == "proxy" ? "proxy" : "direct";
-        if (_dnsPresetCombo.SelectedIndex < 0) _dnsPresetCombo.SelectedIndex = 0;
+        _dnsPresetCombo.SelectedIndex = DnsStateToPresetIndex(_state);
+    }
+
+    private int DnsStateToPresetIndex(AppState state)
+    {
+        var s = (state.DohServer ?? "").Trim();
+        var sn = (state.DohSni ?? "").Trim();
+        if (s == "1.1.1.1" && sn.Equals("cloudflare-dns.com", StringComparison.OrdinalIgnoreCase)) return 0;
+        if (s == "8.8.8.8" && sn.Equals("dns.google", StringComparison.OrdinalIgnoreCase)) return 1;
+        if (s == "9.9.9.9" && sn.Equals("dns.quad9.net", StringComparison.OrdinalIgnoreCase)) return 2;
+        if (s == "94.140.14.14" && sn.Equals("dns.adguard.com", StringComparison.OrdinalIgnoreCase)) return 3;
+        return 4;
     }
 
     private void ApplyDnsPresetToBoxes()
@@ -685,7 +733,7 @@ internal sealed class MainForm : Form
         }
     }
 
-    private void SaveDnsFromUi()
+    private void SaveDnsFromUi(bool showDialogs)
     {
         try
         {
@@ -695,11 +743,17 @@ internal sealed class MainForm : Form
             var detour = (_dnsDetourCombo.SelectedItem?.ToString() ?? "direct").Trim().ToLowerInvariant();
 
             if (string.IsNullOrWhiteSpace(server))
-                throw new InvalidOperationException("DoH IP не задан.");
+            {
+                if (showDialogs) throw new InvalidOperationException("DoH IP не задан.");
+                return;
+            }
             if (string.IsNullOrWhiteSpace(path))
                 path = "/dns-query";
             if (string.IsNullOrWhiteSpace(sni))
-                throw new InvalidOperationException("DoH SNI не задан (нужен для TLS).");
+            {
+                if (showDialogs) throw new InvalidOperationException("DoH SNI не задан (нужен для TLS).");
+                return;
+            }
             if (detour != "direct" && detour != "proxy")
                 detour = "direct";
 
@@ -710,15 +764,35 @@ internal sealed class MainForm : Form
             _state.DnsDetour = detour;
             _stateStore.Save(_state);
 
-            MessageBox.Show(this,
-                "DNS настройки сохранены.\n\nЕсли VPN уже запущен, перезапустите подключение, чтобы sing-box перечитал конфиг.",
-                "DNS",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+            ShowDnsNotice("DNS сохранён. Вступит в силу после переподключения.");
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "DNS", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            if (showDialogs)
+                MessageBox.Show(this, ex.Message, "DNS", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void ShowDnsNotice(string text)
+    {
+        try
+        {
+            _dnsNotice.Text = text;
+            _dnsNotice.Visible = true;
+
+            var t = new System.Windows.Forms.Timer { Interval = 2800 };
+            t.Tick += (_, _) =>
+            {
+                t.Stop();
+                t.Dispose();
+                if (IsDisposed) return;
+                _dnsNotice.Visible = false;
+            };
+            t.Start();
+        }
+        catch
+        {
+            // ignore
         }
     }
 
@@ -1209,7 +1283,11 @@ internal sealed class MainForm : Form
             if (_tabs.SelectedTab != _tabLogs) return;
 
             var min = SelectedMinLevel();
-            _logBox.Text = _logStore.SnapshotText(min);
+            var text = _logStore.SnapshotText(min, out var ver);
+            if (ver == _lastLogVersion && min == _lastLogMinLevel) return;
+            _lastLogVersion = ver;
+            _lastLogMinLevel = min;
+            _logBox.Text = text;
             _logBox.SelectionStart = _logBox.TextLength;
             _logBox.ScrollToCaret();
         }

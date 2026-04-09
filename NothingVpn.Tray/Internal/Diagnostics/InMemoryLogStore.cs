@@ -7,6 +7,7 @@ internal sealed class InMemoryLogStore
     private readonly object _gate = new();
     private readonly Queue<LogEntry> _entries = new();
     private int _bytes;
+    private int _version;
 
     public InMemoryLogStore(int maxBytes = 1_000_000)
     {
@@ -22,6 +23,7 @@ internal sealed class InMemoryLogStore
         {
             _entries.Clear();
             _bytes = 0;
+            _version++;
         }
     }
 
@@ -35,6 +37,7 @@ internal sealed class InMemoryLogStore
         {
             _entries.Enqueue(new LogEntry(level, line));
             _bytes += entryBytes;
+            _version++;
 
             while (_bytes > MaxBytes && _entries.Count > 0)
             {
@@ -46,8 +49,14 @@ internal sealed class InMemoryLogStore
 
     public string SnapshotText(int minLevel)
     {
+        return SnapshotText(minLevel, out _);
+    }
+
+    public string SnapshotText(int minLevel, out int version)
+    {
         lock (_gate)
         {
+            version = _version;
             if (_entries.Count == 0) return "";
             var sb = new StringBuilder(Math.Min(_bytes, 200_000));
             foreach (var e in _entries)

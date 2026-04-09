@@ -45,9 +45,9 @@ internal sealed class AppState
     // DNS settings (MVP defaults: Cloudflare DoH)
     // dns_mode: system|doh
     public string DnsMode { get; set; } = "doh";
-    public string DohServer { get; set; } = "1.1.1.1";
+    public string DohServer { get; set; } = "8.8.8.8";
     public string DohPath { get; set; } = "/dns-query";
-    public string DohSni { get; set; } = "cloudflare-dns.com";
+    public string DohSni { get; set; } = "dns.google";
 
     /// <summary>
     /// Detour для DNS-запросов (Dial Fields): direct|proxy.
