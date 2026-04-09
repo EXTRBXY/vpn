@@ -3,6 +3,7 @@ namespace NothingVpn.Tray.Internal.Store;
 internal sealed record AppPaths(
     string BaseDir,
     string ConfigsDir,
+    string RuleSetsDir,
     string LogsDir,
     string ProfilesJsonPath,
     string StateJsonPath)
@@ -13,6 +14,7 @@ internal sealed record AppPaths(
         return new AppPaths(
             BaseDir: baseDir,
             ConfigsDir: Path.Combine(baseDir, "configs"),
+            RuleSetsDir: Path.Combine(baseDir, "rulesets"),
             LogsDir: Path.Combine(baseDir, "logs"),
             ProfilesJsonPath: Path.Combine(baseDir, "profiles.json"),
             StateJsonPath: Path.Combine(baseDir, "state.json")

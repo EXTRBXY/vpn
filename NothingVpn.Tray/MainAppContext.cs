@@ -25,6 +25,7 @@ internal sealed class MainAppContext : ApplicationContext
         var paths = AppPaths.CreateDefault();
         Directory.CreateDirectory(paths.BaseDir);
         Directory.CreateDirectory(paths.ConfigsDir);
+        Directory.CreateDirectory(paths.RuleSetsDir);
         // No logs folder: logs are kept in-memory and exported on demand.
 
         var profileStore = new JsonProfileStore(paths.ProfilesJsonPath);

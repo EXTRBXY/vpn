@@ -12,6 +12,12 @@ internal sealed class AppState
     /// <summary>Полные пути .exe для режима <see cref="Mode"/> = tun_apps (sing-box process_path).</summary>
     public List<string> TunAppProcessPaths { get; set; } = new();
 
+    /// <summary>
+    /// Пользовательские rule-set (sing-box) в бинарном формате .srs.
+    /// Применяются в режимах Proxy и TUN как приоритетные правила (direct/block).
+    /// </summary>
+    public List<UserRuleSet> UserRuleSets { get; set; } = new();
+
     public static bool IsTunMode(string? mode)
     {
         var m = (mode ?? "").Trim().ToLowerInvariant();
@@ -43,6 +49,12 @@ internal sealed class AppState
     public string DohPath { get; set; } = "/dns-query";
     public string DohSni { get; set; } = "cloudflare-dns.com";
 
+    /// <summary>
+    /// Detour для DNS-запросов (Dial Fields): direct|proxy.
+    /// Нужен для корректного bootstrap в некоторых сетях.
+    /// </summary>
+    public string DnsDetour { get; set; } = "direct";
+
     public bool DebugLogs { get; set; } = false;
 
     // sing-box log level: trace|debug|info|warn|error|fatal|panic
@@ -50,5 +62,22 @@ internal sealed class AppState
 
     // If set, we verify sing-box.exe SHA-256 matches before starting.
     public string? TrustedSingBoxSha256 { get; set; }
+}
+
+internal sealed class UserRuleSet
+{
+    /// <summary>Стабильный tag для sing-box route.rule_set и matcher rule_set.</summary>
+    public string Tag { get; set; } = "";
+
+    /// <summary>Имя для UI.</summary>
+    public string Name { get; set; } = "";
+
+    /// <summary>Имя файла внутри каталога RuleSetsDir (обычно *.srs).</summary>
+    public string FileName { get; set; } = "";
+
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Действие по доменам из rule-set: direct|block.</summary>
+    public string Action { get; set; } = "direct";
 }
 

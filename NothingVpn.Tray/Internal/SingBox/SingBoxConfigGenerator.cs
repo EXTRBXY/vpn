@@ -8,7 +8,7 @@ internal static class SingBoxConfigGenerator
 {
     public static string WriteConfig(AppPaths paths, VlessProfile profile, AppState state)
     {
-        var config = Build(profile, state);
+        var config = Build(paths, profile, state);
         var json = JsonSerializer.Serialize(config, JsonOptions());
 
         var mode = NormalizeMode(state.Mode);
@@ -17,7 +17,7 @@ internal static class SingBoxConfigGenerator
         return path;
     }
 
-    public static SingBoxConfig Build(VlessProfile profile, AppState state)
+    public static SingBoxConfig Build(AppPaths paths, VlessProfile profile, AppState state)
     {
         var mode = NormalizeMode(state.Mode);
         var useTun = mode is "tun" or "tun_apps";
@@ -43,7 +43,7 @@ internal static class SingBoxConfigGenerator
         return new SingBoxConfig
         {
             Log = new SingBoxLog { Level = NormalizeLogLevel(state.SingBoxLogLevel) },
-            Dns = BuildDns(state),
+            Dns = BuildDns(state, useTun),
             Inbounds = inbounds,
             Outbounds = new List<SingBoxOutbound>
             {
@@ -51,13 +51,16 @@ internal static class SingBoxConfigGenerator
                 new SingBoxOutbound { Type = "direct", Tag = "direct" },
                 new SingBoxOutbound { Type = "block", Tag = "block" }
             },
-            Route = BuildRoute(mode, state, useDohResolver)
+            Route = BuildRoute(paths, mode, state, useDohResolver)
         };
     }
 
-    private static SingBoxRoute BuildRoute(string mode, AppState state, bool useDohResolver)
+    private static SingBoxRoute BuildRoute(AppPaths paths, string mode, AppState state, bool useDohResolver)
     {
         var useTun = mode is "tun" or "tun_apps";
+
+        var userRuleSets = BuildUserRuleSets(paths, state);
+        var userRules = BuildUserRuleSetRules(state);
 
         if (!useTun)
         {
@@ -66,27 +69,32 @@ internal static class SingBoxConfigGenerator
                 Final = "proxy",
                 AutoDetectInterface = false,
                 DefaultDomainResolver = null,
-                Rules = null
+                RuleSet = userRuleSets.Count == 0 ? null : userRuleSets,
+                Rules = userRules.Count == 0 ? null : userRules
             };
         }
 
         if (mode == "tun")
         {
+            var tunRules = new List<SingBoxRouteRule>
+            {
+                new() { Port = new List<int> { 53 }, Action = "hijack-dns" }
+            };
+            tunRules.AddRange(userRules);
+
             return new SingBoxRoute
             {
                 Final = "proxy",
                 AutoDetectInterface = true,
                 DefaultDomainResolver = useDohResolver ? "doh" : null,
-                Rules = new List<SingBoxRouteRule>
-                {
-                    new() { Port = new List<int> { 53 }, Action = "hijack-dns" }
-                }
+                RuleSet = userRuleSets.Count == 0 ? null : userRuleSets,
+                Rules = tunRules
             };
         }
 
         // tun_apps: default direct; selected processes -> proxy (sing-box route rules).
-        var paths = NormalizeProcessPaths(state.TunAppProcessPaths);
-        if (paths.Count == 0)
+        var procPaths = NormalizeProcessPaths(state.TunAppProcessPaths);
+        if (procPaths.Count == 0)
             throw new ArgumentException("tun_apps requires at least one process path.");
 
         var rules = new List<SingBoxRouteRule>
@@ -94,19 +102,71 @@ internal static class SingBoxConfigGenerator
             new() { Port = new List<int> { 53 }, Action = "hijack-dns" },
             new()
             {
-                ProcessPath = paths,
+                ProcessPath = procPaths,
                 Action = "route",
                 Outbound = "proxy"
             }
         };
+        if (userRules.Count != 0)
+            rules.InsertRange(1, userRules);
 
         return new SingBoxRoute
         {
             Final = "direct",
             AutoDetectInterface = true,
             DefaultDomainResolver = useDohResolver ? "doh" : null,
+            RuleSet = userRuleSets.Count == 0 ? null : userRuleSets,
             Rules = rules
         };
+    }
+
+    private static List<SingBoxRuleSet> BuildUserRuleSets(AppPaths paths, AppState state)
+    {
+        var result = new List<SingBoxRuleSet>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var rs in state.UserRuleSets ?? new List<UserRuleSet>())
+        {
+            if (!rs.Enabled) continue;
+            if (string.IsNullOrWhiteSpace(rs.Tag)) continue;
+            if (string.IsNullOrWhiteSpace(rs.FileName)) continue;
+            if (!seen.Add(rs.Tag.Trim())) continue;
+
+            var file = rs.FileName.Trim();
+            var fullPath = Path.Combine(paths.RuleSetsDir, file);
+
+            result.Add(new SingBoxRuleSet
+            {
+                Type = "local",
+                Tag = rs.Tag.Trim(),
+                Path = fullPath,
+                // sing-box 1.13.x требует явный format для route.rule_set
+                Format = "binary"
+            });
+        }
+
+        return result;
+    }
+
+    private static List<SingBoxRouteRule> BuildUserRuleSetRules(AppState state)
+    {
+        var rules = new List<SingBoxRouteRule>();
+        foreach (var rs in state.UserRuleSets ?? new List<UserRuleSet>())
+        {
+            if (!rs.Enabled) continue;
+            if (string.IsNullOrWhiteSpace(rs.Tag)) continue;
+
+            var action = (rs.Action ?? "direct").Trim().ToLowerInvariant();
+            var outbound = action == "block" ? "block" : "direct";
+
+            rules.Add(new SingBoxRouteRule
+            {
+                RuleSet = new List<string> { rs.Tag.Trim() },
+                Action = "route",
+                Outbound = outbound
+            });
+        }
+        return rules;
     }
 
     internal static List<string> NormalizeProcessPaths(IEnumerable<string>? paths)
@@ -204,29 +264,52 @@ internal static class SingBoxConfigGenerator
         return c;
     }
 
-    private static SingBoxDns? BuildDns(AppState state)
+    private static SingBoxDns? BuildDns(AppState state, bool useTun)
     {
         var mode = (state.DnsMode ?? "system").Trim().ToLowerInvariant();
-        if (mode != "doh") return null;
+        if (!useTun && mode != "doh") return null;
 
-        var server = string.IsNullOrWhiteSpace(state.DohServer) ? "1.1.1.1" : state.DohServer.Trim();
-        var path = string.IsNullOrWhiteSpace(state.DohPath) ? "/dns-query" : state.DohPath.Trim();
-        var sni = string.IsNullOrWhiteSpace(state.DohSni) ? null : state.DohSni.Trim();
+        if (mode == "doh")
+        {
+            var server = string.IsNullOrWhiteSpace(state.DohServer) ? "1.1.1.1" : state.DohServer.Trim();
+            var path = string.IsNullOrWhiteSpace(state.DohPath) ? "/dns-query" : state.DohPath.Trim();
+            var sni = string.IsNullOrWhiteSpace(state.DohSni) ? null : state.DohSni.Trim();
 
+            return new SingBoxDns
+            {
+                Final = "doh",
+                ReverseMapping = useTun,
+                Servers = new List<SingBoxDnsServer>
+                {
+                    new()
+                    {
+                        Type = "https",
+                        Tag = "doh",
+                        Server = server,
+                        ServerPort = 443,
+                        Path = path,
+                        Tls = sni is null ? null : new SingBoxDnsTls { Enabled = true, ServerName = sni },
+                        // Make DNS routing explicit to avoid bootstrap loops in some setups.
+                        Detour = useTun ? DohDetour(state) : null,
+                        // No detour => default dialer (direct) for bootstrap.
+                    }
+                }
+            };
+        }
+
+        // In TUN we must have DNS module when hijack-dns is enabled.
+        // Use the native sing-box local DNS server.
         return new SingBoxDns
         {
-            Final = "doh",
+            Final = "local",
+            ReverseMapping = true,
             Servers = new List<SingBoxDnsServer>
             {
                 new()
                 {
-                    Type = "https",
-                    Tag = "doh",
-                    Server = server,
-                    ServerPort = 443,
-                    Path = path,
-                    Tls = sni is null ? null : new SingBoxDnsTls { Enabled = true, ServerName = sni },
-                    // No detour => default dialer (direct) for bootstrap.
+                    Type = "local",
+                    Tag = "local",
+                    PreferGo = false
                 }
             }
         };
@@ -241,6 +324,13 @@ internal static class SingBoxConfigGenerator
             "tun_apps" => "tun_apps",
             _ => "proxy"
         };
+    }
+
+    private static string? DohDetour(AppState state)
+    {
+        // sing-box: detour to direct is meaningless; omit detour for direct.
+        var d = (state.DnsDetour ?? "direct").Trim().ToLowerInvariant();
+        return d == "proxy" ? "proxy" : null;
     }
 
     private static SingBoxTls? BuildTls(VlessProfile p)
@@ -395,6 +485,7 @@ internal sealed class SingBoxRoute
     public bool? AutoDetectInterface { get; set; }
     public string? DefaultDomainResolver { get; set; }
     public List<SingBoxRouteRule>? Rules { get; set; }
+    public List<SingBoxRuleSet>? RuleSet { get; set; }
 }
 
 internal sealed class SingBoxRouteRule
@@ -403,14 +494,25 @@ internal sealed class SingBoxRouteRule
 
     public List<string>? ProcessPath { get; set; }
 
+    public List<string>? RuleSet { get; set; }
+
     public string Action { get; set; } = "route";
     public string? Outbound { get; set; }
+}
+
+internal sealed class SingBoxRuleSet
+{
+    public string Type { get; set; } = "local";
+    public string Tag { get; set; } = "";
+    public string Path { get; set; } = "";
+    public string? Format { get; set; }
 }
 
 internal sealed class SingBoxDns
 {
     public List<SingBoxDnsServer> Servers { get; set; } = new();
     public string? Final { get; set; }
+    public bool? ReverseMapping { get; set; }
 }
 
 internal sealed class SingBoxDnsServer
@@ -421,6 +523,8 @@ internal sealed class SingBoxDnsServer
     public int? ServerPort { get; set; }
     public string? Path { get; set; }
     public SingBoxDnsTls? Tls { get; set; }
+    public bool? PreferGo { get; set; }
+    public string? Detour { get; set; }
 }
 
 internal sealed class SingBoxDnsTls

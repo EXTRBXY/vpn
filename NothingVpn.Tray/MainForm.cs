@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using NothingVpn.Tray.Internal.Profile;
 using NothingVpn.Tray.Internal.SingBox;
 using NothingVpn.Tray.Internal.Security;
@@ -50,6 +51,18 @@ internal sealed class MainForm : Form
     private readonly ListBox _tunAppsList;
     private readonly Button _tunAppsAddBtn;
     private readonly Button _tunAppsRemoveBtn;
+
+    private readonly DataGridView _ruleSetsGrid;
+    private readonly Button _ruleSetsAddBtn;
+    private readonly Button _ruleSetsRemoveBtn;
+    private BindingList<UserRuleSet> _ruleSetsBinding = new();
+
+    private readonly ComboBox _dnsPresetCombo;
+    private readonly ComboBox _dnsDetourCombo;
+    private readonly TextBox _dohServerBox;
+    private readonly TextBox _dohPathBox;
+    private readonly TextBox _dohSniBox;
+    private readonly Button _dnsApplyBtn;
 
     public MainForm(AppPaths paths, JsonProfileStore profileStore, JsonStateStore stateStore, SingBoxRunner runner, WinInetProxyController proxy, InMemoryLogStore logStore, Action? requestExit = null, Action<bool>? vpnConnectionStateChanged = null)
     {
@@ -281,6 +294,146 @@ internal sealed class MainForm : Form
         }, 1, 0);
         advLayout.Controls.Add(_trustSingBoxBtn, 0, 1);
         advLayout.Controls.Add(_singBoxHashLabel, 1, 1);
+
+        // User rule-sets (.srs)
+        var rsGroup = new GroupBox
+        {
+            Text = "Rule sets (.srs)",
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(10)
+        };
+        var rsLayout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            ColumnCount = 1,
+            RowCount = 2
+        };
+        rsLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 160));
+        rsLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        _ruleSetsGrid = new DataGridView
+        {
+            Dock = DockStyle.Fill,
+            Height = 160,
+            AllowUserToAddRows = false,
+            AllowUserToDeleteRows = false,
+            AllowUserToResizeRows = false,
+            MultiSelect = false,
+            SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+            RowHeadersVisible = false,
+            AutoGenerateColumns = false
+        };
+        _ruleSetsGrid.Columns.Add(new DataGridViewCheckBoxColumn
+        {
+            HeaderText = "Вкл",
+            DataPropertyName = nameof(UserRuleSet.Enabled),
+            Width = 44
+        });
+        _ruleSetsGrid.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            HeaderText = "Имя",
+            DataPropertyName = nameof(UserRuleSet.Name),
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
+            MinimumWidth = 140
+        });
+        _ruleSetsGrid.Columns.Add(new DataGridViewComboBoxColumn
+        {
+            HeaderText = "Действие",
+            DataPropertyName = nameof(UserRuleSet.Action),
+            Width = 90,
+            FlatStyle = FlatStyle.Flat,
+            DataSource = new[] { "direct", "block" }
+        });
+        _ruleSetsGrid.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            HeaderText = "Файл",
+            DataPropertyName = nameof(UserRuleSet.FileName),
+            Width = 220,
+            ReadOnly = true
+        });
+        rsLayout.Controls.Add(_ruleSetsGrid, 0, 0);
+
+        var rsBtns = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false
+        };
+        _ruleSetsAddBtn = new Button { Text = "Добавить .srs…", AutoSize = true };
+        _ruleSetsRemoveBtn = new Button { Text = "Удалить", AutoSize = true };
+        rsBtns.Controls.Add(_ruleSetsAddBtn);
+        rsBtns.Controls.Add(_ruleSetsRemoveBtn);
+        rsLayout.Controls.Add(rsBtns, 0, 1);
+
+        rsGroup.Controls.Add(rsLayout);
+
+        // DNS
+        var dnsGroup = new GroupBox
+        {
+            Text = "DNS (sing-box)",
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(10)
+        };
+        var dnsLayout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            ColumnCount = 2,
+            RowCount = 5
+        };
+        dnsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160));
+        dnsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+        _dnsPresetCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Anchor = AnchorStyles.Left | AnchorStyles.Right };
+        _dnsPresetCombo.Items.AddRange(new object[]
+        {
+            "Cloudflare (1.1.1.1, SNI cloudflare-dns.com)",
+            "Google (8.8.8.8, SNI dns.google)",
+            "Quad9 (9.9.9.9, SNI dns.quad9.net)",
+            "AdGuard (94.140.14.14, SNI dns.adguard.com)",
+            "Пользовательский"
+        });
+        dnsLayout.Controls.Add(new Label { Text = "Пресет DoH", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
+        dnsLayout.Controls.Add(_dnsPresetCombo, 1, 0);
+
+        _dnsDetourCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
+        _dnsDetourCombo.Items.AddRange(new object[] { "direct", "proxy" });
+        var detourRow = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = false };
+        detourRow.Controls.Add(_dnsDetourCombo);
+        detourRow.Controls.Add(new Label
+        {
+            Text = " (куда отправлять DoH-запросы)",
+            AutoSize = true,
+            Margin = new Padding(6, 6, 0, 0)
+        });
+        dnsLayout.Controls.Add(new Label { Text = "DNS detour", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
+        dnsLayout.Controls.Add(detourRow, 1, 1);
+
+        _dohServerBox = new TextBox { Anchor = AnchorStyles.Left | AnchorStyles.Right };
+        _dohPathBox = new TextBox { Anchor = AnchorStyles.Left | AnchorStyles.Right };
+        _dohSniBox = new TextBox { Anchor = AnchorStyles.Left | AnchorStyles.Right };
+        dnsLayout.Controls.Add(new Label { Text = "DoH IP", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
+        dnsLayout.Controls.Add(_dohServerBox, 1, 2);
+        dnsLayout.Controls.Add(new Label { Text = "DoH path", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 3);
+        dnsLayout.Controls.Add(_dohPathBox, 1, 3);
+        dnsLayout.Controls.Add(new Label { Text = "DoH SNI", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 4);
+        dnsLayout.Controls.Add(_dohSniBox, 1, 4);
+
+        _dnsApplyBtn = new Button { Text = "Применить", AutoSize = true };
+        var dnsBtns = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = false, Margin = new Padding(0, 8, 0, 0) };
+        dnsBtns.Controls.Add(_dnsApplyBtn);
+
+        dnsGroup.Controls.Add(dnsLayout);
+        dnsGroup.Controls.Add(dnsBtns);
+
+        tabAdvanced.Controls.Add(rsGroup);
+        tabAdvanced.Controls.Add(dnsGroup);
         tabAdvanced.Controls.Add(advLayout);
 
         _logTimer = new System.Windows.Forms.Timer { Interval = 1000 };
@@ -325,6 +478,18 @@ internal sealed class MainForm : Form
         _downloadLogsBtn.Click += (_, _) => DownloadLogs();
         _pingBtn.Click += async (_, _) => await PingAsync();
         _logFilterCombo.SelectedIndexChanged += (_, _) => RefreshLog();
+        _ruleSetsAddBtn.Click += (_, _) => AddRuleSet();
+        _ruleSetsRemoveBtn.Click += (_, _) => RemoveSelectedRuleSet();
+        _ruleSetsGrid.CurrentCellDirtyStateChanged += (_, _) =>
+        {
+            if (_ruleSetsGrid.IsCurrentCellDirty)
+                _ruleSetsGrid.CommitEdit(DataGridViewDataErrorContexts.Commit);
+        };
+        _ruleSetsGrid.CellValueChanged += (_, _) => SaveRuleSetsFromGrid();
+        _ruleSetsGrid.DataError += (_, _) => { };
+
+        _dnsPresetCombo.SelectedIndexChanged += (_, _) => ApplyDnsPresetToBoxes();
+        _dnsApplyBtn.Click += (_, _) => SaveDnsFromUi();
 
         _runner.ProcessExited += (_, _) =>
         {
@@ -452,13 +617,195 @@ internal sealed class MainForm : Form
         _port.Value = Math.Clamp(_state.LocalMixedPort, 1, 65535);
         if (_state.TunAppProcessPaths is null)
             _state.TunAppProcessPaths = new List<string>();
+        if (_state.UserRuleSets is null)
+            _state.UserRuleSets = new List<UserRuleSet>();
+        if (string.IsNullOrWhiteSpace(_state.DnsDetour))
+            _state.DnsDetour = "direct";
         _modeCombo.SelectedIndex = ModeToComboIndex(_state.Mode);
         SyncTunAppsListFromState();
+        SyncRuleSetsGridFromState();
         UpdateTunAppsPanelVisibility();
         _debugLogs.Checked = _state.DebugLogs;
         if (_logFilterCombo.SelectedIndex < 0) _logFilterCombo.SelectedIndex = 2; // INFO
         UpdateSingBoxHashLabel();
+        SyncDnsUiFromState();
         UpdateTitle();
+    }
+
+    private void SyncDnsUiFromState()
+    {
+        _dohServerBox.Text = _state.DohServer ?? "";
+        _dohPathBox.Text = _state.DohPath ?? "/dns-query";
+        _dohSniBox.Text = _state.DohSni ?? "";
+        var detour = (_state.DnsDetour ?? "direct").Trim().ToLowerInvariant();
+        _dnsDetourCombo.SelectedItem = detour == "proxy" ? "proxy" : "direct";
+        if (_dnsPresetCombo.SelectedIndex < 0) _dnsPresetCombo.SelectedIndex = 0;
+    }
+
+    private void ApplyDnsPresetToBoxes()
+    {
+        try
+        {
+            var idx = _dnsPresetCombo.SelectedIndex;
+            if (idx < 0) return;
+
+            // Keep path stable for common DoH providers.
+            if (string.IsNullOrWhiteSpace(_dohPathBox.Text))
+                _dohPathBox.Text = "/dns-query";
+
+            switch (idx)
+            {
+                case 0: // Cloudflare
+                    _dohServerBox.Text = "1.1.1.1";
+                    _dohSniBox.Text = "cloudflare-dns.com";
+                    _dohPathBox.Text = "/dns-query";
+                    break;
+                case 1: // Google
+                    _dohServerBox.Text = "8.8.8.8";
+                    _dohSniBox.Text = "dns.google";
+                    _dohPathBox.Text = "/dns-query";
+                    break;
+                case 2: // Quad9
+                    _dohServerBox.Text = "9.9.9.9";
+                    _dohSniBox.Text = "dns.quad9.net";
+                    _dohPathBox.Text = "/dns-query";
+                    break;
+                case 3: // AdGuard
+                    _dohServerBox.Text = "94.140.14.14";
+                    _dohSniBox.Text = "dns.adguard.com";
+                    _dohPathBox.Text = "/dns-query";
+                    break;
+                default:
+                    break;
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
+    private void SaveDnsFromUi()
+    {
+        try
+        {
+            var server = (_dohServerBox.Text ?? "").Trim();
+            var path = (_dohPathBox.Text ?? "").Trim();
+            var sni = (_dohSniBox.Text ?? "").Trim();
+            var detour = (_dnsDetourCombo.SelectedItem?.ToString() ?? "direct").Trim().ToLowerInvariant();
+
+            if (string.IsNullOrWhiteSpace(server))
+                throw new InvalidOperationException("DoH IP не задан.");
+            if (string.IsNullOrWhiteSpace(path))
+                path = "/dns-query";
+            if (string.IsNullOrWhiteSpace(sni))
+                throw new InvalidOperationException("DoH SNI не задан (нужен для TLS).");
+            if (detour != "direct" && detour != "proxy")
+                detour = "direct";
+
+            _state.DnsMode = "doh";
+            _state.DohServer = server;
+            _state.DohPath = path;
+            _state.DohSni = sni;
+            _state.DnsDetour = detour;
+            _stateStore.Save(_state);
+
+            MessageBox.Show(this,
+                "DNS настройки сохранены.\n\nЕсли VPN уже запущен, перезапустите подключение, чтобы sing-box перечитал конфиг.",
+                "DNS",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "DNS", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void SyncRuleSetsGridFromState()
+    {
+        _ruleSetsBinding = new BindingList<UserRuleSet>((_state.UserRuleSets ?? new List<UserRuleSet>()).ToList());
+        _ruleSetsGrid.DataSource = _ruleSetsBinding;
+    }
+
+    private void SaveRuleSetsFromGrid()
+    {
+        try
+        {
+            if (_state.UserRuleSets is null) _state.UserRuleSets = new List<UserRuleSet>();
+            _state.UserRuleSets = _ruleSetsBinding.ToList();
+            _stateStore.Save(_state);
+        }
+        catch
+        {
+            // best-effort
+        }
+    }
+
+    private void AddRuleSet()
+    {
+        try
+        {
+            using var ofd = new OpenFileDialog
+            {
+                Title = "Добавить rule-set (.srs)",
+                Filter = "Sing-box rule-set (*.srs)|*.srs|Все файлы (*.*)|*.*",
+                CheckFileExists = true,
+                Multiselect = false
+            };
+            if (ofd.ShowDialog(this) != DialogResult.OK) return;
+
+            var src = ofd.FileName;
+            if (string.IsNullOrWhiteSpace(src) || !File.Exists(src))
+                throw new FileNotFoundException("Файл не найден.");
+            if (!src.EndsWith(".srs", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Поддерживаются только файлы .srs.");
+
+            Directory.CreateDirectory(_paths.RuleSetsDir);
+
+            var baseName = Path.GetFileNameWithoutExtension(src);
+            var fileName = Path.GetFileName(src);
+            var dest = Path.Combine(_paths.RuleSetsDir, fileName);
+            if (File.Exists(dest))
+            {
+                var suffix = Guid.NewGuid().ToString("N")[..8];
+                fileName = $"{baseName}-{suffix}.srs";
+                dest = Path.Combine(_paths.RuleSetsDir, fileName);
+            }
+
+            File.Copy(src, dest, overwrite: false);
+
+            var tag = $"user-ruleset-{Guid.NewGuid():N}"[..("user-ruleset-".Length + 12)];
+            _ruleSetsBinding.Add(new UserRuleSet
+            {
+                Tag = tag,
+                Name = string.IsNullOrWhiteSpace(baseName) ? fileName : baseName,
+                FileName = fileName,
+                Enabled = true,
+                Action = "direct"
+            });
+            SaveRuleSetsFromGrid();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "Добавить rule-set не удалось", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void RemoveSelectedRuleSet()
+    {
+        try
+        {
+            if (_ruleSetsGrid.CurrentRow?.DataBoundItem is not UserRuleSet item) return;
+            var idx = _ruleSetsBinding.IndexOf(item);
+            if (idx < 0) return;
+            _ruleSetsBinding.RemoveAt(idx);
+            SaveRuleSetsFromGrid();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "Удалить rule-set не удалось", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
     private void CopyLogsToClipboard()
@@ -670,6 +1017,8 @@ internal sealed class MainForm : Form
                     "В режиме «TUN (выбранные приложения)» добавьте хотя бы один исполняемый файл (.exe).");
             }
 
+            ValidateUserRuleSets();
+
             var isTun = AppState.IsTunMode(_state.Mode);
             if (isTun && !Elevation.IsAdministrator())
             {
@@ -756,6 +1105,44 @@ internal sealed class MainForm : Form
         {
             UpdateButtons();
         }
+    }
+
+    private void ValidateUserRuleSets()
+    {
+        var missing = new List<string>();
+        var bad = new List<string>();
+
+        foreach (var rs in _state.UserRuleSets ?? new List<UserRuleSet>())
+        {
+            if (!rs.Enabled) continue;
+            if (string.IsNullOrWhiteSpace(rs.FileName) || string.IsNullOrWhiteSpace(rs.Tag))
+            {
+                bad.Add(rs.Name?.Trim().Length > 0 ? rs.Name : "(без имени)");
+                continue;
+            }
+
+            var action = (rs.Action ?? "").Trim().ToLowerInvariant();
+            if (action != "direct" && action != "block")
+            {
+                bad.Add(rs.Name?.Trim().Length > 0 ? rs.Name : rs.Tag);
+                continue;
+            }
+
+            var full = Path.Combine(_paths.RuleSetsDir, rs.FileName.Trim());
+            if (!rs.FileName.Trim().EndsWith(".srs", StringComparison.OrdinalIgnoreCase))
+            {
+                bad.Add(rs.Name?.Trim().Length > 0 ? rs.Name : rs.Tag);
+                continue;
+            }
+            if (!File.Exists(full))
+                missing.Add($"{(string.IsNullOrWhiteSpace(rs.Name) ? rs.Tag : rs.Name)} → {rs.FileName}");
+        }
+
+        if (bad.Count != 0)
+            throw new InvalidOperationException("Некоторые rule-set записи повреждены (нет tag/filename). Удалите их и добавьте заново:\n- " + string.Join("\n- ", bad));
+
+        if (missing.Count != 0)
+            throw new InvalidOperationException("Не найдены файлы включённых rule-set (.srs). Проверьте, что файлы на месте или добавьте заново:\n- " + string.Join("\n- ", missing));
     }
 
     private void NotifyVpnConnectionState(bool connected)
