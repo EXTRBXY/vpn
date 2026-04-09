@@ -170,7 +170,7 @@ internal sealed class MainForm : Form
         tunAppsRoot.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         tunAppsRoot.Controls.Add(new Label
         {
-            Text = "Исполняемые файлы, чей трафик идёт через VPN (полный путь .exe). Дочерние процессы нужно добавлять отдельно.",
+            Text = "Исполняемые файлы, чей трафик идёт через VPN (полный путь .exe). Дочерние процессы нужно добавлять отдельно.\n\nПримечание: доменные rule-set (direct/block) применяются до правила выбора процессов.",
             AutoSize = true,
             MaximumSize = new Size(560, 0)
         }, 0, 0);
@@ -1111,6 +1111,8 @@ internal sealed class MainForm : Form
     {
         var missing = new List<string>();
         var bad = new List<string>();
+        var dupTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var rs in _state.UserRuleSets ?? new List<UserRuleSet>())
         {
@@ -1121,6 +1123,10 @@ internal sealed class MainForm : Form
                 continue;
             }
 
+            var tag = rs.Tag.Trim();
+            if (!seenTags.Add(tag))
+                dupTags.Add(tag);
+
             var action = (rs.Action ?? "").Trim().ToLowerInvariant();
             if (action != "direct" && action != "block")
             {
@@ -1128,8 +1134,15 @@ internal sealed class MainForm : Form
                 continue;
             }
 
-            var full = Path.Combine(_paths.RuleSetsDir, rs.FileName.Trim());
-            if (!rs.FileName.Trim().EndsWith(".srs", StringComparison.OrdinalIgnoreCase))
+            var fileName = rs.FileName.Trim();
+            if (!IsSafeRuleSetFileName(fileName))
+            {
+                bad.Add(rs.Name?.Trim().Length > 0 ? rs.Name : rs.Tag);
+                continue;
+            }
+
+            var full = Path.Combine(_paths.RuleSetsDir, fileName);
+            if (!fileName.EndsWith(".srs", StringComparison.OrdinalIgnoreCase))
             {
                 bad.Add(rs.Name?.Trim().Length > 0 ? rs.Name : rs.Tag);
                 continue;
@@ -1141,8 +1154,22 @@ internal sealed class MainForm : Form
         if (bad.Count != 0)
             throw new InvalidOperationException("Некоторые rule-set записи повреждены (нет tag/filename). Удалите их и добавьте заново:\n- " + string.Join("\n- ", bad));
 
+        if (dupTags.Count != 0)
+            throw new InvalidOperationException("Найдены дублирующиеся rule-set tag (должны быть уникальными). Удалите дубликаты и добавьте заново:\n- " + string.Join("\n- ", dupTags.OrderBy(x => x)));
+
         if (missing.Count != 0)
             throw new InvalidOperationException("Не найдены файлы включённых rule-set (.srs). Проверьте, что файлы на месте или добавьте заново:\n- " + string.Join("\n- ", missing));
+    }
+
+    private static bool IsSafeRuleSetFileName(string fileName)
+    {
+        var raw = (fileName ?? "").Trim();
+        if (raw.Length == 0) return false;
+        if (Path.IsPathRooted(raw)) return false;
+        var safe = Path.GetFileName(raw);
+        if (!string.Equals(safe, raw, StringComparison.Ordinal)) return false;
+        if (safe.Contains("..", StringComparison.Ordinal)) return false;
+        return true;
     }
 
     private void NotifyVpnConnectionState(bool connected)

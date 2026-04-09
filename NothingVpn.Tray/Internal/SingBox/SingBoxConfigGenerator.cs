@@ -39,11 +39,12 @@ internal static class SingBoxConfigGenerator
         outbound.Transport = BuildTransport(profile);
 
         var useDohResolver = useTun && string.Equals(state.DnsMode, "doh", StringComparison.OrdinalIgnoreCase);
+        var hasEnabledUserRuleSets = (state.UserRuleSets ?? []).Any(x => x.Enabled);
 
         return new SingBoxConfig
         {
             Log = new SingBoxLog { Level = NormalizeLogLevel(state.SingBoxLogLevel) },
-            Dns = BuildDns(state, useTun),
+            Dns = BuildDns(state, useTun, hasEnabledUserRuleSets),
             Inbounds = inbounds,
             Outbounds = new List<SingBoxOutbound>
             {
@@ -59,8 +60,9 @@ internal static class SingBoxConfigGenerator
     {
         var useTun = mode is "tun" or "tun_apps";
 
-        var userRuleSets = BuildUserRuleSets(paths, state);
-        var userRules = BuildUserRuleSetRules(state);
+        var policy = BuildUserRuleSetPolicy(paths, state);
+        var userRuleSets = policy.RuleSets;
+        var userRules = policy.Rules;
 
         if (!useTun)
         {
@@ -120,53 +122,48 @@ internal static class SingBoxConfigGenerator
         };
     }
 
-    private static List<SingBoxRuleSet> BuildUserRuleSets(AppPaths paths, AppState state)
+    private static (List<SingBoxRuleSet> RuleSets, List<SingBoxRouteRule> Rules) BuildUserRuleSetPolicy(AppPaths paths, AppState state)
     {
-        var result = new List<SingBoxRuleSet>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var ruleSets = new List<SingBoxRuleSet>();
+        var rules = new List<SingBoxRouteRule>();
+        var seenTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var rs in state.UserRuleSets ?? new List<UserRuleSet>())
         {
             if (!rs.Enabled) continue;
-            if (string.IsNullOrWhiteSpace(rs.Tag)) continue;
-            if (string.IsNullOrWhiteSpace(rs.FileName)) continue;
-            if (!seen.Add(rs.Tag.Trim())) continue;
+            var tag = (rs.Tag ?? "").Trim();
+            if (tag.Length == 0) continue;
+            if (!seenTags.Add(tag)) continue;
 
-            var file = rs.FileName.Trim();
-            var fullPath = Path.Combine(paths.RuleSetsDir, file);
+            var fileName = NormalizeRuleSetFileName(rs.FileName);
+            if (!fileName.EndsWith(".srs", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("User rule-set file must be .srs.");
 
-            result.Add(new SingBoxRuleSet
+            var fullPath = Path.Combine(paths.RuleSetsDir, fileName);
+
+            ruleSets.Add(new SingBoxRuleSet
             {
                 Type = "local",
-                Tag = rs.Tag.Trim(),
+                Tag = tag,
                 Path = fullPath,
                 // sing-box 1.13.x требует явный format для route.rule_set
                 Format = "binary"
             });
-        }
-
-        return result;
-    }
-
-    private static List<SingBoxRouteRule> BuildUserRuleSetRules(AppState state)
-    {
-        var rules = new List<SingBoxRouteRule>();
-        foreach (var rs in state.UserRuleSets ?? new List<UserRuleSet>())
-        {
-            if (!rs.Enabled) continue;
-            if (string.IsNullOrWhiteSpace(rs.Tag)) continue;
 
             var action = (rs.Action ?? "direct").Trim().ToLowerInvariant();
+            if (action != "direct" && action != "block")
+                throw new ArgumentException("User rule-set action must be direct|block.");
             var outbound = action == "block" ? "block" : "direct";
 
             rules.Add(new SingBoxRouteRule
             {
-                RuleSet = new List<string> { rs.Tag.Trim() },
+                RuleSet = new List<string> { tag },
                 Action = "route",
                 Outbound = outbound
             });
         }
-        return rules;
+
+        return (ruleSets, rules);
     }
 
     internal static List<string> NormalizeProcessPaths(IEnumerable<string>? paths)
@@ -264,10 +261,10 @@ internal static class SingBoxConfigGenerator
         return c;
     }
 
-    private static SingBoxDns? BuildDns(AppState state, bool useTun)
+    private static SingBoxDns? BuildDns(AppState state, bool useTun, bool hasEnabledUserRuleSets)
     {
         var mode = (state.DnsMode ?? "system").Trim().ToLowerInvariant();
-        if (!useTun && mode != "doh") return null;
+        if (!useTun && mode != "doh" && !hasEnabledUserRuleSets) return null;
 
         if (mode == "doh")
         {
@@ -298,11 +295,11 @@ internal static class SingBoxConfigGenerator
         }
 
         // In TUN we must have DNS module when hijack-dns is enabled.
-        // Use the native sing-box local DNS server.
+        // In proxy mode we enable local DNS when user rule-sets depend on domain matching.
         return new SingBoxDns
         {
             Final = "local",
-            ReverseMapping = true,
+            ReverseMapping = useTun ? true : null,
             Servers = new List<SingBoxDnsServer>
             {
                 new()
@@ -331,6 +328,26 @@ internal static class SingBoxConfigGenerator
         // sing-box: detour to direct is meaningless; omit detour for direct.
         var d = (state.DnsDetour ?? "direct").Trim().ToLowerInvariant();
         return d == "proxy" ? "proxy" : null;
+    }
+
+    private static string NormalizeRuleSetFileName(string? fileName)
+    {
+        var raw = (fileName ?? "").Trim();
+        if (raw.Length == 0)
+            throw new ArgumentException("User rule-set file name is empty.");
+
+        if (Path.IsPathRooted(raw))
+            throw new ArgumentException("User rule-set file name must not be an absolute path.");
+
+        // Reject directory traversal and subdirectories; only a file name is allowed.
+        var safe = Path.GetFileName(raw);
+        if (!string.Equals(safe, raw, StringComparison.Ordinal))
+            throw new ArgumentException("User rule-set file name must not contain directories.");
+
+        if (safe.Contains("..", StringComparison.Ordinal))
+            throw new ArgumentException("User rule-set file name must not contain '..'.");
+
+        return safe;
     }
 
     private static SingBoxTls? BuildTls(VlessProfile p)
