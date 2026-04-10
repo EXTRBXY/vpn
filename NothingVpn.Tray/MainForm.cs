@@ -5,6 +5,7 @@ using NothingVpn.Tray.Internal.Security;
 using NothingVpn.Tray.Internal.Store;
 using NothingVpn.Tray.Internal.WinInet;
 using NothingVpn.Tray.Internal.Diagnostics;
+using NothingVpn.Tray.Internal.TunApps;
 using NothingVpn.Tray.Internal.Windows;
 
 namespace NothingVpn.Tray;
@@ -20,6 +21,7 @@ internal sealed class MainForm : Form
     private readonly AppLogger _appLogger;
     private readonly Action _requestExit;
     private readonly Action<bool>? _vpnConnectionStateChanged;
+    private readonly TunAppsSelectionService _tunAppsSelectionService;
 
     private AppState _state = new();
     private IReadOnlyList<VlessProfile> _profiles = Array.Empty<VlessProfile>();
@@ -49,8 +51,11 @@ internal sealed class MainForm : Form
     private readonly Label _portValue;
 
     private readonly Panel _tunAppsPanel;
-    private readonly ListBox _tunAppsList;
+    private readonly ListView _tunAppsList;
+    private readonly ImageList _tunAppIcons;
+    private readonly TunAppIconCache _tunAppIconCache = new();
     private readonly Button _tunAppsAddBtn;
+    private readonly Button _tunAppsBrowseFileBtn;
     private readonly Button _tunAppsRemoveBtn;
 
     private readonly DataGridView _ruleSetsGrid;
@@ -81,6 +86,12 @@ internal sealed class MainForm : Form
         _appLogger = new AppLogger(logStore);
         _requestExit = requestExit ?? (() => Application.Exit());
         _vpnConnectionStateChanged = vpnConnectionStateChanged;
+        _tunAppsSelectionService = new TunAppsSelectionService(
+            new CompositeInstalledAppsProvider(
+                new RegistryUninstallAppsProvider(),
+                new AppPathsRegistryProvider(),
+                new StartMenuShortcutAppsProvider()),
+            new RunningProcessesProvider());
 
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;
         Text = "Nothing VPN (прокси)";
@@ -173,7 +184,7 @@ internal sealed class MainForm : Form
             RowCount = 3
         };
         tunAppsRoot.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        tunAppsRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 104));
+        tunAppsRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 128));
         tunAppsRoot.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         tunAppsRoot.Controls.Add(new Label
         {
@@ -181,12 +192,18 @@ internal sealed class MainForm : Form
             AutoSize = true,
             MaximumSize = new Size(560, 0)
         }, 0, 0);
-        _tunAppsList = new ListBox
+        _tunAppIcons = TunAppIconCache.CreateImageList();
+        _tunAppsList = new ListView
         {
             Dock = DockStyle.Fill,
-            IntegralHeight = false,
-            HorizontalScrollbar = true
+            View = View.Details,
+            FullRowSelect = true,
+            HideSelection = false,
+            HeaderStyle = ColumnHeaderStyle.Nonclickable,
+            SmallImageList = _tunAppIcons
         };
+        _tunAppsList.Columns.Add("Приложение", 160);
+        _tunAppsList.Columns.Add("Путь", 360);
         tunAppsRoot.Controls.Add(_tunAppsList, 0, 1);
         var tunAppsBtns = new FlowLayoutPanel
         {
@@ -195,9 +212,11 @@ internal sealed class MainForm : Form
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false
         };
-        _tunAppsAddBtn = new Button { Text = "Добавить…", AutoSize = true };
+        _tunAppsAddBtn = new Button { Text = "Добавить", AutoSize = true };
+        _tunAppsBrowseFileBtn = new Button { Text = "Указать в проводнике", AutoSize = true };
         _tunAppsRemoveBtn = new Button { Text = "Удалить", AutoSize = true };
         tunAppsBtns.Controls.Add(_tunAppsAddBtn);
+        tunAppsBtns.Controls.Add(_tunAppsBrowseFileBtn);
         tunAppsBtns.Controls.Add(_tunAppsRemoveBtn);
         tunAppsRoot.Controls.Add(tunAppsBtns, 0, 2);
         _tunAppsPanel.Controls.Add(tunAppsRoot);
@@ -490,6 +509,7 @@ internal sealed class MainForm : Form
             UpdateButtons();
         };
         _tunAppsAddBtn.Click += (_, _) => AddTunAppExecutable();
+        _tunAppsBrowseFileBtn.Click += (_, _) => AddTunAppFromOpenFileDialog();
         _tunAppsRemoveBtn.Click += (_, _) => RemoveSelectedTunApp();
         _debugLogs.CheckedChanged += (_, _) =>
         {
@@ -1054,6 +1074,7 @@ internal sealed class MainForm : Form
         var editTunApps = !running && string.Equals(_state.Mode, "tun_apps", StringComparison.OrdinalIgnoreCase);
         _tunAppsList.Enabled = editTunApps;
         _tunAppsAddBtn.Enabled = editTunApps;
+        _tunAppsBrowseFileBtn.Enabled = editTunApps;
         _tunAppsRemoveBtn.Enabled = editTunApps;
 
         _statusValue.Text = running ? "Запущено" : "Остановлено";
@@ -1353,21 +1374,66 @@ internal sealed class MainForm : Form
 
     private void SyncTunAppsListFromState()
     {
-        _tunAppsList.Items.Clear();
-        foreach (var s in _state.TunAppProcessPaths ?? new List<string>())
-        {
-            if (!string.IsNullOrWhiteSpace(s))
-                _tunAppsList.Items.Add(s.Trim());
-        }
+        SetTunAppListItems(_state.TunAppProcessPaths ?? new List<string>());
     }
 
     private void PersistTunAppsFromList()
     {
-        _state.TunAppProcessPaths = _tunAppsList.Items.Cast<string>().ToList();
+        _state.TunAppProcessPaths = TunAppPathPolicy.NormalizeDistinctPaths(EnumerateTunAppPaths());
         _stateStore.Save(_state);
     }
 
+    private IEnumerable<string> EnumerateTunAppPaths()
+    {
+        foreach (ListViewItem item in _tunAppsList.Items)
+        {
+            if (item.Tag is string s && s.Length > 0)
+                yield return s;
+        }
+    }
+
+    private void AddTunAppListItem(string path)
+    {
+        if (!TunAppPathPolicy.TryNormalizeExePath(path, out var norm))
+            return;
+
+        var item = new ListViewItem(Path.GetFileNameWithoutExtension(norm)) { Tag = norm };
+        item.SubItems.Add(norm);
+        item.ImageIndex = _tunAppIconCache.GetImageIndex(_tunAppIcons, norm);
+        _tunAppsList.Items.Add(item);
+    }
+
+    private void SetTunAppListItems(IEnumerable<string> paths)
+    {
+        _tunAppsList.BeginUpdate();
+        try
+        {
+            _tunAppsList.Items.Clear();
+            foreach (var p in TunAppPathPolicy.NormalizeDistinctPaths(paths))
+                AddTunAppListItem(p);
+        }
+        finally
+        {
+            _tunAppsList.EndUpdate();
+        }
+    }
+
     private void AddTunAppExecutable()
+    {
+        using var dialog = new TunAppsPickerDialog(_tunAppsSelectionService, EnumerateTunAppPaths());
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+            return;
+
+        var merged = _tunAppsSelectionService.MergeWithExisting(
+            EnumerateTunAppPaths(),
+            dialog.SelectedPaths);
+
+        SetTunAppListItems(merged);
+
+        PersistTunAppsFromList();
+    }
+
+    private void AddTunAppFromOpenFileDialog()
     {
         using var ofd = new OpenFileDialog
         {
@@ -1375,19 +1441,26 @@ internal sealed class MainForm : Form
             Filter = "Приложения (*.exe)|*.exe|Все файлы (*.*)|*.*",
             CheckFileExists = true
         };
-        if (ofd.ShowDialog(this) != DialogResult.OK) return;
-        var path = ofd.FileName.Trim();
-        if (path.Length == 0) return;
-        var dup = _tunAppsList.Items.Cast<string>().Any(x => string.Equals(x, path, StringComparison.OrdinalIgnoreCase));
+        if (ofd.ShowDialog(this) != DialogResult.OK)
+            return;
+
+        if (!TunAppPathPolicy.TryNormalizeExePath(ofd.FileName, out var path))
+        {
+            MessageBox.Show(this, "Укажите существующий файл .exe с полным путём.", "Файл", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        var dup = EnumerateTunAppPaths().Any(x => string.Equals(x, path, StringComparison.OrdinalIgnoreCase));
         if (!dup)
-            _tunAppsList.Items.Add(path);
+            AddTunAppListItem(path);
         PersistTunAppsFromList();
     }
 
     private void RemoveSelectedTunApp()
     {
-        if (_tunAppsList.SelectedIndex < 0) return;
-        _tunAppsList.Items.RemoveAt(_tunAppsList.SelectedIndex);
+        if (_tunAppsList.SelectedItems.Count == 0)
+            return;
+        _tunAppsList.SelectedItems[0].Remove();
         PersistTunAppsFromList();
     }
 }
