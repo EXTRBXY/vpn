@@ -50,7 +50,9 @@ Source: "..\\NothingVpn.Tray\\bin\\Release\\net8.0-windows\\win-x64\\publish\\*.
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
-Name: "{commondesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+; В режиме PrivilegesRequired=lowest создаём ярлык только в профиле текущего пользователя,
+; иначе запись в C:\Users\Public\Desktop может падать с 0x80070005 (Access denied).
+Name: "{userdesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Registry]
 ; Per-user autorun (optional)
