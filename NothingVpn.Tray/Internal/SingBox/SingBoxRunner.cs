@@ -90,8 +90,8 @@ internal sealed class SingBoxRunner : IDisposable
             _process = p;
 
             // Async log pumping
-            _ = Task.Run(() => PumpAsync(p.StandardOutput, redact: !_debugLogs(), _logStore));
-            _ = Task.Run(() => PumpAsync(p.StandardError, redact: !_debugLogs(), _logStore));
+            _ = Task.Run(() => PumpAsync(p.StandardOutput, "sing-box/stdout", redact: !_debugLogs(), _logStore));
+            _ = Task.Run(() => PumpAsync(p.StandardError, "sing-box/stderr", redact: !_debugLogs(), _logStore));
         }
     }
 
@@ -120,7 +120,7 @@ internal sealed class SingBoxRunner : IDisposable
         }
     }
 
-    private static async Task PumpAsync(StreamReader reader, bool redact, InMemoryLogStore store)
+    private static async Task PumpAsync(StreamReader reader, string source, bool redact, InMemoryLogStore store)
     {
         try
         {
@@ -131,7 +131,14 @@ internal sealed class SingBoxRunner : IDisposable
                 var clean = StripAnsi(line);
                 var outLine = redact ? LogRedactor.Redact(clean) : clean;
                 var (lvl, lvlText) = DetectLevel(outLine);
-                store.Append(lvl, $"[{DateTimeOffset.Now:O}] [{lvlText}] {outLine}");
+                (lvl, lvlText, outLine) = NormalizeSeverity(lvl, lvlText, outLine);
+                outLine = StripLevelPrefix(outLine);
+                store.AppendStructured(
+                    level: lvl,
+                    source: source,
+                    message: outLine,
+                    raw: line,
+                    timestampUtc: DateTimeOffset.UtcNow);
             }
         }
         catch
@@ -148,7 +155,8 @@ internal sealed class SingBoxRunner : IDisposable
         return AnsiRegex.Replace(s, "");
     }
 
-    private static readonly Regex SingBoxLevelPrefix = new(@"^(TRAC|DEBU|INFO|WARN|ERRO|FATA|PANI)\[\d+\]", RegexOptions.Compiled);
+    private static readonly Regex SingBoxLevelPrefix = new(@"^(TRAC|DEBU|INFO|WARN|ERRO|ERROR|FATA|PANI)\[\d+\]\s*", RegexOptions.Compiled);
+    private static readonly Regex SingBoxErrorPrefix = new(@"^(ERRO|ERROR)(?=\[\d+\])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex BracketLevelPrefix = new(@"^\[(TRACE|DEBUG|INFO|WARN|WARNING|ERROR|FATAL|PANIC)\]\s*", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex WordLevelPrefix = new(@"^(TRACE|DEBUG|INFO|WARN|WARNING|ERROR|FATAL|PANIC)\b[:\s\-]*", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex LevelKeyValue = new(@"\blevel=(trace|debug|info|warn|warning|error|fatal|panic)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -160,6 +168,9 @@ internal sealed class SingBoxRunner : IDisposable
 
         var t = s.TrimStart();
 
+        if (TryParseFastLevel(t, out var fastLevel, out var fastText))
+            return (fastLevel, fastText);
+
         var m = SingBoxLevelPrefix.Match(t);
         if (m.Success)
         {
@@ -170,6 +181,7 @@ internal sealed class SingBoxRunner : IDisposable
                 "INFO" => (2, "INFO"),
                 "WARN" => (3, "WARN"),
                 "ERRO" => (4, "ERROR"),
+                "ERROR" => (4, "ERROR"),
                 "FATA" => (5, "FATAL"),
                 "PANI" => (6, "PANIC"),
                 _ => (2, "INFO")
@@ -232,6 +244,86 @@ internal sealed class SingBoxRunner : IDisposable
 
         // If format changes, default to INFO rather than producing false errors.
         return (2, "INFO");
+    }
+
+    private static bool TryParseFastLevel(string s, out int level, out string text)
+    {
+        level = 2;
+        text = "INFO";
+        if (s.Length >= 5 && s[4] == '[')
+        {
+            if (s.StartsWith("TRAC", StringComparison.Ordinal))
+            {
+                level = 0; text = "TRACE"; return true;
+            }
+            if (s.StartsWith("DEBU", StringComparison.Ordinal))
+            {
+                level = 1; text = "DEBUG"; return true;
+            }
+            if (s.StartsWith("INFO", StringComparison.Ordinal))
+            {
+                level = 2; text = "INFO"; return true;
+            }
+            if (s.StartsWith("WARN", StringComparison.Ordinal))
+            {
+                level = 3; text = "WARN"; return true;
+            }
+            if (s.StartsWith("ERRO", StringComparison.Ordinal))
+            {
+                level = 4; text = "ERROR"; return true;
+            }
+            if (s.StartsWith("FATA", StringComparison.Ordinal))
+            {
+                level = 5; text = "FATAL"; return true;
+            }
+            if (s.StartsWith("PANI", StringComparison.Ordinal))
+            {
+                level = 6; text = "PANIC"; return true;
+            }
+        }
+
+        if (s.Length >= 6 && s[5] == '[' && s.StartsWith("ERROR", StringComparison.Ordinal))
+        {
+            level = 4;
+            text = "ERROR";
+            return true;
+        }
+
+        return false;
+    }
+
+    private static (int Level, string Text, string Line) NormalizeSeverity(int level, string levelText, string line)
+    {
+        if (level < 4) return (level, levelText, line);
+        if (!IsTransientConnectionClose(line)) return (level, levelText, line);
+
+        // sing-box sometimes reports normal TCP session closes as ERRO.
+        // We downgrade these noisy records to WARN to reduce false alarms in UI.
+        var normalizedLine = SingBoxErrorPrefix.Replace(line, "WARN");
+        return (3, "WARN", normalizedLine);
+    }
+
+    private static string StripLevelPrefix(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line)) return line;
+        var s = line.TrimStart();
+        s = SingBoxLevelPrefix.Replace(s, "");
+        s = BracketLevelPrefix.Replace(s, "");
+        s = WordLevelPrefix.Replace(s, "");
+        return s.TrimStart();
+    }
+
+    private static bool IsTransientConnectionClose(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line)) return false;
+        var t = line.Trim().ToLowerInvariant();
+        if (!t.Contains("connection")) return false;
+        if (!t.Contains("closed")) return false;
+
+        return t.Contains("connection upload closed")
+            || t.Contains("connection download closed")
+            || t.Contains("forcibly closed by the remote host")
+            || t.Contains("aborted by the software in your host machine");
     }
 
     public void Dispose()

@@ -17,6 +17,7 @@ internal sealed class MainAppContext : ApplicationContext
     private readonly ToolStripMenuItem _trayItemDisconnect;
     private bool _allowClose;
     private readonly SingleInstance _singleInstance;
+    private readonly AppLogger _appLogger;
 
     public MainAppContext(StartupArgs? startup, SingleInstance singleInstance)
     {
@@ -33,6 +34,7 @@ internal sealed class MainAppContext : ApplicationContext
         AppState? stateSnapshot = null;
         try { stateSnapshot = stateStore.Load(); } catch { }
         var logStore = new InMemoryLogStore(maxBytes: 1_000_000);
+        _appLogger = new AppLogger(logStore);
         var runner = new SingBoxRunner(
             paths,
             "sing-box.exe",
@@ -45,6 +47,7 @@ internal sealed class MainAppContext : ApplicationContext
         _trayBaseIcon = extracted is null ? (Icon)SystemIcons.Application.Clone() : (Icon)extracted.Clone();
 
         _mainForm = new MainForm(paths, profileStore, stateStore, runner, proxy, logStore, requestExit: Exit, vpnConnectionStateChanged: SetTrayConnectionState);
+        _appLogger.Info("app/context", "MainAppContext инициализирован.");
 
         var menu = new ContextMenuStrip();
         _trayItemConnect = new ToolStripMenuItem("Подключить", null, (_, _) => _mainForm.ConnectFromTray());
@@ -100,13 +103,13 @@ internal sealed class MainAppContext : ApplicationContext
                     }
                     catch
                     {
-                        // ignore
+                        _appLogger.Warn("app/context", "Не удалось применить аргументы вторичного инстанса.");
                     }
                 });
             }
             catch
             {
-                // ignore
+                _appLogger.Warn("app/context", "Ошибка обработки IPC-запроса вторичного инстанса.");
             }
         });
     }
@@ -143,6 +146,7 @@ internal sealed class MainAppContext : ApplicationContext
 
     private void Exit()
     {
+        _appLogger.Info("app/context", "Запрошен выход из приложения.");
         _allowClose = true;
         SafeShutdown();
         _tray.Visible = false;
@@ -166,7 +170,7 @@ internal sealed class MainAppContext : ApplicationContext
         }
         catch
         {
-            // best-effort
+            _appLogger.Warn("app/context", "SafeShutdown завершился с ошибкой (best-effort).");
         }
     }
 }

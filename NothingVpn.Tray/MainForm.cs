@@ -17,6 +17,7 @@ internal sealed class MainForm : Form
     private readonly SingBoxRunner _runner;
     private readonly WinInetProxyController _proxy;
     private readonly InMemoryLogStore _logStore;
+    private readonly AppLogger _appLogger;
     private readonly Action _requestExit;
     private readonly Action<bool>? _vpnConnectionStateChanged;
 
@@ -77,6 +78,7 @@ internal sealed class MainForm : Form
         _runner = runner;
         _proxy = proxy;
         _logStore = logStore;
+        _appLogger = new AppLogger(logStore);
         _requestExit = requestExit ?? (() => Application.Exit());
         _vpnConnectionStateChanged = vpnConnectionStateChanged;
 
@@ -889,9 +891,11 @@ internal sealed class MainForm : Form
             var text = _logBox.Text ?? "";
             if (text.Length == 0) return;
             Clipboard.SetText(text, TextDataFormat.Text);
+            _appLogger.Debug("app/ui", "Логи скопированы в буфер обмена.");
         }
         catch (Exception ex)
         {
+            _appLogger.Error("app/ui", ex, "Копирование логов завершилось ошибкой.");
             MessageBox.Show(this, ex.Message, "Копирование не удалось", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
@@ -916,9 +920,11 @@ internal sealed class MainForm : Form
             };
             if (sfd.ShowDialog(this) != DialogResult.OK) return;
             File.WriteAllText(sfd.FileName, all);
+            _appLogger.Info("app/ui", $"Логи экспортированы: {Path.GetFileName(sfd.FileName)}");
         }
         catch (Exception ex)
         {
+            _appLogger.Error("app/ui", ex, "Экспорт логов завершился ошибкой.");
             MessageBox.Show(this, ex.Message, "Скачать логи не удалось", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
@@ -951,6 +957,7 @@ internal sealed class MainForm : Form
                     throw new InvalidOperationException(r.Error ?? "Proxy test failed.");
 
                 MessageBox.Show(this, $"Прокси: OK\nВремя: {sw.ElapsedMilliseconds} мс", "Пинг", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                _appLogger.Info("app/smoke", $"Proxy smoke test: OK, {sw.ElapsedMilliseconds} ms");
                 return;
             }
 
@@ -967,6 +974,7 @@ internal sealed class MainForm : Form
                     "Пинг",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
+                _appLogger.Info("app/smoke", $"TUN apps smoke test: OK, {sw.ElapsedMilliseconds} ms");
                 return;
             }
 
@@ -977,11 +985,13 @@ internal sealed class MainForm : Form
                 throw new InvalidOperationException(r2.Error ?? "TUN test failed.");
 
             MessageBox.Show(this, $"TUN: OK\nВремя: {sw.ElapsedMilliseconds} мс", "Пинг", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            _appLogger.Info("app/smoke", $"TUN smoke test: OK, {sw.ElapsedMilliseconds} ms");
         }
         catch (Exception ex)
         {
             sw.Stop();
             var mode = isTun ? "TUN" : "Прокси";
+            _appLogger.Warn("app/smoke", $"{mode} smoke test: FAIL, {sw.ElapsedMilliseconds} ms, reason: {ex.Message}");
             MessageBox.Show(this, $"{mode}: FAIL\n{ex.Message}\nВремя: {sw.ElapsedMilliseconds} мс", "Пинг", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
@@ -1083,6 +1093,7 @@ internal sealed class MainForm : Form
         try
         {
             UpdateButtons();
+            _appLogger.Info("app/runtime", $"Запрос запуска VPN, режим={_state.Mode}");
 
             if (string.Equals(_state.Mode, "tun_apps", StringComparison.OrdinalIgnoreCase) &&
                 SingBoxConfigGenerator.NormalizeProcessPaths(_state.TunAppProcessPaths).Count == 0)
@@ -1169,9 +1180,11 @@ internal sealed class MainForm : Form
 
             _logTimer.Start();
             NotifyVpnConnectionState(true);
+            _appLogger.Info("app/runtime", "VPN запущен.");
         }
         catch (Exception ex)
         {
+            _appLogger.Error("app/runtime", ex, "Запуск VPN завершился ошибкой.");
             MessageBox.Show(this, ex.Message, "Start failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
             Stop();
         }
@@ -1256,6 +1269,7 @@ internal sealed class MainForm : Form
         try
         {
             _runner.Stop();
+            _appLogger.Info("app/runtime", "VPN остановлен.");
         }
         finally
         {
@@ -1283,10 +1297,18 @@ internal sealed class MainForm : Form
             if (_tabs.SelectedTab != _tabLogs) return;
 
             var min = SelectedMinLevel();
+            if (min == _lastLogMinLevel && _logStore.TryGetVersion(out var currentVer) && currentVer == _lastLogVersion)
+                return;
+
             var text = _logStore.SnapshotText(min, out var ver);
             if (ver == _lastLogVersion && min == _lastLogMinLevel) return;
             _lastLogVersion = ver;
             _lastLogMinLevel = min;
+            // Keep TextBox payload bounded to avoid heavy UI updates over time.
+            const int maxLogChars = 300_000;
+            if (text.Length > maxLogChars)
+                text = text[^maxLogChars..];
+
             _logBox.Text = text;
             _logBox.SelectionStart = _logBox.TextLength;
             _logBox.ScrollToCaret();

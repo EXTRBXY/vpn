@@ -30,20 +30,48 @@ internal sealed class InMemoryLogStore
     public void Append(int level, string line)
     {
         if (line is null) return;
-        // UTF-8 byte size approximation; exact enough for our cap.
+        // Backward-compatible plain line append.
+        AppendStructured(
+            level: level,
+            source: "legacy",
+            message: line,
+            raw: line,
+            timestampUtc: DateTimeOffset.UtcNow);
+    }
+
+    public void AppendStructured(
+        int level,
+        string source,
+        string message,
+        string? raw = null,
+        DateTimeOffset? timestampUtc = null)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return;
+        var ts = timestampUtc ?? DateTimeOffset.UtcNow;
+        var src = string.IsNullOrWhiteSpace(source) ? "app" : source.Trim();
+        var line = $"[{ts:O}] [{LevelToText(level)}] [{src}] {message}";
         var entryBytes = Encoding.UTF8.GetByteCount(line) + 1;
 
         lock (_gate)
         {
-            _entries.Enqueue(new LogEntry(level, line));
+            _entries.Enqueue(new LogEntry(ts, level, src, message, raw ?? message, line, entryBytes));
             _bytes += entryBytes;
             _version++;
 
             while (_bytes > MaxBytes && _entries.Count > 0)
             {
                 var removed = _entries.Dequeue();
-                _bytes -= Encoding.UTF8.GetByteCount(removed.Line) + 1;
+                _bytes -= removed.ByteSize;
             }
+        }
+    }
+
+    public bool TryGetVersion(out int version)
+    {
+        lock (_gate)
+        {
+            version = _version;
+            return _entries.Count != 0;
         }
     }
 
@@ -54,18 +82,23 @@ internal sealed class InMemoryLogStore
 
     public string SnapshotText(int minLevel, out int version)
     {
+        LogEntry[] snapshot;
+        int bytes;
         lock (_gate)
         {
             version = _version;
             if (_entries.Count == 0) return "";
-            var sb = new StringBuilder(Math.Min(_bytes, 200_000));
-            foreach (var e in _entries)
-            {
-                if (e.Level < minLevel) continue;
-                sb.AppendLine(e.Line);
-            }
-            return sb.ToString();
+            bytes = _bytes;
+            snapshot = _entries.ToArray();
         }
+
+        var sb = new StringBuilder(Math.Min(bytes, 200_000));
+        foreach (var e in snapshot)
+        {
+            if (e.Level < minLevel) continue;
+            sb.AppendLine(e.Line);
+        }
+        return sb.ToString();
     }
 
     public string SnapshotAll()
@@ -73,6 +106,27 @@ internal sealed class InMemoryLogStore
         return SnapshotText(minLevel: 0);
     }
 
-    private readonly record struct LogEntry(int Level, string Line);
+    private static string LevelToText(int level)
+    {
+        return level switch
+        {
+            <= 0 => "TRACE",
+            1 => "DEBUG",
+            2 => "INFO",
+            3 => "WARN",
+            4 => "ERROR",
+            5 => "FATAL",
+            _ => "PANIC"
+        };
+    }
+
+    private readonly record struct LogEntry(
+        DateTimeOffset TimestampUtc,
+        int Level,
+        string Source,
+        string Message,
+        string Raw,
+        string Line,
+        int ByteSize);
 }
 
