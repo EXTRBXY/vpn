@@ -6,6 +6,8 @@
 
 #define MyAppName "Nothing VPN"
 #define MyAppExeName "NothingVpn.Tray.exe"
+; Должно совпадать с Mutex в NothingVpn.Tray Program.cs: Global\{appId}, appId = "NothingVpn.Tray"
+#define MyAppMutex "Global\NothingVpn.Tray"
 #define MyAppPublisher "NothingVpn"
 ; URL и версию при CI переопределяют: ISCC /DMyAppURL=... /DMyAppVersion=...
 #define MyAppURL "https://github.com/"
@@ -32,6 +34,7 @@ PrivilegesRequired=lowest
 UninstallDisplayIcon={app}\{#MyAppExeName}
 CloseApplications=yes
 RestartApplications=no
+AppMutex={#MyAppMutex}
 
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
@@ -39,6 +42,8 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 [Tasks]
 Name: "desktopicon"; Description: "Создать ярлык на рабочем столе"; GroupDescription: "Ярлыки:"; Flags: unchecked
 Name: "autorun"; Description: "Запускать при входе в систему (текущий пользователь)"; GroupDescription: "Автозапуск:"; Flags: unchecked
+; При отмеченной задаче каталог данных не попадает в лог удаления (см. [UninstallDelete]).
+Name: "keepuserdata"; Description: "Сохранить пользовательские данные при удалении ({localappdata}\NothingVpn.Tray)"; GroupDescription: "Данные:"; Flags: unchecked
 
 [Files]
 ; Publish output folder (single-file self-contained exe + optional pdb)
@@ -46,6 +51,10 @@ Source: "..\\NothingVpn.Tray\\bin\\Release\\net8.0-windows\\win-x64\\publish\\{#
 Source: "..\\NothingVpn.Tray\\bin\\Release\\net8.0-windows\\win-x64\\publish\\sing-box.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\\NothingVpn.Tray\\bin\\Release\\net8.0-windows\\win-x64\\publish\\wintun.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\\NothingVpn.Tray\\bin\\Release\\net8.0-windows\\win-x64\\publish\\*.pdb"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+
+[UninstallDelete]
+; Профили/состояние/конфиги живут вне {app} (см. AppPaths в NothingVpn.Tray). По умолчанию удаляем вместе с приложением.
+Type: filesandordirs; Name: "{localappdata}\NothingVpn.Tray"; Tasks: not keepuserdata
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
