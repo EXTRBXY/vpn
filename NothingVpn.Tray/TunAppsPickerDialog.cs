@@ -34,6 +34,7 @@ internal sealed class TunAppsPickerDialog : Form
         _existingPaths = TunAppPathPolicy.NormalizeDistinctPaths(existingPaths);
 
         Text = "Добавить приложения в TUN";
+        Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;
         Width = 860;
         Height = 560;
         MinimumSize = new Size(700, 450);
