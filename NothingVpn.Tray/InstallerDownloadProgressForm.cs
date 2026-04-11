@@ -19,29 +19,40 @@ internal sealed class InstallerDownloadProgressForm : Form
         _destPath = destPath;
 
         Text = "Загрузка обновления";
-        Width = 440;
-        Height = 160;
+        MinimumSize = new Size(520, 240);
+        ClientSize = new Size(540, 260);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterParent;
         ShowInTaskbar = false;
+        Padding = new Padding(0);
+
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 4,
+            Padding = new Padding(16, 16, 16, 12)
+        };
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         var title = new Label
         {
             Text = $"Скачивается установщик Nothing VPN {versionLabel}…",
-            AutoSize = false,
-            Width = 400,
-            Height = 36,
-            Location = new Point(16, 12),
-            TextAlign = ContentAlignment.MiddleLeft
+            AutoSize = true,
+            MaximumSize = new Size(500, 0),
+            TextAlign = ContentAlignment.TopLeft,
+            Margin = new Padding(0, 0, 0, 8)
         };
 
         _progressBar = new ProgressBar
         {
-            Location = new Point(16, 52),
-            Width = 392,
-            Height = 22,
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 0, 0, 8),
             Style = ProgressBarStyle.Marquee,
             MarqueeAnimationSpeed = 35
         };
@@ -49,29 +60,39 @@ internal sealed class InstallerDownloadProgressForm : Form
         _statusLabel = new Label
         {
             Text = "Подключение…",
-            AutoSize = false,
-            Width = 392,
-            Height = 20,
-            Location = new Point(16, 82),
-            TextAlign = ContentAlignment.MiddleLeft
+            AutoSize = true,
+            MaximumSize = new Size(500, 0),
+            TextAlign = ContentAlignment.TopLeft,
+            Margin = new Padding(0, 0, 0, 8)
         };
 
+        var footer = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false,
+            AutoSize = true,
+            Margin = new Padding(0, 4, 0, 0)
+        };
         _cancelButton = new Button
         {
             Text = "Отмена",
-            Location = new Point(320, 108),
-            AutoSize = true
+            AutoSize = true,
+            Margin = new Padding(0, 0, 0, 0)
         };
         _cancelButton.Click += (_, _) =>
         {
             _cancelButton.Enabled = false;
             _cts.Cancel();
         };
+        footer.Controls.Add(_cancelButton);
 
-        Controls.Add(title);
-        Controls.Add(_progressBar);
-        Controls.Add(_statusLabel);
-        Controls.Add(_cancelButton);
+        root.Controls.Add(title, 0, 0);
+        root.Controls.Add(_progressBar, 0, 1);
+        root.Controls.Add(_statusLabel, 0, 2);
+        root.Controls.Add(footer, 0, 3);
+
+        Controls.Add(root);
 
         FormClosing += OnFormClosing;
         Shown += OnShown;

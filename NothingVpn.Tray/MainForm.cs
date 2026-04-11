@@ -2009,6 +2009,7 @@ internal sealed class MainForm : Form
         if (string.IsNullOrWhiteSpace(sem))
         {
             _updateBannerInstallCachedBtn.Visible = false;
+            _updateBannerDownloadBtn.Visible = true;
             _updateBannerDownloadBtn.Text = "Скачать и установить";
             return;
         }
@@ -2016,7 +2017,8 @@ internal sealed class MainForm : Form
         var path = TempInstallerCleanup.GetInstallerTempPath(sem);
         var exists = File.Exists(path);
         _updateBannerInstallCachedBtn.Visible = exists;
-        _updateBannerDownloadBtn.Text = exists ? "Скачать заново" : "Скачать и установить";
+        _updateBannerDownloadBtn.Visible = !exists;
+        _updateBannerDownloadBtn.Text = "Скачать и установить";
     }
 
     private void OnUpdateBannerInstallCachedClick()
@@ -2038,7 +2040,7 @@ internal sealed class MainForm : Form
         var confirm = MessageBox.Show(
             this,
             "Обновление загружено. Установить сейчас?\n\n" +
-            "Nothing VPN будет закрыт перед установкой. После завершения установки запустите программу из меню «Пуск».",
+            "Nothing VPN будет закрыт. Установка выполнится автоматически (окно прогресса Inno Setup, без шагов мастера). После завершения запустите программу из меню «Пуск».",
             "Обновление",
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Question,
@@ -2059,16 +2061,21 @@ internal sealed class MainForm : Form
         _requestExit();
     }
 
+    /// <summary>
+    /// Inno Setup: тихая переустановка без страниц мастера; остаётся окно прогресса.
+    /// </summary>
+    private const string InnoUpgradeCommandLineArgs = "/SILENT /SP- /SUPPRESSMSGBOXES /CLOSEAPPLICATIONS /NORESTART";
+
     private static void ScheduleInstallerLaunchAfterGracefulExit(string installerPath)
     {
-        var quoted = "\"" + installerPath.Replace("\"", "\"\"") + "\"";
+        var quotedExe = "\"" + installerPath.Replace("\"", "\"\"") + "\"";
         var cmd = Environment.GetEnvironmentVariable("COMSPEC");
         if (string.IsNullOrWhiteSpace(cmd))
             cmd = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
         Process.Start(new ProcessStartInfo
         {
             FileName = cmd,
-            Arguments = "/c timeout /t 2 /nobreak >nul & start \"\" " + quoted,
+            Arguments = "/c timeout /t 2 /nobreak >nul & start \"\" " + quotedExe + " " + InnoUpgradeCommandLineArgs,
             UseShellExecute = false,
             CreateNoWindow = true,
             WindowStyle = ProcessWindowStyle.Hidden
