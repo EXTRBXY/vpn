@@ -2040,7 +2040,7 @@ internal sealed class MainForm : Form
         var confirm = MessageBox.Show(
             this,
             "Обновление загружено. Установить сейчас?\n\n" +
-            "Nothing VPN будет закрыт. Установка выполнится автоматически (окно прогресса Inno Setup, без шагов мастера). После завершения запустите программу из меню «Пуск».",
+            "Nothing VPN будет закрыт. Установка выполнится автоматически (окно прогресса Inno Setup, без шагов мастера). После завершения клиент запустится снова сам.",
             "Обновление",
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Question,
