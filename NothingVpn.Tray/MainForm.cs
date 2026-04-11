@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using NothingVpn.Tray.Internal.Profile;
 using NothingVpn.Tray.Internal.SingBox;
 using NothingVpn.Tray.Internal.Security;
@@ -7,6 +8,7 @@ using NothingVpn.Tray.Internal.WinInet;
 using NothingVpn.Tray.Internal.Diagnostics;
 using NothingVpn.Tray.Internal.TunApps;
 using NothingVpn.Tray.Internal.Windows;
+using NothingVpn.Tray.Internal.RuleSets;
 
 namespace NothingVpn.Tray;
 
@@ -58,10 +60,15 @@ internal sealed class MainForm : Form
     private readonly Button _tunAppsBrowseFileBtn;
     private readonly Button _tunAppsRemoveBtn;
 
-    private readonly DataGridView _ruleSetsGrid;
-    private readonly Button _ruleSetsAddBtn;
-    private readonly Button _ruleSetsRemoveBtn;
-    private BindingList<UserRuleSet> _ruleSetsBinding = new();
+    private readonly DataGridView _builtinRuleSetsGrid;
+    private readonly DataGridView _userRuleSetsGrid;
+    private readonly Button _builtinRuleSetsFetchOrRemoveBtn;
+    private readonly Button _builtinRuleSetsCheckUpdatesBtn;
+    private readonly Button _userRuleSetsAddBtn;
+    private readonly Button _userRuleSetsRemoveBtn;
+    private readonly Button _builtinRuleSetsOtherListsBtn;
+    private BindingList<UserRuleSet> _builtinRuleSetsBinding = new();
+    private BindingList<UserRuleSet> _userRuleSetsBinding = new();
 
     private readonly ComboBox _dnsPresetCombo;
     private readonly ComboBox _dnsDetourCombo;
@@ -324,82 +331,89 @@ internal sealed class MainForm : Form
         advLayout.Controls.Add(_trustSingBoxBtn, 0, 1);
         advLayout.Controls.Add(_singBoxHashLabel, 1, 1);
 
-        // User rule-sets (.srs)
-        var rsGroup = new GroupBox
+        var rsOuter = new Panel
         {
-            Text = "Rule sets (.srs)",
             Dock = DockStyle.Top,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Padding = new Padding(10)
+            Padding = new Padding(0)
         };
-        var rsLayout = new TableLayoutPanel
+
+        var builtinGroup = new GroupBox
+        {
+            Text = "Встроенные списки (sing-geosite)",
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(10),
+            Margin = new Padding(0, 0, 0, 8)
+        };
+        var builtinLayout = new TableLayoutPanel
         {
             Dock = DockStyle.Top,
             AutoSize = true,
             ColumnCount = 1,
             RowCount = 2
         };
-        // Keep Advanced tab content fitting into default window height.
-        rsLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
-        rsLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        builtinLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 96));
+        builtinLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        _ruleSetsGrid = new DataGridView
+        _builtinRuleSetsGrid = CreateRuleSetsDataGridView(multiSelect: true);
+        builtinLayout.Controls.Add(_builtinRuleSetsGrid, 0, 0);
+
+        var builtinBtns = new FlowLayoutPanel
         {
-            Dock = DockStyle.Fill,
-            Height = 112,
-            AllowUserToAddRows = false,
-            AllowUserToDeleteRows = false,
-            AllowUserToResizeRows = false,
-            MultiSelect = false,
-            SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-            RowHeadersVisible = false,
-            AutoGenerateColumns = false
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true
         };
-        _ruleSetsGrid.Columns.Add(new DataGridViewCheckBoxColumn
-        {
-            HeaderText = "Вкл",
-            DataPropertyName = nameof(UserRuleSet.Enabled),
-            Width = 44
-        });
-        _ruleSetsGrid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            HeaderText = "Имя",
-            DataPropertyName = nameof(UserRuleSet.Name),
-            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
-            MinimumWidth = 140
-        });
-        _ruleSetsGrid.Columns.Add(new DataGridViewComboBoxColumn
-        {
-            HeaderText = "Действие",
-            DataPropertyName = nameof(UserRuleSet.Action),
-            Width = 90,
-            FlatStyle = FlatStyle.Flat,
-            DataSource = new[] { "direct", "block" }
-        });
-        _ruleSetsGrid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            HeaderText = "Файл",
-            DataPropertyName = nameof(UserRuleSet.FileName),
-            Width = 220,
-            ReadOnly = true
-        });
-        rsLayout.Controls.Add(_ruleSetsGrid, 0, 0);
+        _builtinRuleSetsFetchOrRemoveBtn = new Button { Text = "Скачать", AutoSize = true, Enabled = false };
+        _builtinRuleSetsCheckUpdatesBtn = new Button { Text = "Проверить обновления…", AutoSize = true };
+        _builtinRuleSetsOtherListsBtn = new Button { Text = "Другие списки", AutoSize = true };
+        builtinBtns.Controls.Add(_builtinRuleSetsFetchOrRemoveBtn);
+        builtinBtns.Controls.Add(_builtinRuleSetsCheckUpdatesBtn);
+        builtinBtns.Controls.Add(_builtinRuleSetsOtherListsBtn);
+        builtinLayout.Controls.Add(builtinBtns, 0, 1);
+        builtinGroup.Controls.Add(builtinLayout);
 
-        var rsBtns = new FlowLayoutPanel
+        var userGroup = new GroupBox
+        {
+            Text = "Пользовательские списки (.srs)",
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(10)
+        };
+        var userLayout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            ColumnCount = 1,
+            RowCount = 2
+        };
+        userLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 96));
+        userLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        _userRuleSetsGrid = CreateRuleSetsDataGridView(multiSelect: false);
+        userLayout.Controls.Add(_userRuleSetsGrid, 0, 0);
+
+        var userBtns = new FlowLayoutPanel
         {
             Dock = DockStyle.Top,
             AutoSize = true,
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false
         };
-        _ruleSetsAddBtn = new Button { Text = "Добавить .srs…", AutoSize = true };
-        _ruleSetsRemoveBtn = new Button { Text = "Удалить", AutoSize = true };
-        rsBtns.Controls.Add(_ruleSetsAddBtn);
-        rsBtns.Controls.Add(_ruleSetsRemoveBtn);
-        rsLayout.Controls.Add(rsBtns, 0, 1);
+        _userRuleSetsAddBtn = new Button { Text = "Добавить .srs…", AutoSize = true };
+        _userRuleSetsRemoveBtn = new Button { Text = "Удалить", AutoSize = true };
+        userBtns.Controls.Add(_userRuleSetsAddBtn);
+        userBtns.Controls.Add(_userRuleSetsRemoveBtn);
+        userLayout.Controls.Add(userBtns, 0, 1);
+        userGroup.Controls.Add(userLayout);
 
-        rsGroup.Controls.Add(rsLayout);
+        rsOuter.Controls.Add(userGroup);
+        rsOuter.Controls.Add(builtinGroup);
 
         // DNS
         var dnsGroup = new GroupBox
@@ -468,7 +482,7 @@ internal sealed class MainForm : Form
         dnsGroup.Controls.Add(dnsLayout);
         dnsGroup.Controls.Add(_dnsNotice);
 
-        tabAdvanced.Controls.Add(rsGroup);
+        tabAdvanced.Controls.Add(rsOuter);
         tabAdvanced.Controls.Add(dnsGroup);
         tabAdvanced.Controls.Add(advLayout);
 
@@ -523,15 +537,37 @@ internal sealed class MainForm : Form
         _downloadLogsBtn.Click += (_, _) => DownloadLogs();
         _pingBtn.Click += async (_, _) => await PingAsync();
         _logFilterCombo.SelectedIndexChanged += (_, _) => RefreshLog();
-        _ruleSetsAddBtn.Click += (_, _) => AddRuleSet();
-        _ruleSetsRemoveBtn.Click += (_, _) => RemoveSelectedRuleSet();
-        _ruleSetsGrid.CurrentCellDirtyStateChanged += (_, _) =>
+        _userRuleSetsAddBtn.Click += (_, _) => AddRuleSet();
+        _userRuleSetsRemoveBtn.Click += (_, _) => RemoveSelectedUserRuleSet();
+        _builtinRuleSetsFetchOrRemoveBtn.Click += async (_, _) => await OnBuiltinFetchOrRemoveClickAsync();
+        _builtinRuleSetsCheckUpdatesBtn.Click += async (_, _) => await CheckBuiltinRuleSetUpdatesAsync();
+        _builtinRuleSetsOtherListsBtn.Click += (_, _) => OpenOtherRuleSetLists();
+        _builtinRuleSetsGrid.CellBeginEdit += BuiltinRuleSetsGrid_CellBeginEdit;
+        _builtinRuleSetsGrid.SelectionChanged += (_, _) => UpdateBuiltinFetchOrRemoveButton();
+        _builtinRuleSetsGrid.DataBindingComplete += (_, _) =>
         {
-            if (_ruleSetsGrid.IsCurrentCellDirty)
-                _ruleSetsGrid.CommitEdit(DataGridViewDataErrorContexts.Commit);
+            RefreshBuiltinGridRowStyles();
+            UpdateBuiltinFetchOrRemoveButton();
         };
-        _ruleSetsGrid.CellValueChanged += (_, _) => SaveRuleSetsFromGrid();
-        _ruleSetsGrid.DataError += (_, _) => { };
+        _builtinRuleSetsGrid.CurrentCellDirtyStateChanged += (_, _) =>
+        {
+            if (_builtinRuleSetsGrid.IsCurrentCellDirty)
+                _builtinRuleSetsGrid.CommitEdit(DataGridViewDataErrorContexts.Commit);
+        };
+        _builtinRuleSetsGrid.CellValueChanged += (_, _) =>
+        {
+            SaveRuleSetsFromGrid();
+            RefreshBuiltinGridRowStyles();
+        };
+        _builtinRuleSetsGrid.DataError += (_, _) => { };
+
+        _userRuleSetsGrid.CurrentCellDirtyStateChanged += (_, _) =>
+        {
+            if (_userRuleSetsGrid.IsCurrentCellDirty)
+                _userRuleSetsGrid.CommitEdit(DataGridViewDataErrorContexts.Commit);
+        };
+        _userRuleSetsGrid.CellValueChanged += (_, _) => SaveRuleSetsFromGrid();
+        _userRuleSetsGrid.DataError += (_, _) => { };
 
         _dnsPresetCombo.SelectedIndexChanged += (_, _) =>
         {
@@ -671,6 +707,8 @@ internal sealed class MainForm : Form
             _state.TunAppProcessPaths = new List<string>();
         if (_state.UserRuleSets is null)
             _state.UserRuleSets = new List<UserRuleSet>();
+        if (BuiltinGeositeRuleSets.EnsureBuiltinGeositeRuleSets(_state))
+            _stateStore.Save(_state);
         if (string.IsNullOrWhiteSpace(_state.DnsDetour))
             _state.DnsDetour = "direct";
         _modeCombo.SelectedIndex = ModeToComboIndex(_state.Mode);
@@ -818,10 +856,62 @@ internal sealed class MainForm : Form
         }
     }
 
+    private static DataGridView CreateRuleSetsDataGridView(bool multiSelect)
+    {
+        var g = new DataGridView
+        {
+            Dock = DockStyle.Fill,
+            Height = 96,
+            AllowUserToAddRows = false,
+            AllowUserToDeleteRows = false,
+            AllowUserToResizeRows = false,
+            MultiSelect = multiSelect,
+            SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+            RowHeadersVisible = false,
+            AutoGenerateColumns = false
+        };
+        g.Columns.Add(new DataGridViewCheckBoxColumn
+        {
+            HeaderText = "Вкл",
+            DataPropertyName = nameof(UserRuleSet.Enabled),
+            Width = 44
+        });
+        g.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            HeaderText = "Имя",
+            DataPropertyName = nameof(UserRuleSet.Name),
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
+            MinimumWidth = 120
+        });
+        g.Columns.Add(new DataGridViewComboBoxColumn
+        {
+            HeaderText = "Действие",
+            DataPropertyName = nameof(UserRuleSet.Action),
+            Width = 90,
+            FlatStyle = FlatStyle.Flat,
+            DataSource = new[] { "direct", "block" }
+        });
+        g.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            HeaderText = "Файл",
+            DataPropertyName = nameof(UserRuleSet.FileName),
+            Width = 200,
+            ReadOnly = true
+        });
+        return g;
+    }
+
     private void SyncRuleSetsGridFromState()
     {
-        _ruleSetsBinding = new BindingList<UserRuleSet>((_state.UserRuleSets ?? new List<UserRuleSet>()).ToList());
-        _ruleSetsGrid.DataSource = _ruleSetsBinding;
+        var all = _state.UserRuleSets ?? new List<UserRuleSet>();
+        _builtinRuleSetsBinding = new BindingList<UserRuleSet>(
+            all.Where(x => !string.IsNullOrWhiteSpace(x.BuiltinId)).ToList());
+        _userRuleSetsBinding = new BindingList<UserRuleSet>(
+            all.Where(x => string.IsNullOrWhiteSpace(x.BuiltinId)).ToList());
+        _builtinRuleSetsGrid.DataSource = _builtinRuleSetsBinding;
+        _userRuleSetsGrid.DataSource = _userRuleSetsBinding;
+        RefreshBuiltinGridRowStyles();
+        UpdateBuiltinFetchOrRemoveButton();
     }
 
     private void SaveRuleSetsFromGrid()
@@ -829,12 +919,67 @@ internal sealed class MainForm : Form
         try
         {
             if (_state.UserRuleSets is null) _state.UserRuleSets = new List<UserRuleSet>();
-            _state.UserRuleSets = _ruleSetsBinding.ToList();
+            _state.UserRuleSets = _builtinRuleSetsBinding.Concat(_userRuleSetsBinding).ToList();
             _stateStore.Save(_state);
         }
         catch
         {
             // best-effort
+        }
+    }
+
+    private bool RuleSetFileExists(UserRuleSet rs)
+    {
+        var name = (rs.FileName ?? "").Trim();
+        if (name.Length == 0) return false;
+        return File.Exists(Path.Combine(_paths.RuleSetsDir, name));
+    }
+
+    private void RefreshBuiltinGridRowStyles()
+    {
+        var normalFg = _builtinRuleSetsGrid.DefaultCellStyle.ForeColor;
+        if (normalFg.IsEmpty)
+            normalFg = SystemColors.ControlText;
+        foreach (DataGridViewRow row in _builtinRuleSetsGrid.Rows)
+        {
+            if (row.IsNewRow) continue;
+            if (row.DataBoundItem is not UserRuleSet rs) continue;
+            var dim = !RuleSetFileExists(rs);
+            row.DefaultCellStyle.ForeColor = dim ? SystemColors.GrayText : normalFg;
+        }
+    }
+
+    private List<UserRuleSet> GetSelectedBuiltinRuleSets()
+    {
+        var list = new List<UserRuleSet>();
+        foreach (DataGridViewRow row in _builtinRuleSetsGrid.SelectedRows)
+        {
+            if (row.DataBoundItem is UserRuleSet rs)
+                list.Add(rs);
+        }
+
+        return list;
+    }
+
+    private void UpdateBuiltinFetchOrRemoveButton()
+    {
+        try
+        {
+            var selected = GetSelectedBuiltinRuleSets();
+            if (selected.Count == 0)
+            {
+                _builtinRuleSetsFetchOrRemoveBtn.Enabled = false;
+                _builtinRuleSetsFetchOrRemoveBtn.Text = "Скачать";
+                return;
+            }
+
+            var anyMissingFile = selected.Exists(rs => !RuleSetFileExists(rs));
+            _builtinRuleSetsFetchOrRemoveBtn.Enabled = true;
+            _builtinRuleSetsFetchOrRemoveBtn.Text = anyMissingFile ? "Скачать" : "Удалить с диска";
+        }
+        catch
+        {
+            _builtinRuleSetsFetchOrRemoveBtn.Enabled = false;
         }
     }
 
@@ -872,7 +1017,7 @@ internal sealed class MainForm : Form
             File.Copy(src, dest, overwrite: false);
 
             var tag = $"user-ruleset-{Guid.NewGuid():N}"[..("user-ruleset-".Length + 12)];
-            _ruleSetsBinding.Add(new UserRuleSet
+            _userRuleSetsBinding.Add(new UserRuleSet
             {
                 Tag = tag,
                 Name = string.IsNullOrWhiteSpace(baseName) ? fileName : baseName,
@@ -888,19 +1033,328 @@ internal sealed class MainForm : Form
         }
     }
 
-    private void RemoveSelectedRuleSet()
+    private void RemoveSelectedUserRuleSet()
     {
         try
         {
-            if (_ruleSetsGrid.CurrentRow?.DataBoundItem is not UserRuleSet item) return;
-            var idx = _ruleSetsBinding.IndexOf(item);
+            if (_userRuleSetsGrid.CurrentRow?.DataBoundItem is not UserRuleSet item) return;
+            var idx = _userRuleSetsBinding.IndexOf(item);
             if (idx < 0) return;
-            _ruleSetsBinding.RemoveAt(idx);
+            _userRuleSetsBinding.RemoveAt(idx);
             SaveRuleSetsFromGrid();
         }
         catch (Exception ex)
         {
             MessageBox.Show(this, ex.Message, "Удалить rule-set не удалось", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void RemoveBuiltinFilesForList(IReadOnlyList<UserRuleSet> targets)
+    {
+        try
+        {
+            if (targets.Count == 0) return;
+
+            foreach (var rs in targets)
+            {
+                var path = Path.Combine(_paths.RuleSetsDir, (rs.FileName ?? "").Trim());
+                try
+                {
+                    if (File.Exists(path))
+                        File.Delete(path);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, ex.Message, "Удалить файл не удалось", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                rs.RemoteEtag = null;
+                rs.LastDownloadedUtc = null;
+                rs.Enabled = false;
+            }
+
+            SaveRuleSetsFromGrid();
+            RefreshBuiltinGridRowStyles();
+            UpdateBuiltinFetchOrRemoveButton();
+            _builtinRuleSetsGrid.ClearSelection();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "Rule set", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private async Task OnBuiltinFetchOrRemoveClickAsync()
+    {
+        var selected = GetSelectedBuiltinRuleSets();
+        if (selected.Count == 0) return;
+
+        var needDownload = selected.Where(rs => !RuleSetFileExists(rs)).Distinct().ToList();
+        if (needDownload.Count > 0)
+        {
+            await DownloadBuiltinListAsync(needDownload).ConfigureAwait(true);
+            return;
+        }
+
+        RemoveBuiltinFilesForList(selected);
+    }
+
+    private void BuiltinRuleSetsGrid_CellBeginEdit(object? sender, DataGridViewCellCancelEventArgs e)
+    {
+        if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+        if (_builtinRuleSetsBinding.Count <= e.RowIndex) return;
+        var rs = _builtinRuleSetsBinding[e.RowIndex];
+
+        var col = _builtinRuleSetsGrid.Columns[e.ColumnIndex];
+        if (col is DataGridViewTextBoxColumn && col.DataPropertyName == nameof(UserRuleSet.Name))
+        {
+            e.Cancel = true;
+            return;
+        }
+
+        if (col is DataGridViewCheckBoxColumn && col.DataPropertyName == nameof(UserRuleSet.Enabled))
+        {
+            if (RuleSetFileExists(rs))
+                return;
+
+            if (rs.Enabled)
+                return;
+
+            e.Cancel = true;
+            var dr = MessageBox.Show(this,
+                "Этот список ещё не загружен. Скачать и включить?",
+                "Rule set",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question,
+                MessageBoxDefaultButton.Button1);
+            if (dr != DialogResult.Yes)
+                return;
+
+            DownloadAndEnableBuiltinAfterConsentAsync(rs);
+        }
+    }
+
+    private async void DownloadAndEnableBuiltinAfterConsentAsync(UserRuleSet rs)
+    {
+        try
+        {
+            SetRuleSetDownloadUiBusy(true);
+            if (!await DownloadBuiltinFileIfNeededAsync(rs, showErrorsOnFailure: true).ConfigureAwait(true))
+                return;
+
+            rs.Enabled = true;
+            SaveRuleSetsFromGrid();
+            SyncRuleSetsGridFromState();
+            RefreshBuiltinGridRowStyles();
+            UpdateBuiltinFetchOrRemoveButton();
+        }
+        catch (Exception ex)
+        {
+            _appLogger.Error("app/rulesets", ex, "Скачать и включить rule-set не удалось.");
+            MessageBox.Show(this, ex.Message, "Rule set", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            SetRuleSetDownloadUiBusy(false);
+        }
+    }
+
+    /// <summary>Скачивает .srs с сервера, если файла ещё нет. Не трогает Enabled.</summary>
+    private async Task<bool> DownloadBuiltinFileIfNeededAsync(UserRuleSet rs, bool showErrorsOnFailure)
+    {
+        if (RuleSetFileExists(rs))
+            return true;
+
+        var def = BuiltinGeositeRuleSets.FindByBuiltinId(rs.BuiltinId);
+        if (def is null)
+            return false;
+
+        var dest = Path.Combine(_paths.RuleSetsDir, rs.FileName.Trim());
+        var result = await RuleSetRemoteDownloader.DownloadAsync(def.DownloadUrl, dest, ifNoneMatch: null, CancellationToken.None)
+            .ConfigureAwait(true);
+        if (!result.Ok)
+        {
+            _appLogger.Warn("app/rulesets", $"Download builtin failed: {rs.BuiltinId}, {result.Error}");
+            if (showErrorsOnFailure)
+            {
+                MessageBox.Show(this,
+                    $"Не удалось скачать «{rs.Name ?? rs.FileName}».\n{result.Error}",
+                    "Rule set",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+
+            return false;
+        }
+
+        if (!result.NotModified)
+        {
+            if (!string.IsNullOrWhiteSpace(result.NewEtag))
+                rs.RemoteEtag = result.NewEtag.Trim();
+            rs.LastDownloadedUtc = DateTimeOffset.UtcNow;
+        }
+
+        return true;
+    }
+
+    private static void OpenOtherRuleSetLists()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = BuiltinGeositeRuleSets.CatalogBrowserUrl,
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
+    private async Task DownloadBuiltinListAsync(IReadOnlyList<UserRuleSet> pending)
+    {
+        try
+        {
+            if (pending.Count == 0)
+                return;
+
+            SetRuleSetDownloadUiBusy(true);
+            foreach (var rs in pending)
+            {
+                if (!await DownloadBuiltinFileIfNeededAsync(rs, showErrorsOnFailure: true).ConfigureAwait(true))
+                    return;
+            }
+
+            SaveRuleSetsFromGrid();
+            SyncRuleSetsGridFromState();
+            RefreshBuiltinGridRowStyles();
+            UpdateBuiltinFetchOrRemoveButton();
+            _appLogger.Info("app/rulesets", $"Builtin rule-sets saved: {pending.Count}");
+        }
+        catch (Exception ex)
+        {
+            _appLogger.Error("app/rulesets", ex, "Скачать встроенный rule-set не удалось.");
+            MessageBox.Show(this, ex.Message, "Rule set", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            SetRuleSetDownloadUiBusy(false);
+        }
+    }
+
+    private async Task CheckBuiltinRuleSetUpdatesAsync()
+    {
+        try
+        {
+            var targets = (_state.UserRuleSets ?? new List<UserRuleSet>())
+                .Where(x => !string.IsNullOrWhiteSpace(x.BuiltinId))
+                .ToList();
+            if (targets.Count == 0) return;
+
+            var anyFile = targets.Any(x =>
+            {
+                var p = Path.Combine(_paths.RuleSetsDir, (x.FileName ?? "").Trim());
+                return File.Exists(p);
+            });
+            if (!anyFile)
+            {
+                MessageBox.Show(this,
+                    "Нет скачанных встроенных файлов. Включите список галочкой (будет предложена загрузка) или нажмите «Скачать».",
+                    "Обновления rule-set",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
+            SetRuleSetDownloadUiBusy(true);
+            var unchanged = 0;
+            var updated = 0;
+            var failed = new List<string>();
+
+            foreach (var rs in targets)
+            {
+                var def = BuiltinGeositeRuleSets.FindByBuiltinId(rs.BuiltinId);
+                if (def is null) continue;
+
+                var dest = Path.Combine(_paths.RuleSetsDir, rs.FileName.Trim());
+                if (!File.Exists(dest))
+                    continue;
+
+                var useConditional = !string.IsNullOrWhiteSpace(rs.RemoteEtag);
+                var result = await RuleSetRemoteDownloader.DownloadAsync(
+                    def.DownloadUrl,
+                    dest,
+                    ifNoneMatch: useConditional ? rs.RemoteEtag : null,
+                    CancellationToken.None).ConfigureAwait(true);
+
+                if (!result.Ok)
+                {
+                    failed.Add($"{def.DisplayName}: {result.Error}");
+                    continue;
+                }
+
+                if (result.NotModified)
+                {
+                    unchanged++;
+                    continue;
+                }
+
+                ApplyDownloadResultToRuleSet(rs, result.NewEtag);
+                updated++;
+            }
+
+            if (failed.Count != 0)
+            {
+                MessageBox.Show(this,
+                    "Часть проверок завершилась ошибкой:\n- " + string.Join("\n- ", failed),
+                    "Обновления rule-set",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            var msg = updated == 0
+                ? "Все проверенные списки уже актуальны."
+                : $"Обновлено файлов: {updated}. Без изменений: {unchanged}.";
+            MessageBox.Show(this, msg, "Обновления rule-set", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            _appLogger.Info("app/rulesets", $"Rule-set update check: updated={updated}, unchanged={unchanged}");
+        }
+        catch (Exception ex)
+        {
+            _appLogger.Error("app/rulesets", ex, "Проверка обновлений rule-set не удалась.");
+            MessageBox.Show(this, ex.Message, "Обновления rule-set", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            SetRuleSetDownloadUiBusy(false);
+        }
+    }
+
+    private void ApplyDownloadResultToRuleSet(UserRuleSet rs, string? newEtag)
+    {
+        if (!string.IsNullOrWhiteSpace(newEtag))
+            rs.RemoteEtag = newEtag.Trim();
+        rs.LastDownloadedUtc = DateTimeOffset.UtcNow;
+        _stateStore.Save(_state);
+        SyncRuleSetsGridFromState();
+    }
+
+    private void SetRuleSetDownloadUiBusy(bool busy)
+    {
+        _builtinRuleSetsCheckUpdatesBtn.Enabled = !busy;
+        _builtinRuleSetsOtherListsBtn.Enabled = !busy;
+        if (busy)
+        {
+            _builtinRuleSetsFetchOrRemoveBtn.Enabled = false;
+            Cursor = Cursors.WaitCursor;
+        }
+        else
+        {
+            Cursor = Cursors.Default;
+            UpdateBuiltinFetchOrRemoveButton();
         }
     }
 
@@ -1256,7 +1710,12 @@ internal sealed class MainForm : Form
                 continue;
             }
             if (!File.Exists(full))
-                missing.Add($"{(string.IsNullOrWhiteSpace(rs.Name) ? rs.Tag : rs.Name)} → {rs.FileName}");
+            {
+                var line = $"{(string.IsNullOrWhiteSpace(rs.Name) ? rs.Tag : rs.Name)} → {rs.FileName}";
+                if (!string.IsNullOrWhiteSpace(rs.BuiltinId))
+                    line += " (скачайте встроенный список или отключите строку)";
+                missing.Add(line);
+            }
         }
 
         if (bad.Count != 0)

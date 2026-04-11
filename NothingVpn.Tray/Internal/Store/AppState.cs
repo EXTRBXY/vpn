@@ -79,5 +79,13 @@ internal sealed class UserRuleSet
 
     /// <summary>Действие по доменам из rule-set: direct|block.</summary>
     public string Action { get; set; } = "direct";
+
+    /// <summary>Встроенный каталог (например sing-geosite). Пусто — пользовательский импорт.</summary>
+    public string? BuiltinId { get; set; }
+
+    /// <summary>ETag ответа при последней загрузке (для условных запросов).</summary>
+    public string? RemoteEtag { get; set; }
+
+    public DateTimeOffset? LastDownloadedUtc { get; set; }
 }
 
