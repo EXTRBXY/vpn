@@ -82,7 +82,9 @@ internal sealed class MainForm : Form
 
     private readonly Panel _updateBannerPanel;
     private readonly Label _updateBannerLabel;
+    private readonly Button _updateBannerInstallCachedBtn;
     private readonly Button _updateBannerDownloadBtn;
+    private readonly Button _updateManualCheckBtn;
     private readonly System.Windows.Forms.Timer _updatePeriodicTimer;
     private GitHubReleaseInfo? _updatePendingRelease;
     private bool _updateDownloadBusy;
@@ -512,16 +514,46 @@ internal sealed class MainForm : Form
             Margin = new Padding(0, 8, 16, 0),
             MaximumSize = new Size(420, 0)
         };
-        _updateBannerDownloadBtn = new Button { Text = "Скачать и установить", AutoSize = true, Margin = new Padding(0, 4, 0, 0) };
+        _updateBannerInstallCachedBtn = new Button
+        {
+            Text = AppUpdateUserMessages.ButtonInstallReady,
+            AutoSize = true,
+            Margin = new Padding(0, 4, 8, 0),
+            Visible = false
+        };
+        _updateBannerDownloadBtn = new Button
+        {
+            Text = AppUpdateUserMessages.ButtonDownloadInstall,
+            AutoSize = true,
+            Margin = new Padding(0, 4, 0, 0)
+        };
         updateBannerFlow.Controls.Add(_updateBannerLabel);
+        updateBannerFlow.Controls.Add(_updateBannerInstallCachedBtn);
         updateBannerFlow.Controls.Add(_updateBannerDownloadBtn);
         _updateBannerPanel.Controls.Add(updateBannerFlow);
 
+        var updateManualCheckPanel = new Panel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 48,
+            Padding = new Padding(12, 8, 12, 8)
+        };
+        _updateManualCheckBtn = new Button
+        {
+            Text = AppUpdateUserMessages.ButtonCheckUpdates,
+            AutoSize = true,
+            Anchor = AnchorStyles.Left | AnchorStyles.Top
+        };
+        _updateManualCheckBtn.Click += async (_, _) => await OnManualCheckForUpdatesClickAsync();
+        updateManualCheckPanel.Controls.Add(_updateManualCheckBtn);
+
+        tabAdvanced.Controls.Add(updateManualCheckPanel);
         tabAdvanced.Controls.Add(rsOuter);
         tabAdvanced.Controls.Add(dnsGroup);
         tabAdvanced.Controls.Add(advLayout);
         tabAdvanced.Controls.Add(_updateBannerPanel);
 
+        _updateBannerInstallCachedBtn.Click += (_, _) => OnUpdateBannerInstallCachedClick();
         _updateBannerDownloadBtn.Click += async (_, _) => await OnUpdateBannerDownloadClickAsync();
 
         _logTimer = new System.Windows.Forms.Timer { Interval = 1000 };
@@ -1970,7 +2002,67 @@ internal sealed class MainForm : Form
         PersistTunAppsFromList();
     }
 
+    #region Обновления (GitHub Releases)
+
     private static string BuildUserAgent(string currentSemver) => $"NothingVpn/{currentSemver}";
+
+    private void SyncUpdateBannerCachedInstallerUi()
+    {
+        if (IsDisposed) return;
+        var sem = _updatePendingRelease?.Semver;
+        if (string.IsNullOrWhiteSpace(sem))
+        {
+            _updateBannerInstallCachedBtn.Visible = false;
+            _updateBannerDownloadBtn.Visible = true;
+            _updateBannerDownloadBtn.Text = AppUpdateUserMessages.ButtonDownloadInstall;
+            return;
+        }
+
+        var path = TempInstallerCleanup.GetInstallerTempPath(sem);
+        var exists = File.Exists(path);
+        _updateBannerInstallCachedBtn.Visible = exists;
+        _updateBannerDownloadBtn.Visible = !exists;
+        _updateBannerDownloadBtn.Text = AppUpdateUserMessages.ButtonDownloadInstall;
+    }
+
+    private void OnUpdateBannerInstallCachedClick()
+    {
+        if (_updatePendingRelease is null)
+            return;
+        var path = TempInstallerCleanup.GetInstallerTempPath(_updatePendingRelease.Semver);
+        if (!File.Exists(path))
+        {
+            SyncUpdateBannerCachedInstallerUi();
+            return;
+        }
+
+        OfferInstallDownloadedThenExit(path);
+    }
+
+    private void OfferInstallDownloadedThenExit(string installerPath)
+    {
+        var confirm = MessageBox.Show(
+            this,
+            AppUpdateUserMessages.ConfirmInstallDownloaded(),
+            AppUpdateUserMessages.DialogTitle,
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question,
+            MessageBoxDefaultButton.Button1);
+        if (confirm != DialogResult.Yes)
+            return;
+
+        try
+        {
+            InstallerLauncher.ScheduleAfterApplicationExits(installerPath);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, AppUpdateUserMessages.DialogTitle, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        _requestExit();
+    }
 
     private Task UiInvokeAsync(Action action)
     {
@@ -1998,6 +2090,43 @@ internal sealed class MainForm : Form
                 tcs.SetException(ex);
             }
         });
+        return tcs.Task;
+    }
+
+    private Task<InstallerDownloader.Result> RunInstallerDownloadModalAsync(GitHubReleaseInfo release, string destPath)
+    {
+        if (IsDisposed || !IsHandleCreated)
+            return Task.FromResult(new InstallerDownloader.Result(false, AppUpdateUserMessages.ModalUnavailable));
+
+        var tcs = new TaskCompletionSource<InstallerDownloader.Result>();
+        void Run()
+        {
+            try
+            {
+                if (IsDisposed)
+                {
+                    tcs.TrySetResult(new InstallerDownloader.Result(false, AppUpdateUserMessages.ModalWindowClosed));
+                    return;
+                }
+
+                var r = InstallerDownloadProgressForm.RunModal(
+                    this,
+                    release.InstallerDownloadUrl,
+                    destPath,
+                    release.Semver);
+                tcs.TrySetResult(r);
+            }
+            catch (Exception ex)
+            {
+                tcs.TrySetResult(new InstallerDownloader.Result(false, ex.Message));
+            }
+        }
+
+        if (InvokeRequired)
+            BeginInvoke(Run);
+        else
+            Run();
+
         return tcs.Task;
     }
 
@@ -2043,16 +2172,8 @@ internal sealed class MainForm : Form
                     await UiInvokeAsync(() =>
                     {
                         if (IsDisposed) return;
-                        if (rel is not null)
-                        {
-                            using var f = new ReleaseChangelogForm(currentSemver, rel.Body ?? "", loadFailed: false);
-                            f.ShowDialog(this);
-                        }
-                        else
-                        {
-                            using var f = new ReleaseChangelogForm(currentSemver, "", loadFailed: true);
-                            f.ShowDialog(this);
-                        }
+                        using var f = new ReleaseChangelogForm(currentSemver, rel?.Body ?? "", rel is null);
+                        f.ShowDialog(this);
                     }).ConfigureAwait(false);
 
                     _state.LastRecordedAppSemver = currentSemver;
@@ -2070,6 +2191,62 @@ internal sealed class MainForm : Form
         catch (Exception ex)
         {
             _appLogger.Error("app/update", ex, "Проверка обновлений при старте не удалась.");
+        }
+    }
+
+    private async Task OnManualCheckForUpdatesClickAsync()
+    {
+        if (!AppVersionInfo.TryGetCurrentSemver(out var currentSemver))
+        {
+            MessageBox.Show(
+                this,
+                AppUpdateUserMessages.ManualCheckVersionUnknown(),
+                AppUpdateUserMessages.DialogTitle,
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            return;
+        }
+
+        _updateManualCheckBtn.Enabled = false;
+        Cursor = Cursors.WaitCursor;
+        try
+        {
+            var ok = await RefreshUpdateAvailabilityAsync(currentSemver, offerModal: false).ConfigureAwait(true);
+            if (!ok)
+            {
+                MessageBox.Show(
+                    this,
+                    AppUpdateUserMessages.ManualCheckNetworkError(),
+                    AppUpdateUserMessages.DialogTitle,
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (_updatePendingRelease is not null &&
+                SemVerComparer.CompareSemver(_updatePendingRelease.Semver, currentSemver) > 0)
+            {
+                MessageBox.Show(
+                    this,
+                    AppUpdateUserMessages.ManualCheckUpdateAvailable(_updatePendingRelease.Semver),
+                    AppUpdateUserMessages.DialogTitle,
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            else
+            {
+                MessageBox.Show(
+                    this,
+                    AppUpdateUserMessages.ManualCheckUpToDate,
+                    AppUpdateUserMessages.DialogTitle,
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+        }
+        finally
+        {
+            Cursor = Cursors.Default;
+            _updateManualCheckBtn.Enabled = true;
         }
     }
 
@@ -2091,7 +2268,7 @@ internal sealed class MainForm : Form
         }
     }
 
-    private async Task RefreshUpdateAvailabilityAsync(string currentSemver, bool offerModal)
+    private async Task<bool> RefreshUpdateAvailabilityAsync(string currentSemver, bool offerModal)
     {
         GitHubReleaseInfo? latest = null;
         try
@@ -2106,7 +2283,7 @@ internal sealed class MainForm : Form
         catch (Exception ex)
         {
             _appLogger.Warn("app/update", $"GitHub releases: {ex.Message}");
-            return;
+            return false;
         }
 
         _state.UpdateLastCheckUtc = DateTimeOffset.UtcNow;
@@ -2119,12 +2296,14 @@ internal sealed class MainForm : Form
             {
                 _updatePendingRelease = null;
                 _updateBannerPanel.Visible = false;
+                SyncUpdateBannerCachedInstallerUi();
                 return;
             }
 
             _updatePendingRelease = latest;
-            _updateBannerLabel.Text = $"Доступна новая версия {latest.Semver}.";
+            _updateBannerLabel.Text = AppUpdateUserMessages.BannerLine(latest.Semver);
             _updateBannerPanel.Visible = true;
+            SyncUpdateBannerCachedInstallerUi();
 
             if (!offerModal)
                 return;
@@ -2133,8 +2312,8 @@ internal sealed class MainForm : Form
 
             var r = MessageBox.Show(
                 this,
-                $"Доступна версия {latest.Semver}. Скачать и запустить установщик?",
-                "Обновление",
+                AppUpdateUserMessages.OfferDownloadOnStartup(latest.Semver),
+                AppUpdateUserMessages.DialogTitle,
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question);
             if (r == DialogResult.Yes)
@@ -2145,6 +2324,8 @@ internal sealed class MainForm : Form
                 _stateStore.Save(_state);
             }
         }).ConfigureAwait(false);
+
+        return true;
     }
 
     private async Task OnUpdateBannerDownloadClickAsync()
@@ -2164,40 +2345,29 @@ internal sealed class MainForm : Form
             await UiInvokeAsync(() =>
             {
                 _updateBannerDownloadBtn.Enabled = false;
+                _updateBannerInstallCachedBtn.Enabled = false;
             }).ConfigureAwait(false);
 
             var path = TempInstallerCleanup.GetInstallerTempPath(release.Semver);
-            var result = await InstallerDownloader.DownloadAsync(
-                release.InstallerDownloadUrl,
-                path,
-                CancellationToken.None).ConfigureAwait(false);
+            var result = await RunInstallerDownloadModalAsync(release, path).ConfigureAwait(false);
 
             await UiInvokeAsync(() =>
             {
                 _updateBannerDownloadBtn.Enabled = true;
+                _updateBannerInstallCachedBtn.Enabled = true;
                 if (!result.Ok)
                 {
                     MessageBox.Show(
                         this,
-                        result.Error ?? "Не удалось скачать установщик.",
-                        "Обновление",
+                        result.Error ?? AppUpdateUserMessages.DownloadFailedFallback,
+                        AppUpdateUserMessages.DialogTitle,
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Warning);
                     return;
                 }
 
-                try
-                {
-                    Process.Start(new ProcessStartInfo
-                    {
-                        FileName = path,
-                        UseShellExecute = true
-                    });
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show(this, ex.Message, "Обновление", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                }
+                SyncUpdateBannerCachedInstallerUi();
+                OfferInstallDownloadedThenExit(path);
             }).ConfigureAwait(false);
         }
         finally
@@ -2205,5 +2375,7 @@ internal sealed class MainForm : Form
             _updateDownloadBusy = false;
         }
     }
+
+    #endregion
 }
 
