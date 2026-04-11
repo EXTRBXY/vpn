@@ -59,6 +59,17 @@ jobs:
           dotnet publish NothingVpn.Tray\NothingVpn.Tray.csproj -c Release `
             -p:Version=$env:APP_VERSION -p:InformationalVersion=$env:APP_VERSION
 
+      - name: Проверить версию в NothingVpn.Tray.exe
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:GITHUB_WORKSPACE ($env:PUBLISH_REL + '\NothingVpn.Tray.exe')
+          if (-not (Test-Path -LiteralPath $exe)) { throw "Missing: $exe" }
+          $pv = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion
+          Write-Host "ProductVersion=$pv (ожидание: $($env:APP_VERSION))"
+          if ($pv -notlike "$($env:APP_VERSION)*") {
+            throw "Версия в PE не совпадает с APP_VERSION: '$pv' vs '$($env:APP_VERSION)'"
+          }
+
       - name: Скачать sing-box (windows-amd64)
         shell: pwsh
         working-directory: ${{ github.workspace }}
