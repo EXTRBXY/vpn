@@ -42,8 +42,6 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 [Tasks]
 Name: "desktopicon"; Description: "Создать ярлык на рабочем столе"; GroupDescription: "Ярлыки:"; Flags: unchecked
 Name: "autorun"; Description: "Запускать при входе в систему (текущий пользователь)"; GroupDescription: "Автозапуск:"; Flags: unchecked
-; При отмеченной задаче каталог данных не попадает в лог удаления (см. [UninstallDelete]).
-Name: "keepuserdata"; Description: "Сохранить пользовательские данные при удалении ({localappdata}\NothingVpn.Tray)"; GroupDescription: "Данные:"; Flags: unchecked
 
 [Files]
 ; Publish output folder (single-file self-contained exe + optional pdb)
@@ -51,10 +49,6 @@ Source: "..\\NothingVpn.Tray\\bin\\Release\\net8.0-windows\\win-x64\\publish\\{#
 Source: "..\\NothingVpn.Tray\\bin\\Release\\net8.0-windows\\win-x64\\publish\\sing-box.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\\NothingVpn.Tray\\bin\\Release\\net8.0-windows\\win-x64\\publish\\wintun.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\\NothingVpn.Tray\\bin\\Release\\net8.0-windows\\win-x64\\publish\\*.pdb"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-
-[UninstallDelete]
-; Профили/состояние/конфиги живут вне {app} (см. AppPaths в NothingVpn.Tray). По умолчанию удаляем вместе с приложением.
-Type: filesandordirs; Name: "{localappdata}\NothingVpn.Tray"; Tasks: not keepuserdata
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -69,4 +63,39 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Запустить {#MyAppName}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+var
+  UninstallRemoveUserData: Boolean;
+
+function InitializeUninstall(): Boolean;
+var
+  Res: Integer;
+  Msg: String;
+begin
+  { Тихая деинсталляция: без диалога; по умолчанию удаляем каталог данных вне каталога программы. }
+  UninstallRemoveUserData := True;
+  Result := True;
+  if UninstallSilent then
+    Exit;
+
+  Msg :=
+    'Сохранить пользовательские данные (профили, настройки)?' + #13#10 + #13#10 +
+    ExpandConstant('{localappdata}\NothingVpn.Tray') + #13#10 + #13#10 +
+    'Да — оставить папку.' + #13#10 +
+    'Нет — удалить вместе с приложением.' + #13#10 + #13#10 +
+    'Отмена — прервать удаление.';
+
+  Res := MsgBox(Msg, mbConfirmation, MB_YESNOCANCEL or MB_DEFBUTTON2);
+  if Res = IDCANCEL then
+    Result := False
+  else
+    UninstallRemoveUserData := (Res = IDNO);
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if (CurUninstallStep = usPostUninstall) and UninstallRemoveUserData then
+    DelTree(ExpandConstant('{localappdata}\NothingVpn.Tray'), True, True, True);
+end;
 
