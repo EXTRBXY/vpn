@@ -84,6 +84,7 @@ internal sealed class MainForm : Form
     private readonly Label _updateBannerLabel;
     private readonly Button _updateBannerInstallCachedBtn;
     private readonly Button _updateBannerDownloadBtn;
+    private readonly Button _updateManualCheckBtn;
     private readonly System.Windows.Forms.Timer _updatePeriodicTimer;
     private GitHubReleaseInfo? _updatePendingRelease;
     private bool _updateDownloadBusy;
@@ -526,6 +527,22 @@ internal sealed class MainForm : Form
         updateBannerFlow.Controls.Add(_updateBannerDownloadBtn);
         _updateBannerPanel.Controls.Add(updateBannerFlow);
 
+        var updateManualCheckPanel = new Panel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 48,
+            Padding = new Padding(12, 8, 12, 8)
+        };
+        _updateManualCheckBtn = new Button
+        {
+            Text = "Проверить наличие обновлений",
+            AutoSize = true,
+            Anchor = AnchorStyles.Left | AnchorStyles.Top
+        };
+        _updateManualCheckBtn.Click += async (_, _) => await OnManualCheckForUpdatesClickAsync();
+        updateManualCheckPanel.Controls.Add(_updateManualCheckBtn);
+
+        tabAdvanced.Controls.Add(updateManualCheckPanel);
         tabAdvanced.Controls.Add(rsOuter);
         tabAdvanced.Controls.Add(dnsGroup);
         tabAdvanced.Controls.Add(advLayout);
@@ -2196,6 +2213,62 @@ internal sealed class MainForm : Form
         }
     }
 
+    private async Task OnManualCheckForUpdatesClickAsync()
+    {
+        if (!AppVersionInfo.TryGetCurrentSemver(out var currentSemver))
+        {
+            MessageBox.Show(
+                this,
+                "Не удалось определить версию приложения.",
+                "Обновление",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            return;
+        }
+
+        _updateManualCheckBtn.Enabled = false;
+        Cursor = Cursors.WaitCursor;
+        try
+        {
+            var ok = await RefreshUpdateAvailabilityAsync(currentSemver, offerModal: false).ConfigureAwait(true);
+            if (!ok)
+            {
+                MessageBox.Show(
+                    this,
+                    "Не удалось проверить обновления. Проверьте подключение к сети и повторите попытку.",
+                    "Обновление",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (_updatePendingRelease is not null &&
+                SemVerComparer.CompareSemver(_updatePendingRelease.Semver, currentSemver) > 0)
+            {
+                MessageBox.Show(
+                    this,
+                    $"Доступна версия {_updatePendingRelease.Semver}. Блок с кнопками загрузки и установки находится выше на этой вкладке.",
+                    "Обновление",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            else
+            {
+                MessageBox.Show(
+                    this,
+                    "Новых версий не найдено. Установлена актуальная версия.",
+                    "Обновление",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+        }
+        finally
+        {
+            Cursor = Cursors.Default;
+            _updateManualCheckBtn.Enabled = true;
+        }
+    }
+
     private async Task OnPeriodicUpdateCheckAsync()
     {
         try
@@ -2214,7 +2287,8 @@ internal sealed class MainForm : Form
         }
     }
 
-    private async Task RefreshUpdateAvailabilityAsync(string currentSemver, bool offerModal)
+    /// <returns><see langword="false"/> при ошибке сети или ответа API; иначе <see langword="true"/> (включая случай «уже актуальная версия»).</returns>
+    private async Task<bool> RefreshUpdateAvailabilityAsync(string currentSemver, bool offerModal)
     {
         GitHubReleaseInfo? latest = null;
         try
@@ -2229,7 +2303,7 @@ internal sealed class MainForm : Form
         catch (Exception ex)
         {
             _appLogger.Warn("app/update", $"GitHub releases: {ex.Message}");
-            return;
+            return false;
         }
 
         _state.UpdateLastCheckUtc = DateTimeOffset.UtcNow;
@@ -2270,6 +2344,8 @@ internal sealed class MainForm : Form
                 _stateStore.Save(_state);
             }
         }).ConfigureAwait(false);
+
+        return true;
     }
 
     private async Task OnUpdateBannerDownloadClickAsync()
