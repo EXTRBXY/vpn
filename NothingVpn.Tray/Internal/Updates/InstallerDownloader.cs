@@ -85,7 +85,7 @@ internal static class InstallerDownloader
         }
         catch (OperationCanceledException)
         {
-            return new Result(false, "Timeout.");
+            return new Result(false, "Превышено время ожидания.");
         }
         catch (Exception ex)
         {

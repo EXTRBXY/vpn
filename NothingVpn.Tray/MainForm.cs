@@ -516,12 +516,17 @@ internal sealed class MainForm : Form
         };
         _updateBannerInstallCachedBtn = new Button
         {
-            Text = "Установить скачанное",
+            Text = AppUpdateUserMessages.ButtonInstallReady,
             AutoSize = true,
             Margin = new Padding(0, 4, 8, 0),
             Visible = false
         };
-        _updateBannerDownloadBtn = new Button { Text = "Скачать и установить", AutoSize = true, Margin = new Padding(0, 4, 0, 0) };
+        _updateBannerDownloadBtn = new Button
+        {
+            Text = AppUpdateUserMessages.ButtonDownloadInstall,
+            AutoSize = true,
+            Margin = new Padding(0, 4, 0, 0)
+        };
         updateBannerFlow.Controls.Add(_updateBannerLabel);
         updateBannerFlow.Controls.Add(_updateBannerInstallCachedBtn);
         updateBannerFlow.Controls.Add(_updateBannerDownloadBtn);
@@ -535,7 +540,7 @@ internal sealed class MainForm : Form
         };
         _updateManualCheckBtn = new Button
         {
-            Text = "Проверить наличие обновлений",
+            Text = AppUpdateUserMessages.ButtonCheckUpdates,
             AutoSize = true,
             Anchor = AnchorStyles.Left | AnchorStyles.Top
         };
@@ -1997,11 +2002,10 @@ internal sealed class MainForm : Form
         PersistTunAppsFromList();
     }
 
+    #region Обновления (GitHub Releases)
+
     private static string BuildUserAgent(string currentSemver) => $"NothingVpn/{currentSemver}";
 
-    /// <summary>
-    /// Запускает установщик через cmd с задержкой, чтобы текущий процесс успел завершиться и освободить mutex/файлы до Inno Setup.
-    /// </summary>
     private void SyncUpdateBannerCachedInstallerUi()
     {
         if (IsDisposed) return;
@@ -2010,7 +2014,7 @@ internal sealed class MainForm : Form
         {
             _updateBannerInstallCachedBtn.Visible = false;
             _updateBannerDownloadBtn.Visible = true;
-            _updateBannerDownloadBtn.Text = "Скачать и установить";
+            _updateBannerDownloadBtn.Text = AppUpdateUserMessages.ButtonDownloadInstall;
             return;
         }
 
@@ -2018,7 +2022,7 @@ internal sealed class MainForm : Form
         var exists = File.Exists(path);
         _updateBannerInstallCachedBtn.Visible = exists;
         _updateBannerDownloadBtn.Visible = !exists;
-        _updateBannerDownloadBtn.Text = "Скачать и установить";
+        _updateBannerDownloadBtn.Text = AppUpdateUserMessages.ButtonDownloadInstall;
     }
 
     private void OnUpdateBannerInstallCachedClick()
@@ -2039,9 +2043,8 @@ internal sealed class MainForm : Form
     {
         var confirm = MessageBox.Show(
             this,
-            "Обновление загружено. Установить сейчас?\n\n" +
-            "Nothing VPN будет закрыт. Установка выполнится автоматически (окно прогресса Inno Setup, без шагов мастера). После завершения клиент запустится снова сам.",
-            "Обновление",
+            AppUpdateUserMessages.ConfirmInstallDownloaded(),
+            AppUpdateUserMessages.DialogTitle,
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Question,
             MessageBoxDefaultButton.Button1);
@@ -2050,36 +2053,15 @@ internal sealed class MainForm : Form
 
         try
         {
-            ScheduleInstallerLaunchAfterGracefulExit(installerPath);
+            InstallerLauncher.ScheduleAfterApplicationExits(installerPath);
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "Обновление", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show(this, ex.Message, AppUpdateUserMessages.DialogTitle, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
         _requestExit();
-    }
-
-    /// <summary>
-    /// Inno Setup: тихая переустановка без страниц мастера; остаётся окно прогресса.
-    /// </summary>
-    private const string InnoUpgradeCommandLineArgs = "/SILENT /SP- /SUPPRESSMSGBOXES /CLOSEAPPLICATIONS /NORESTART";
-
-    private static void ScheduleInstallerLaunchAfterGracefulExit(string installerPath)
-    {
-        var quotedExe = "\"" + installerPath.Replace("\"", "\"\"") + "\"";
-        var cmd = Environment.GetEnvironmentVariable("COMSPEC");
-        if (string.IsNullOrWhiteSpace(cmd))
-            cmd = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = cmd,
-            Arguments = "/c timeout /t 2 /nobreak >nul & start \"\" " + quotedExe + " " + InnoUpgradeCommandLineArgs,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WindowStyle = ProcessWindowStyle.Hidden
-        });
     }
 
     private Task UiInvokeAsync(Action action)
@@ -2114,7 +2096,7 @@ internal sealed class MainForm : Form
     private Task<InstallerDownloader.Result> RunInstallerDownloadModalAsync(GitHubReleaseInfo release, string destPath)
     {
         if (IsDisposed || !IsHandleCreated)
-            return Task.FromResult(new InstallerDownloader.Result(false, "Окно недоступно."));
+            return Task.FromResult(new InstallerDownloader.Result(false, AppUpdateUserMessages.ModalUnavailable));
 
         var tcs = new TaskCompletionSource<InstallerDownloader.Result>();
         void Run()
@@ -2123,7 +2105,7 @@ internal sealed class MainForm : Form
             {
                 if (IsDisposed)
                 {
-                    tcs.TrySetResult(new InstallerDownloader.Result(false, "Окно закрыто."));
+                    tcs.TrySetResult(new InstallerDownloader.Result(false, AppUpdateUserMessages.ModalWindowClosed));
                     return;
                 }
 
@@ -2190,16 +2172,8 @@ internal sealed class MainForm : Form
                     await UiInvokeAsync(() =>
                     {
                         if (IsDisposed) return;
-                        if (rel is not null)
-                        {
-                            using var f = new ReleaseChangelogForm(currentSemver, rel.Body ?? "", loadFailed: false);
-                            f.ShowDialog(this);
-                        }
-                        else
-                        {
-                            using var f = new ReleaseChangelogForm(currentSemver, "", loadFailed: true);
-                            f.ShowDialog(this);
-                        }
+                        using var f = new ReleaseChangelogForm(currentSemver, rel?.Body ?? "", rel is null);
+                        f.ShowDialog(this);
                     }).ConfigureAwait(false);
 
                     _state.LastRecordedAppSemver = currentSemver;
@@ -2226,8 +2200,8 @@ internal sealed class MainForm : Form
         {
             MessageBox.Show(
                 this,
-                "Не удалось определить версию приложения.",
-                "Обновление",
+                AppUpdateUserMessages.ManualCheckVersionUnknown(),
+                AppUpdateUserMessages.DialogTitle,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
             return;
@@ -2242,8 +2216,8 @@ internal sealed class MainForm : Form
             {
                 MessageBox.Show(
                     this,
-                    "Не удалось проверить обновления. Проверьте подключение к сети и повторите попытку.",
-                    "Обновление",
+                    AppUpdateUserMessages.ManualCheckNetworkError(),
+                    AppUpdateUserMessages.DialogTitle,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
                 return;
@@ -2254,8 +2228,8 @@ internal sealed class MainForm : Form
             {
                 MessageBox.Show(
                     this,
-                    $"Доступна версия {_updatePendingRelease.Semver}. Блок с кнопками загрузки и установки находится выше на этой вкладке.",
-                    "Обновление",
+                    AppUpdateUserMessages.ManualCheckUpdateAvailable(_updatePendingRelease.Semver),
+                    AppUpdateUserMessages.DialogTitle,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
             }
@@ -2263,8 +2237,8 @@ internal sealed class MainForm : Form
             {
                 MessageBox.Show(
                     this,
-                    "Новых версий не найдено. Установлена актуальная версия.",
-                    "Обновление",
+                    AppUpdateUserMessages.ManualCheckUpToDate,
+                    AppUpdateUserMessages.DialogTitle,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
             }
@@ -2294,7 +2268,6 @@ internal sealed class MainForm : Form
         }
     }
 
-    /// <returns><see langword="false"/> при ошибке сети или ответа API; иначе <see langword="true"/> (включая случай «уже актуальная версия»).</returns>
     private async Task<bool> RefreshUpdateAvailabilityAsync(string currentSemver, bool offerModal)
     {
         GitHubReleaseInfo? latest = null;
@@ -2328,7 +2301,7 @@ internal sealed class MainForm : Form
             }
 
             _updatePendingRelease = latest;
-            _updateBannerLabel.Text = $"Доступна новая версия {latest.Semver}.";
+            _updateBannerLabel.Text = AppUpdateUserMessages.BannerLine(latest.Semver);
             _updateBannerPanel.Visible = true;
             SyncUpdateBannerCachedInstallerUi();
 
@@ -2339,8 +2312,8 @@ internal sealed class MainForm : Form
 
             var r = MessageBox.Show(
                 this,
-                $"Доступна версия {latest.Semver}. Скачать и запустить установщик?",
-                "Обновление",
+                AppUpdateUserMessages.OfferDownloadOnStartup(latest.Semver),
+                AppUpdateUserMessages.DialogTitle,
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question);
             if (r == DialogResult.Yes)
@@ -2386,8 +2359,8 @@ internal sealed class MainForm : Form
                 {
                     MessageBox.Show(
                         this,
-                        result.Error ?? "Не удалось скачать установщик.",
-                        "Обновление",
+                        result.Error ?? AppUpdateUserMessages.DownloadFailedFallback,
+                        AppUpdateUserMessages.DialogTitle,
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Warning);
                     return;
@@ -2402,5 +2375,7 @@ internal sealed class MainForm : Form
             _updateDownloadBusy = false;
         }
     }
+
+    #endregion
 }
 

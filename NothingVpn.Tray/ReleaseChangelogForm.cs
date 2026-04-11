@@ -1,10 +1,12 @@
+using NothingVpn.Tray.Internal.Updates;
+
 namespace NothingVpn.Tray;
 
 internal sealed class ReleaseChangelogForm : Form
 {
     public ReleaseChangelogForm(string versionLabel, string body, bool loadFailed)
     {
-        Text = loadFailed ? "Обновление" : "Что нового";
+        Text = loadFailed ? AppUpdateUserMessages.ChangelogTitleProblem : AppUpdateUserMessages.ChangelogTitleOk;
         Width = 560;
         Height = 480;
         MinimumSize = new Size(400, 300);
@@ -17,8 +19,8 @@ internal sealed class ReleaseChangelogForm : Form
         var title = new Label
         {
             Text = loadFailed
-                ? $"Не удалось загрузить описание релиза {versionLabel}."
-                : $"Версия {versionLabel}",
+                ? AppUpdateUserMessages.ChangelogLoadFailed(versionLabel)
+                : AppUpdateUserMessages.ChangelogHeading(versionLabel),
             AutoSize = true,
             MaximumSize = new Size(520, 0),
             Padding = new Padding(12, 12, 12, 8)
@@ -31,10 +33,12 @@ internal sealed class ReleaseChangelogForm : Form
             ScrollBars = ScrollBars.Vertical,
             Dock = DockStyle.Fill,
             Font = new Font(FontFamily.GenericMonospace, 9f),
-            Text = loadFailed ? body : (string.IsNullOrWhiteSpace(body) ? "Описание релиза отсутствует." : body)
+            Text = loadFailed
+                ? ""
+                : (string.IsNullOrWhiteSpace(body) ? AppUpdateUserMessages.ChangelogEmpty : body)
         };
 
-        var ok = new Button { Text = "OK", DialogResult = DialogResult.OK, AutoSize = true };
+        var ok = new Button { Text = "Закрыть", DialogResult = DialogResult.OK, AutoSize = true };
         var footer = new FlowLayoutPanel
         {
             Dock = DockStyle.Bottom,

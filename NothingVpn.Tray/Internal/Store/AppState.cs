@@ -63,13 +63,13 @@ internal sealed class AppState
     // If set, we verify sing-box.exe SHA-256 matches before starting.
     public string? TrustedSingBoxSha256 { get; set; }
 
-    /// <summary>Тег GitHub-релиза (например v1.2.3), для которого пользователь отклонил модальное предложение обновиться.</summary>
+    /// <summary>Тег релиза (например v1.2.3), для которого скрыто всплывающее предложение обновиться.</summary>
     public string? UpdateDismissedModalForTag { get; set; }
 
-    /// <summary>Последняя зафиксированная установленная версия приложения (Major.Minor.Patch), для детекта апгрейда и changelog.</summary>
+    /// <summary>Запомненная версия приложения (X.Y.Z) — для показа списка изменений после обновления.</summary>
     public string? LastRecordedAppSemver { get; set; }
 
-    /// <summary>Время последней успешной проверки обновлений на GitHub (для периодического опроса раз в сутки).</summary>
+    /// <summary>Время последней успешной проверки обновлений.</summary>
     public DateTimeOffset? UpdateLastCheckUtc { get; set; }
 }
 
