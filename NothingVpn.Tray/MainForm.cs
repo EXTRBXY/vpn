@@ -82,6 +82,7 @@ internal sealed class MainForm : Form
 
     private readonly Panel _updateBannerPanel;
     private readonly Label _updateBannerLabel;
+    private readonly Button _updateBannerInstallCachedBtn;
     private readonly Button _updateBannerDownloadBtn;
     private readonly System.Windows.Forms.Timer _updatePeriodicTimer;
     private GitHubReleaseInfo? _updatePendingRelease;
@@ -512,8 +513,16 @@ internal sealed class MainForm : Form
             Margin = new Padding(0, 8, 16, 0),
             MaximumSize = new Size(420, 0)
         };
+        _updateBannerInstallCachedBtn = new Button
+        {
+            Text = "Установить скачанное",
+            AutoSize = true,
+            Margin = new Padding(0, 4, 8, 0),
+            Visible = false
+        };
         _updateBannerDownloadBtn = new Button { Text = "Скачать и установить", AutoSize = true, Margin = new Padding(0, 4, 0, 0) };
         updateBannerFlow.Controls.Add(_updateBannerLabel);
+        updateBannerFlow.Controls.Add(_updateBannerInstallCachedBtn);
         updateBannerFlow.Controls.Add(_updateBannerDownloadBtn);
         _updateBannerPanel.Controls.Add(updateBannerFlow);
 
@@ -522,6 +531,7 @@ internal sealed class MainForm : Form
         tabAdvanced.Controls.Add(advLayout);
         tabAdvanced.Controls.Add(_updateBannerPanel);
 
+        _updateBannerInstallCachedBtn.Click += (_, _) => OnUpdateBannerInstallCachedClick();
         _updateBannerDownloadBtn.Click += async (_, _) => await OnUpdateBannerDownloadClickAsync();
 
         _logTimer = new System.Windows.Forms.Timer { Interval = 1000 };
@@ -1972,6 +1982,82 @@ internal sealed class MainForm : Form
 
     private static string BuildUserAgent(string currentSemver) => $"NothingVpn/{currentSemver}";
 
+    /// <summary>
+    /// Запускает установщик через cmd с задержкой, чтобы текущий процесс успел завершиться и освободить mutex/файлы до Inno Setup.
+    /// </summary>
+    private void SyncUpdateBannerCachedInstallerUi()
+    {
+        if (IsDisposed) return;
+        var sem = _updatePendingRelease?.Semver;
+        if (string.IsNullOrWhiteSpace(sem))
+        {
+            _updateBannerInstallCachedBtn.Visible = false;
+            _updateBannerDownloadBtn.Text = "Скачать и установить";
+            return;
+        }
+
+        var path = TempInstallerCleanup.GetInstallerTempPath(sem);
+        var exists = File.Exists(path);
+        _updateBannerInstallCachedBtn.Visible = exists;
+        _updateBannerDownloadBtn.Text = exists ? "Скачать заново" : "Скачать и установить";
+    }
+
+    private void OnUpdateBannerInstallCachedClick()
+    {
+        if (_updatePendingRelease is null)
+            return;
+        var path = TempInstallerCleanup.GetInstallerTempPath(_updatePendingRelease.Semver);
+        if (!File.Exists(path))
+        {
+            SyncUpdateBannerCachedInstallerUi();
+            return;
+        }
+
+        OfferInstallDownloadedThenExit(path);
+    }
+
+    private void OfferInstallDownloadedThenExit(string installerPath)
+    {
+        var confirm = MessageBox.Show(
+            this,
+            "Обновление загружено. Установить сейчас?\n\n" +
+            "Nothing VPN будет закрыт перед установкой. После завершения установки запустите программу из меню «Пуск».",
+            "Обновление",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question,
+            MessageBoxDefaultButton.Button1);
+        if (confirm != DialogResult.Yes)
+            return;
+
+        try
+        {
+            ScheduleInstallerLaunchAfterGracefulExit(installerPath);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "Обновление", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        _requestExit();
+    }
+
+    private static void ScheduleInstallerLaunchAfterGracefulExit(string installerPath)
+    {
+        var quoted = "\"" + installerPath.Replace("\"", "\"\"") + "\"";
+        var cmd = Environment.GetEnvironmentVariable("COMSPEC");
+        if (string.IsNullOrWhiteSpace(cmd))
+            cmd = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = cmd,
+            Arguments = "/c timeout /t 2 /nobreak >nul & start \"\" " + quoted,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WindowStyle = ProcessWindowStyle.Hidden
+        });
+    }
+
     private Task UiInvokeAsync(Action action)
     {
         if (IsDisposed)
@@ -1998,6 +2084,43 @@ internal sealed class MainForm : Form
                 tcs.SetException(ex);
             }
         });
+        return tcs.Task;
+    }
+
+    private Task<InstallerDownloader.Result> RunInstallerDownloadModalAsync(GitHubReleaseInfo release, string destPath)
+    {
+        if (IsDisposed || !IsHandleCreated)
+            return Task.FromResult(new InstallerDownloader.Result(false, "Окно недоступно."));
+
+        var tcs = new TaskCompletionSource<InstallerDownloader.Result>();
+        void Run()
+        {
+            try
+            {
+                if (IsDisposed)
+                {
+                    tcs.TrySetResult(new InstallerDownloader.Result(false, "Окно закрыто."));
+                    return;
+                }
+
+                var r = InstallerDownloadProgressForm.RunModal(
+                    this,
+                    release.InstallerDownloadUrl,
+                    destPath,
+                    release.Semver);
+                tcs.TrySetResult(r);
+            }
+            catch (Exception ex)
+            {
+                tcs.TrySetResult(new InstallerDownloader.Result(false, ex.Message));
+            }
+        }
+
+        if (InvokeRequired)
+            BeginInvoke(Run);
+        else
+            Run();
+
         return tcs.Task;
     }
 
@@ -2119,12 +2242,14 @@ internal sealed class MainForm : Form
             {
                 _updatePendingRelease = null;
                 _updateBannerPanel.Visible = false;
+                SyncUpdateBannerCachedInstallerUi();
                 return;
             }
 
             _updatePendingRelease = latest;
             _updateBannerLabel.Text = $"Доступна новая версия {latest.Semver}.";
             _updateBannerPanel.Visible = true;
+            SyncUpdateBannerCachedInstallerUi();
 
             if (!offerModal)
                 return;
@@ -2164,17 +2289,16 @@ internal sealed class MainForm : Form
             await UiInvokeAsync(() =>
             {
                 _updateBannerDownloadBtn.Enabled = false;
+                _updateBannerInstallCachedBtn.Enabled = false;
             }).ConfigureAwait(false);
 
             var path = TempInstallerCleanup.GetInstallerTempPath(release.Semver);
-            var result = await InstallerDownloader.DownloadAsync(
-                release.InstallerDownloadUrl,
-                path,
-                CancellationToken.None).ConfigureAwait(false);
+            var result = await RunInstallerDownloadModalAsync(release, path).ConfigureAwait(false);
 
             await UiInvokeAsync(() =>
             {
                 _updateBannerDownloadBtn.Enabled = true;
+                _updateBannerInstallCachedBtn.Enabled = true;
                 if (!result.Ok)
                 {
                     MessageBox.Show(
@@ -2186,18 +2310,8 @@ internal sealed class MainForm : Form
                     return;
                 }
 
-                try
-                {
-                    Process.Start(new ProcessStartInfo
-                    {
-                        FileName = path,
-                        UseShellExecute = true
-                    });
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show(this, ex.Message, "Обновление", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                }
+                SyncUpdateBannerCachedInstallerUi();
+                OfferInstallDownloadedThenExit(path);
             }).ConfigureAwait(false);
         }
         finally

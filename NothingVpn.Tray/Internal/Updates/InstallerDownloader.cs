@@ -1,10 +1,23 @@
 namespace NothingVpn.Tray.Internal.Updates;
 
+internal readonly record struct InstallerDownloadProgress(long BytesReceived, long? TotalBytes);
+
 internal static class InstallerDownloader
 {
     internal sealed record Result(bool Ok, string? Error);
 
-    internal static async Task<Result> DownloadAsync(string downloadUrl, string destPath, CancellationToken cancellationToken = default)
+    internal static Task<Result> DownloadAsync(
+        string downloadUrl,
+        string destPath,
+        CancellationToken cancellationToken = default,
+        IProgress<InstallerDownloadProgress>? progress = null) =>
+        DownloadCoreAsync(downloadUrl, destPath, cancellationToken, progress);
+
+    private static async Task<Result> DownloadCoreAsync(
+        string downloadUrl,
+        string destPath,
+        CancellationToken cancellationToken,
+        IProgress<InstallerDownloadProgress>? progress)
     {
         try
         {
@@ -18,6 +31,10 @@ internal static class InstallerDownloader
             if (!response.IsSuccessStatusCode)
                 return new Result(false, $"HTTP {(int)response.StatusCode}");
 
+            long? totalBytes = null;
+            if (response.Content.Headers.ContentLength is { } len && len >= 0)
+                totalBytes = len;
+
             var dir = Path.GetDirectoryName(destPath);
             if (string.IsNullOrEmpty(dir))
                 return new Result(false, "Invalid destination path.");
@@ -29,7 +46,21 @@ internal static class InstallerDownloader
             {
                 await using (var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false))
                 await using (var fs = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-                    await stream.CopyToAsync(fs, cancellationToken).ConfigureAwait(false);
+                {
+                    progress?.Report(new InstallerDownloadProgress(0, totalBytes));
+                    var buffer = new byte[81920];
+                    long readTotal = 0;
+                    while (true)
+                    {
+                        var read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)
+                            .ConfigureAwait(false);
+                        if (read == 0)
+                            break;
+                        await fs.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+                        readTotal += read;
+                        progress?.Report(new InstallerDownloadProgress(readTotal, totalBytes));
+                    }
+                }
 
                 File.Move(temp, destPath, overwrite: true);
             }
@@ -48,7 +79,11 @@ internal static class InstallerDownloader
 
             return new Result(true, null);
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return new Result(false, "Загрузка отменена.");
+        }
+        catch (OperationCanceledException)
         {
             return new Result(false, "Timeout.");
         }
