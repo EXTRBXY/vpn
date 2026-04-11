@@ -50,9 +50,14 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
+      # Версию брать из $env:APP_VERSION: значения из GITHUB_ENV недоступны в ${{ env.* }}.
       - name: Publish NothingVpn.Tray
-        run: dotnet publish NothingVpn.Tray\NothingVpn.Tray.csproj -c Release -p:Version=${{ env.APP_VERSION }} -p:InformationalVersion=${{ env.APP_VERSION }}
+        shell: pwsh
         working-directory: ${{ github.workspace }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:APP_VERSION)) { throw "APP_VERSION is empty" }
+          dotnet publish NothingVpn.Tray\NothingVpn.Tray.csproj -c Release `
+            -p:Version=$env:APP_VERSION -p:InformationalVersion=$env:APP_VERSION
 
       - name: Скачать sing-box (windows-amd64)
         shell: pwsh
