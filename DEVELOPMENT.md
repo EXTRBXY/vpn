@@ -50,6 +50,12 @@ git push origin v0.1.0
 
 Версия установщика в CI берётся из имени тега (без префикса `v`).
 
+Тот же номер передаётся в `dotnet publish` как `-p:Version` / `-p:InformationalVersion`, чтобы версия в свойствах `NothingVpn.Tray.exe` совпадала с тегом и с полем `AppVersion` в Inno Setup. Базовая версия в [NothingVpn.Tray.csproj](NothingVpn.Tray/NothingVpn.Tray.csproj) используется для локальных сборок без тега.
+
+### Обновления в клиенте (GitHub Releases)
+
+Клиент запрашивает [GitHub Releases API](https://docs.github.com/en/rest/releases/releases) для репозитория, заданного константами `GitHubOwner` / `GitHubRepo` в `NothingVpn.Tray/Internal/Updates/UpdateChannelOptions.cs`. При форке смените их на свой `owner/repo`. В каждом релизе должен быть ассет с именем `NothingVpnSetup.exe` (как в workflow `Release`).
+
 ### Обновить версии зависимостей в CI
 
 - **sing-box**: в `.github/workflows/release.yml` переменная `SING_BOX_VERSION` (скачивается архив `sing-box-$ver-windows-amd64.zip`).

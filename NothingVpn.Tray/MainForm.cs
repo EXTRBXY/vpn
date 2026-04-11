@@ -9,6 +9,7 @@ using NothingVpn.Tray.Internal.Diagnostics;
 using NothingVpn.Tray.Internal.TunApps;
 using NothingVpn.Tray.Internal.Windows;
 using NothingVpn.Tray.Internal.RuleSets;
+using NothingVpn.Tray.Internal.Updates;
 
 namespace NothingVpn.Tray;
 
@@ -78,6 +79,13 @@ internal sealed class MainForm : Form
     private readonly Label _dnsNotice;
     private readonly System.Windows.Forms.Timer _dnsDebounceTimer;
     private bool _dnsUiReady;
+
+    private readonly Panel _updateBannerPanel;
+    private readonly Label _updateBannerLabel;
+    private readonly Button _updateBannerDownloadBtn;
+    private readonly System.Windows.Forms.Timer _updatePeriodicTimer;
+    private GitHubReleaseInfo? _updatePendingRelease;
+    private bool _updateDownloadBusy;
 
     private int _lastLogVersion = -1;
     private int _lastLogMinLevel = -1;
@@ -482,9 +490,39 @@ internal sealed class MainForm : Form
         dnsGroup.Controls.Add(dnsLayout);
         dnsGroup.Controls.Add(_dnsNotice);
 
+        _updateBannerPanel = new Panel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(12, 10, 12, 10),
+            Visible = false,
+            BackColor = SystemColors.Info
+        };
+        var updateBannerFlow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            WrapContents = true,
+            FlowDirection = FlowDirection.LeftToRight
+        };
+        _updateBannerLabel = new Label
+        {
+            AutoSize = true,
+            Margin = new Padding(0, 8, 16, 0),
+            MaximumSize = new Size(420, 0)
+        };
+        _updateBannerDownloadBtn = new Button { Text = "Скачать и установить", AutoSize = true, Margin = new Padding(0, 4, 0, 0) };
+        updateBannerFlow.Controls.Add(_updateBannerLabel);
+        updateBannerFlow.Controls.Add(_updateBannerDownloadBtn);
+        _updateBannerPanel.Controls.Add(updateBannerFlow);
+
         tabAdvanced.Controls.Add(rsOuter);
         tabAdvanced.Controls.Add(dnsGroup);
         tabAdvanced.Controls.Add(advLayout);
+        tabAdvanced.Controls.Add(_updateBannerPanel);
+
+        _updateBannerDownloadBtn.Click += async (_, _) => await OnUpdateBannerDownloadClickAsync();
 
         _logTimer = new System.Windows.Forms.Timer { Interval = 1000 };
         _logTimer.Tick += (_, _) => RefreshLog();
@@ -596,6 +634,14 @@ internal sealed class MainForm : Form
             }
         };
 
+        _updatePeriodicTimer = new System.Windows.Forms.Timer { Interval = 86_400_000 };
+        _updatePeriodicTimer.Tick += (_, _) => { _ = OnPeriodicUpdateCheckAsync(); };
+        Shown += (_, _) =>
+        {
+            _updatePeriodicTimer.Start();
+            _ = RunStartupUpdatesAsync();
+        };
+
         LoadData();
         UpdateButtons();
 
@@ -603,6 +649,7 @@ internal sealed class MainForm : Form
         {
             // MainForm may be hidden-to-tray by outer controller; default close is allowed.
             _logTimer.Stop();
+            _updatePeriodicTimer.Stop();
         };
     }
 
@@ -1921,6 +1968,242 @@ internal sealed class MainForm : Form
             return;
         _tunAppsList.SelectedItems[0].Remove();
         PersistTunAppsFromList();
+    }
+
+    private static string BuildUserAgent(string currentSemver) => $"NothingVpn/{currentSemver}";
+
+    private Task UiInvokeAsync(Action action)
+    {
+        if (IsDisposed)
+            return Task.CompletedTask;
+        if (!IsHandleCreated)
+            return Task.CompletedTask;
+        if (!InvokeRequired)
+        {
+            action();
+            return Task.CompletedTask;
+        }
+
+        var tcs = new TaskCompletionSource();
+        BeginInvoke(() =>
+        {
+            try
+            {
+                if (!IsDisposed)
+                    action();
+                tcs.SetResult();
+            }
+            catch (Exception ex)
+            {
+                tcs.SetException(ex);
+            }
+        });
+        return tcs.Task;
+    }
+
+    private async Task RunStartupUpdatesAsync()
+    {
+        try
+        {
+            TempInstallerCleanup.DeleteOldInstallersInTemp();
+
+            if (!AppVersionInfo.TryGetCurrentSemver(out var currentSemver))
+            {
+                _appLogger.Warn("app/update", "Не удалось определить версию приложения.");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_state.LastRecordedAppSemver))
+            {
+                _state.LastRecordedAppSemver = currentSemver;
+                _stateStore.Save(_state);
+            }
+            else
+            {
+                var cmp = SemVerComparer.CompareSemver(currentSemver, _state.LastRecordedAppSemver);
+                if (cmp > 0)
+                {
+                    GitHubReleaseInfo? rel = null;
+                    try
+                    {
+                        var ua = BuildUserAgent(currentSemver);
+                        using var client = new GitHubReleasesClient(ua);
+                        var tag = SemVerComparer.ToProbableGitTag(currentSemver);
+                        rel = await client.GetByTagAsync(
+                            UpdateChannelOptions.GitHubOwner,
+                            UpdateChannelOptions.GitHubRepo,
+                            tag,
+                            CancellationToken.None).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        _appLogger.Warn("app/update", $"Загрузка описания релиза: {ex.Message}");
+                    }
+
+                    await UiInvokeAsync(() =>
+                    {
+                        if (IsDisposed) return;
+                        if (rel is not null)
+                        {
+                            using var f = new ReleaseChangelogForm(currentSemver, rel.Body ?? "", loadFailed: false);
+                            f.ShowDialog(this);
+                        }
+                        else
+                        {
+                            using var f = new ReleaseChangelogForm(currentSemver, "", loadFailed: true);
+                            f.ShowDialog(this);
+                        }
+                    }).ConfigureAwait(false);
+
+                    _state.LastRecordedAppSemver = currentSemver;
+                    _stateStore.Save(_state);
+                }
+                else if (cmp < 0)
+                {
+                    _state.LastRecordedAppSemver = currentSemver;
+                    _stateStore.Save(_state);
+                }
+            }
+
+            await RefreshUpdateAvailabilityAsync(currentSemver, offerModal: true).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _appLogger.Error("app/update", ex, "Проверка обновлений при старте не удалась.");
+        }
+    }
+
+    private async Task OnPeriodicUpdateCheckAsync()
+    {
+        try
+        {
+            if (!AppVersionInfo.TryGetCurrentSemver(out var currentSemver))
+                return;
+            if (_state.UpdateLastCheckUtc is { } last &&
+                (DateTimeOffset.UtcNow - last).TotalHours < 23.5)
+                return;
+
+            await RefreshUpdateAvailabilityAsync(currentSemver, offerModal: false).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _appLogger.Warn("app/update", $"Периодическая проверка: {ex.Message}");
+        }
+    }
+
+    private async Task RefreshUpdateAvailabilityAsync(string currentSemver, bool offerModal)
+    {
+        GitHubReleaseInfo? latest = null;
+        try
+        {
+            var ua = BuildUserAgent(currentSemver);
+            using var client = new GitHubReleasesClient(ua);
+            latest = await client.GetLatestAsync(
+                UpdateChannelOptions.GitHubOwner,
+                UpdateChannelOptions.GitHubRepo,
+                CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _appLogger.Warn("app/update", $"GitHub releases: {ex.Message}");
+            return;
+        }
+
+        _state.UpdateLastCheckUtc = DateTimeOffset.UtcNow;
+        _stateStore.Save(_state);
+
+        await UiInvokeAsync(() =>
+        {
+            if (IsDisposed) return;
+            if (latest is null || SemVerComparer.CompareSemver(latest.Semver, currentSemver) <= 0)
+            {
+                _updatePendingRelease = null;
+                _updateBannerPanel.Visible = false;
+                return;
+            }
+
+            _updatePendingRelease = latest;
+            _updateBannerLabel.Text = $"Доступна новая версия {latest.Semver}.";
+            _updateBannerPanel.Visible = true;
+
+            if (!offerModal)
+                return;
+            if (string.Equals(_state.UpdateDismissedModalForTag, latest.TagName, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            var r = MessageBox.Show(
+                this,
+                $"Доступна версия {latest.Semver}. Скачать и запустить установщик?",
+                "Обновление",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+            if (r == DialogResult.Yes)
+                _ = StartDownloadAndRunInstallerAsync(latest);
+            else
+            {
+                _state.UpdateDismissedModalForTag = latest.TagName;
+                _stateStore.Save(_state);
+            }
+        }).ConfigureAwait(false);
+    }
+
+    private async Task OnUpdateBannerDownloadClickAsync()
+    {
+        if (_updatePendingRelease is null || _updateDownloadBusy)
+            return;
+        await StartDownloadAndRunInstallerAsync(_updatePendingRelease).ConfigureAwait(false);
+    }
+
+    private async Task StartDownloadAndRunInstallerAsync(GitHubReleaseInfo release)
+    {
+        if (_updateDownloadBusy)
+            return;
+        _updateDownloadBusy = true;
+        try
+        {
+            await UiInvokeAsync(() =>
+            {
+                _updateBannerDownloadBtn.Enabled = false;
+            }).ConfigureAwait(false);
+
+            var path = TempInstallerCleanup.GetInstallerTempPath(release.Semver);
+            var result = await InstallerDownloader.DownloadAsync(
+                release.InstallerDownloadUrl,
+                path,
+                CancellationToken.None).ConfigureAwait(false);
+
+            await UiInvokeAsync(() =>
+            {
+                _updateBannerDownloadBtn.Enabled = true;
+                if (!result.Ok)
+                {
+                    MessageBox.Show(
+                        this,
+                        result.Error ?? "Не удалось скачать установщик.",
+                        "Обновление",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+
+                try
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = path,
+                        UseShellExecute = true
+                    });
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, ex.Message, "Обновление", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            }).ConfigureAwait(false);
+        }
+        finally
+        {
+            _updateDownloadBusy = false;
+        }
     }
 }
 

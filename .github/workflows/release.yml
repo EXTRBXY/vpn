@@ -51,7 +51,7 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Publish NothingVpn.Tray
-        run: dotnet publish NothingVpn.Tray\NothingVpn.Tray.csproj -c Release
+        run: dotnet publish NothingVpn.Tray\NothingVpn.Tray.csproj -c Release -p:Version=${{ env.APP_VERSION }} -p:InformationalVersion=${{ env.APP_VERSION }}
         working-directory: ${{ github.workspace }}
 
       - name: Скачать sing-box (windows-amd64)
