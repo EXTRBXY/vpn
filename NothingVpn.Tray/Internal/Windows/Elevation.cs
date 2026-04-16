@@ -21,7 +21,7 @@ internal static class Elevation
 
     public static bool RestartElevated(string arguments)
     {
-        var exe = Application.ExecutablePath;
+        var exe = System.Windows.Forms.Application.ExecutablePath;
         var psi = new ProcessStartInfo
         {
             FileName = exe,

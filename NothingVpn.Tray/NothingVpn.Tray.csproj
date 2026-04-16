@@ -19,4 +19,9 @@
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\NothingVpn.Application\NothingVpn.Application.csproj" />
+    <ProjectReference Include="..\NothingVpn.Infrastructure\NothingVpn.Infrastructure.csproj" />
+  </ItemGroup>
+
 </Project>

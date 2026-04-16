@@ -1,5 +1,9 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using NothingVpn.Application.Models;
+using NothingVpn.Application.Services;
+using NothingVpn.Domain.Models;
+using NothingVpn.Domain.Policies;
 using NothingVpn.Tray.Internal.Profile;
 using NothingVpn.Tray.Internal.SingBox;
 using NothingVpn.Tray.Internal.Security;
@@ -16,18 +20,19 @@ namespace NothingVpn.Tray;
 internal sealed class MainForm : Form
 {
     private readonly AppPaths _paths;
-    private readonly JsonProfileStore _profileStore;
-    private readonly JsonStateStore _stateStore;
-    private readonly SingBoxRunner _runner;
-    private readonly WinInetProxyController _proxy;
+    private readonly IProfileService _profileService;
+    private readonly ISettingsService _settingsService;
+    private readonly IVpnConnectionService _vpnConnectionService;
+    private readonly IDiagnosticsService _diagnosticsService;
+    private readonly IAppLifecycleService _appLifecycleService;
     private readonly InMemoryLogStore _logStore;
     private readonly AppLogger _appLogger;
-    private readonly Action _requestExit;
-    private readonly Action<bool>? _vpnConnectionStateChanged;
+    private readonly System.Action _requestExit;
+    private readonly System.Action<bool>? _vpnConnectionStateChanged;
     private readonly TunAppsSelectionService _tunAppsSelectionService;
 
-    private AppState _state = new();
-    private IReadOnlyList<VlessProfile> _profiles = Array.Empty<VlessProfile>();
+    private AppStateModel _state = new();
+    private IReadOnlyList<VpnProfile> _profiles = Array.Empty<VpnProfile>();
 
     private readonly TabControl _tabs;
     private readonly TabPage _tabLogs;
@@ -68,8 +73,8 @@ internal sealed class MainForm : Form
     private readonly Button _userRuleSetsAddBtn;
     private readonly Button _userRuleSetsRemoveBtn;
     private readonly Button _builtinRuleSetsOtherListsBtn;
-    private BindingList<UserRuleSet> _builtinRuleSetsBinding = new();
-    private BindingList<UserRuleSet> _userRuleSetsBinding = new();
+    private BindingList<UserRuleSetModel> _builtinRuleSetsBinding = new();
+    private BindingList<UserRuleSetModel> _userRuleSetsBinding = new();
 
     private readonly ComboBox _dnsPresetCombo;
     private readonly ComboBox _dnsDetourCombo;
@@ -92,16 +97,26 @@ internal sealed class MainForm : Form
     private int _lastLogVersion = -1;
     private int _lastLogMinLevel = -1;
 
-    public MainForm(AppPaths paths, JsonProfileStore profileStore, JsonStateStore stateStore, SingBoxRunner runner, WinInetProxyController proxy, InMemoryLogStore logStore, Action? requestExit = null, Action<bool>? vpnConnectionStateChanged = null)
+    public MainForm(
+        AppPaths paths,
+        IProfileService profileService,
+        ISettingsService settingsService,
+        IVpnConnectionService vpnConnectionService,
+        IDiagnosticsService diagnosticsService,
+        IAppLifecycleService appLifecycleService,
+        InMemoryLogStore logStore,
+        System.Action? requestExit = null,
+        System.Action<bool>? vpnConnectionStateChanged = null)
     {
         _paths = paths;
-        _profileStore = profileStore;
-        _stateStore = stateStore;
-        _runner = runner;
-        _proxy = proxy;
+        _profileService = profileService;
+        _settingsService = settingsService;
+        _vpnConnectionService = vpnConnectionService;
+        _diagnosticsService = diagnosticsService;
+        _appLifecycleService = appLifecycleService;
         _logStore = logStore;
         _appLogger = new AppLogger(logStore);
-        _requestExit = requestExit ?? (() => Application.Exit());
+        _requestExit = requestExit ?? (() => System.Windows.Forms.Application.Exit());
         _vpnConnectionStateChanged = vpnConnectionStateChanged;
         _tunAppsSelectionService = new TunAppsSelectionService(
             new CompositeInstalledAppsProvider(
@@ -110,7 +125,7 @@ internal sealed class MainForm : Form
                 new StartMenuShortcutAppsProvider()),
             new RunningProcessesProvider());
 
-        Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;
+        Icon = Icon.ExtractAssociatedIcon(System.Windows.Forms.Application.ExecutablePath) ?? SystemIcons.Application;
         Text = "Nothing VPN (прокси)";
         Width = 640;
         Height = 600;
@@ -572,22 +587,22 @@ internal sealed class MainForm : Form
         _stopBtn.Click += (_, _) => Stop();
         _profilesCombo.SelectedIndexChanged += (_, _) =>
         {
-            if (_profilesCombo.SelectedItem is VlessProfile p)
+            if (_profilesCombo.SelectedItem is VpnProfile p)
             {
                 _state.ActiveProfileId = p.Id;
-                _stateStore.Save(_state);
+                SaveState();
                 UpdateButtons();
             }
         };
         _port.ValueChanged += (_, _) =>
         {
             _state.LocalMixedPort = (int)_port.Value;
-            _stateStore.Save(_state);
+            SaveState();
         };
         _modeCombo.SelectedIndexChanged += (_, _) =>
         {
             _state.Mode = ComboIndexToMode(_modeCombo.SelectedIndex);
-            _stateStore.Save(_state);
+            SaveState();
             UpdateTitle();
             UpdateTunAppsPanelVisibility();
             UpdateButtons();
@@ -600,7 +615,7 @@ internal sealed class MainForm : Form
             _state.DebugLogs = _debugLogs.Checked;
             // Keep sing-box logging minimal by default.
             _state.SingBoxLogLevel = _state.DebugLogs ? "debug" : "warn";
-            _stateStore.Save(_state);
+            SaveState();
         };
         _trustSingBoxBtn.Click += (_, _) => TrustCurrentSingBox();
         _copyLogsBtn.Click += (_, _) => CopyLogsToClipboard();
@@ -649,7 +664,7 @@ internal sealed class MainForm : Form
         _dohPathBox.TextChanged += (_, _) => { if (_dnsUiReady) RestartDnsDebounce(); };
         _dohSniBox.TextChanged += (_, _) => { if (_dnsUiReady) RestartDnsDebounce(); };
 
-        _runner.ProcessExited += (_, _) =>
+        _vpnConnectionService.ConnectionStateChanged += (_, connected) =>
         {
             try
             {
@@ -657,7 +672,7 @@ internal sealed class MainForm : Form
                 BeginInvoke(() =>
                 {
                     UpdateButtons();
-                    NotifyVpnConnectionState(false);
+                    NotifyVpnConnectionState(connected);
                 });
             }
             catch
@@ -691,8 +706,8 @@ internal sealed class MainForm : Form
 
         if (!string.IsNullOrWhiteSpace(startup.Mode))
         {
-            _state.Mode = SingBoxConfigGenerator.NormalizeMode(startup.Mode);
-            _stateStore.Save(_state);
+            _state.Mode = ConnectionPolicy.NormalizeMode(startup.Mode);
+            SaveState();
         }
 
         if (!string.IsNullOrWhiteSpace(startup.ProfileId))
@@ -728,7 +743,7 @@ internal sealed class MainForm : Form
     {
         void Go()
         {
-            if (_runner.IsRunning) return;
+            if (_vpnConnectionService.GetStatus().IsRunning) return;
             _ = StartAsync();
         }
 
@@ -742,7 +757,7 @@ internal sealed class MainForm : Form
     {
         void Go()
         {
-            if (!_runner.IsRunning) return;
+            if (!_vpnConnectionService.GetStatus().IsRunning) return;
             Stop();
         }
 
@@ -767,27 +782,25 @@ internal sealed class MainForm : Form
 
     private void LoadData()
     {
-        _profiles = _profileStore.Load();
-        _state = _stateStore.Load();
+        _profiles = _profileService.GetProfiles();
+        _state = _settingsService.GetState();
 
         _profilesCombo.DataSource = _profiles.ToList();
-        _profilesCombo.DisplayMember = nameof(VlessProfile.Name);
+        _profilesCombo.DisplayMember = nameof(VpnProfile.Name);
 
         var active = _profiles.FirstOrDefault(p => p.Id == _state.ActiveProfileId) ?? _profiles.FirstOrDefault();
         if (active is not null)
         {
             _profilesCombo.SelectedItem = active;
             _state.ActiveProfileId = active.Id;
-            _stateStore.Save(_state);
+            SaveState();
         }
 
         _port.Value = Math.Clamp(_state.LocalMixedPort, 1, 65535);
         if (_state.TunAppProcessPaths is null)
             _state.TunAppProcessPaths = new List<string>();
         if (_state.UserRuleSets is null)
-            _state.UserRuleSets = new List<UserRuleSet>();
-        if (BuiltinGeositeRuleSets.EnsureBuiltinGeositeRuleSets(_state))
-            _stateStore.Save(_state);
+            _state.UserRuleSets = new List<UserRuleSetModel>();
         if (string.IsNullOrWhiteSpace(_state.DnsDetour))
             _state.DnsDetour = "direct";
         _modeCombo.SelectedIndex = ModeToComboIndex(_state.Mode);
@@ -800,6 +813,11 @@ internal sealed class MainForm : Form
         SyncDnsUiFromState();
         _dnsUiReady = true;
         UpdateTitle();
+    }
+
+    private void SaveState()
+    {
+        _settingsService.SaveState(_state);
     }
 
     private void RestartDnsDebounce()
@@ -818,7 +836,7 @@ internal sealed class MainForm : Form
         _dnsPresetCombo.SelectedIndex = DnsStateToPresetIndex(_state);
     }
 
-    private int DnsStateToPresetIndex(AppState state)
+    private int DnsStateToPresetIndex(AppStateModel state)
     {
         var s = (state.DohServer ?? "").Trim();
         var sn = (state.DohSni ?? "").Trim();
@@ -901,7 +919,7 @@ internal sealed class MainForm : Form
             _state.DohPath = path;
             _state.DohSni = sni;
             _state.DnsDetour = detour;
-            _stateStore.Save(_state);
+            SaveState();
 
             ShowDnsNotice("DNS сохранён. Вступит в силу после переподключения.");
         }
@@ -952,20 +970,20 @@ internal sealed class MainForm : Form
         g.Columns.Add(new DataGridViewCheckBoxColumn
         {
             HeaderText = "Вкл",
-            DataPropertyName = nameof(UserRuleSet.Enabled),
+            DataPropertyName = nameof(UserRuleSetModel.Enabled),
             Width = 44
         });
         g.Columns.Add(new DataGridViewTextBoxColumn
         {
             HeaderText = "Имя",
-            DataPropertyName = nameof(UserRuleSet.Name),
+            DataPropertyName = nameof(UserRuleSetModel.Name),
             AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
             MinimumWidth = 120
         });
         g.Columns.Add(new DataGridViewComboBoxColumn
         {
             HeaderText = "Действие",
-            DataPropertyName = nameof(UserRuleSet.Action),
+            DataPropertyName = nameof(UserRuleSetModel.Action),
             Width = 90,
             FlatStyle = FlatStyle.Flat,
             DataSource = new[] { "direct", "block" }
@@ -973,7 +991,7 @@ internal sealed class MainForm : Form
         g.Columns.Add(new DataGridViewTextBoxColumn
         {
             HeaderText = "Файл",
-            DataPropertyName = nameof(UserRuleSet.FileName),
+            DataPropertyName = nameof(UserRuleSetModel.FileName),
             Width = 200,
             ReadOnly = true
         });
@@ -982,10 +1000,10 @@ internal sealed class MainForm : Form
 
     private void SyncRuleSetsGridFromState()
     {
-        var all = _state.UserRuleSets ?? new List<UserRuleSet>();
-        _builtinRuleSetsBinding = new BindingList<UserRuleSet>(
+        var all = _state.UserRuleSets ?? new List<UserRuleSetModel>();
+        _builtinRuleSetsBinding = new BindingList<UserRuleSetModel>(
             all.Where(x => !string.IsNullOrWhiteSpace(x.BuiltinId)).ToList());
-        _userRuleSetsBinding = new BindingList<UserRuleSet>(
+        _userRuleSetsBinding = new BindingList<UserRuleSetModel>(
             all.Where(x => string.IsNullOrWhiteSpace(x.BuiltinId)).ToList());
         _builtinRuleSetsGrid.DataSource = _builtinRuleSetsBinding;
         _userRuleSetsGrid.DataSource = _userRuleSetsBinding;
@@ -997,9 +1015,9 @@ internal sealed class MainForm : Form
     {
         try
         {
-            if (_state.UserRuleSets is null) _state.UserRuleSets = new List<UserRuleSet>();
+            if (_state.UserRuleSets is null) _state.UserRuleSets = new List<UserRuleSetModel>();
             _state.UserRuleSets = _builtinRuleSetsBinding.Concat(_userRuleSetsBinding).ToList();
-            _stateStore.Save(_state);
+            SaveState();
         }
         catch
         {
@@ -1007,7 +1025,7 @@ internal sealed class MainForm : Form
         }
     }
 
-    private bool RuleSetFileExists(UserRuleSet rs)
+    private bool RuleSetFileExists(UserRuleSetModel rs)
     {
         var name = (rs.FileName ?? "").Trim();
         if (name.Length == 0) return false;
@@ -1022,18 +1040,18 @@ internal sealed class MainForm : Form
         foreach (DataGridViewRow row in _builtinRuleSetsGrid.Rows)
         {
             if (row.IsNewRow) continue;
-            if (row.DataBoundItem is not UserRuleSet rs) continue;
+            if (row.DataBoundItem is not UserRuleSetModel rs) continue;
             var dim = !RuleSetFileExists(rs);
             row.DefaultCellStyle.ForeColor = dim ? SystemColors.GrayText : normalFg;
         }
     }
 
-    private List<UserRuleSet> GetSelectedBuiltinRuleSets()
+    private List<UserRuleSetModel> GetSelectedBuiltinRuleSets()
     {
-        var list = new List<UserRuleSet>();
+        var list = new List<UserRuleSetModel>();
         foreach (DataGridViewRow row in _builtinRuleSetsGrid.SelectedRows)
         {
-            if (row.DataBoundItem is UserRuleSet rs)
+            if (row.DataBoundItem is UserRuleSetModel rs)
                 list.Add(rs);
         }
 
@@ -1096,7 +1114,7 @@ internal sealed class MainForm : Form
             File.Copy(src, dest, overwrite: false);
 
             var tag = $"user-ruleset-{Guid.NewGuid():N}"[..("user-ruleset-".Length + 12)];
-            _userRuleSetsBinding.Add(new UserRuleSet
+            _userRuleSetsBinding.Add(new UserRuleSetModel
             {
                 Tag = tag,
                 Name = string.IsNullOrWhiteSpace(baseName) ? fileName : baseName,
@@ -1116,7 +1134,7 @@ internal sealed class MainForm : Form
     {
         try
         {
-            if (_userRuleSetsGrid.CurrentRow?.DataBoundItem is not UserRuleSet item) return;
+            if (_userRuleSetsGrid.CurrentRow?.DataBoundItem is not UserRuleSetModel item) return;
             var idx = _userRuleSetsBinding.IndexOf(item);
             if (idx < 0) return;
             _userRuleSetsBinding.RemoveAt(idx);
@@ -1128,7 +1146,7 @@ internal sealed class MainForm : Form
         }
     }
 
-    private void RemoveBuiltinFilesForList(IReadOnlyList<UserRuleSet> targets)
+    private void RemoveBuiltinFilesForList(IReadOnlyList<UserRuleSetModel> targets)
     {
         try
         {
@@ -1186,13 +1204,13 @@ internal sealed class MainForm : Form
         var rs = _builtinRuleSetsBinding[e.RowIndex];
 
         var col = _builtinRuleSetsGrid.Columns[e.ColumnIndex];
-        if (col is DataGridViewTextBoxColumn && col.DataPropertyName == nameof(UserRuleSet.Name))
+        if (col is DataGridViewTextBoxColumn && col.DataPropertyName == nameof(UserRuleSetModel.Name))
         {
             e.Cancel = true;
             return;
         }
 
-        if (col is DataGridViewCheckBoxColumn && col.DataPropertyName == nameof(UserRuleSet.Enabled))
+        if (col is DataGridViewCheckBoxColumn && col.DataPropertyName == nameof(UserRuleSetModel.Enabled))
         {
             if (RuleSetFileExists(rs))
                 return;
@@ -1214,7 +1232,7 @@ internal sealed class MainForm : Form
         }
     }
 
-    private async void DownloadAndEnableBuiltinAfterConsentAsync(UserRuleSet rs)
+    private async void DownloadAndEnableBuiltinAfterConsentAsync(UserRuleSetModel rs)
     {
         try
         {
@@ -1240,7 +1258,7 @@ internal sealed class MainForm : Form
     }
 
     /// <summary>Скачивает .srs с сервера, если файла ещё нет. Не трогает Enabled.</summary>
-    private async Task<bool> DownloadBuiltinFileIfNeededAsync(UserRuleSet rs, bool showErrorsOnFailure)
+    private async Task<bool> DownloadBuiltinFileIfNeededAsync(UserRuleSetModel rs, bool showErrorsOnFailure)
     {
         if (RuleSetFileExists(rs))
             return true;
@@ -1293,7 +1311,7 @@ internal sealed class MainForm : Form
         }
     }
 
-    private async Task DownloadBuiltinListAsync(IReadOnlyList<UserRuleSet> pending)
+    private async Task DownloadBuiltinListAsync(IReadOnlyList<UserRuleSetModel> pending)
     {
         try
         {
@@ -1328,7 +1346,7 @@ internal sealed class MainForm : Form
     {
         try
         {
-            var targets = (_state.UserRuleSets ?? new List<UserRuleSet>())
+            var targets = (_state.UserRuleSets ?? new List<UserRuleSetModel>())
                 .Where(x => !string.IsNullOrWhiteSpace(x.BuiltinId))
                 .ToList();
             if (targets.Count == 0) return;
@@ -1412,12 +1430,12 @@ internal sealed class MainForm : Form
         }
     }
 
-    private void ApplyDownloadResultToRuleSet(UserRuleSet rs, string? newEtag)
+    private void ApplyDownloadResultToRuleSet(UserRuleSetModel rs, string? newEtag)
     {
         if (!string.IsNullOrWhiteSpace(newEtag))
             rs.RemoteEtag = newEtag.Trim();
         rs.LastDownloadedUtc = DateTimeOffset.UtcNow;
-        _stateStore.Save(_state);
+        SaveState();
         SyncRuleSetsGridFromState();
     }
 
@@ -1484,23 +1502,20 @@ internal sealed class MainForm : Form
 
     private async Task PingAsync()
     {
-        if (!_runner.IsRunning)
+        if (!_vpnConnectionService.GetStatus().IsRunning)
         {
             MessageBox.Show(this, "Сначала нажмите «Старт».", "Пинг", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
 
-        var isTun = AppState.IsTunMode(_state.Mode);
+        var isTun = ConnectionPolicy.IsTunMode(_state.Mode);
         var isTunApps = string.Equals(_state.Mode, "tun_apps", StringComparison.OrdinalIgnoreCase);
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             if (!isTun)
             {
-                // "Ping" for proxy mode: verify the local proxy can CONNECT to a well-known host.
-                var r = await ProxySmokeTest.HttpConnectAsync(
-                    proxyHost: "127.0.0.1",
-                    proxyPort: _state.LocalMixedPort,
+                var r = await _diagnosticsService.RunProxySmokeTestAsync(
                     targetHost: "1.1.1.1",
                     targetPort: 443,
                     timeout: TimeSpan.FromSeconds(3));
@@ -1517,7 +1532,7 @@ internal sealed class MainForm : Form
             if (isTunApps)
             {
                 // Трафик этого процесса обычно не в списке — ipify проверяет «direct», не VLESS.
-                var r = await TunSmokeTest.IpifyAsync(TimeSpan.FromSeconds(4));
+                var r = await _diagnosticsService.RunTunSmokeTestAsync(TimeSpan.FromSeconds(4));
                 sw.Stop();
                 if (!r.Success)
                     throw new InvalidOperationException(r.Error ?? "TUN test failed.");
@@ -1532,7 +1547,7 @@ internal sealed class MainForm : Form
             }
 
             // TUN (весь трафик): проверка выхода в интернет через туннель.
-            var r2 = await TunSmokeTest.IpifyAsync(TimeSpan.FromSeconds(4));
+            var r2 = await _diagnosticsService.RunTunSmokeTestAsync(TimeSpan.FromSeconds(4));
             sw.Stop();
             if (!r2.Success)
                 throw new InvalidOperationException(r2.Error ?? "TUN test failed.");
@@ -1579,7 +1594,7 @@ internal sealed class MainForm : Form
 
             var sha = FileHash.Sha256Hex(exe);
             _state.TrustedSingBoxSha256 = sha;
-            _stateStore.Save(_state);
+            SaveState();
             UpdateSingBoxHashLabel();
             MessageBox.Show(this, $"Trusted SHA-256:\n{sha}", "Trusted", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
@@ -1598,8 +1613,8 @@ internal sealed class MainForm : Form
 
     private void UpdateButtons()
     {
-        var running = _runner.IsRunning;
-        _startBtn.Enabled = !running && _profilesCombo.SelectedItem is VlessProfile;
+        var running = _vpnConnectionService.GetStatus().IsRunning;
+        _startBtn.Enabled = !running && _profilesCombo.SelectedItem is VpnProfile;
         _stopBtn.Enabled = running;
         _importBtn.Enabled = !running;
         _port.Enabled = !running;
@@ -1611,14 +1626,14 @@ internal sealed class MainForm : Form
         _tunAppsRemoveBtn.Enabled = editTunApps;
 
         _statusValue.Text = running ? "Запущено" : "Остановлено";
-        _adminValue.Text = Elevation.IsAdministrator() ? "Администратор" : "Обычный пользователь";
+        _adminValue.Text = _appLifecycleService.IsAdministrator() ? "Администратор" : "Обычный пользователь";
         _modeValue.Text = _state.Mode.ToLowerInvariant() switch
         {
             "tun" => "TUN (весь трафик)",
             "tun_apps" => "TUN (выбранные приложения)",
             _ => "Прокси"
         };
-        _profileValue.Text = _profilesCombo.SelectedItem is VlessProfile p ? p.Name : "(не выбран)";
+        _profileValue.Text = _profilesCombo.SelectedItem is VpnProfile p ? p.Name : "(не выбран)";
         _portValue.Text = _state.LocalMixedPort.ToString();
     }
 
@@ -1630,8 +1645,7 @@ internal sealed class MainForm : Form
             var text = Clipboard.GetText(TextDataFormat.Text)?.Trim();
             if (string.IsNullOrWhiteSpace(text)) return;
 
-            var p = VlessLinkParser.Parse(text);
-            _profiles = _profileStore.Upsert(p);
+            _profiles = _profileService.ImportFromVlessLink(text);
             LoadData();
         }
         catch (Exception ex)
@@ -1642,94 +1656,20 @@ internal sealed class MainForm : Form
 
     private async Task StartAsync()
     {
-        if (_profilesCombo.SelectedItem is not VlessProfile p) return;
+        if (_profilesCombo.SelectedItem is not VpnProfile p) return;
 
         try
         {
             UpdateButtons();
             _appLogger.Info("app/runtime", $"Запрос запуска VPN, режим={_state.Mode}");
-
-            if (string.Equals(_state.Mode, "tun_apps", StringComparison.OrdinalIgnoreCase) &&
-                SingBoxConfigGenerator.NormalizeProcessPaths(_state.TunAppProcessPaths).Count == 0)
+            var result = await _vpnConnectionService.ConnectAsync(new ConnectRequest { ProfileId = p.Id });
+            if (result.RequiresElevation)
             {
-                throw new InvalidOperationException(
-                    "В режиме «TUN (выбранные приложения)» добавьте хотя бы один исполняемый файл (.exe).");
-            }
-
-            ValidateUserRuleSets();
-
-            var isTun = AppState.IsTunMode(_state.Mode);
-            if (isTun && !Elevation.IsAdministrator())
-            {
-                var args = $"--takeover --start --mode {_state.Mode} --profile \"{p.Id}\"";
-                var ok = Elevation.RestartElevated(args);
+                var ok = _appLifecycleService.RestartElevated(result.ElevationArgs ?? _appLifecycleService.BuildTakeoverArgs(_state.Mode, p.Id));
                 if (!ok)
                     throw new InvalidOperationException("TUN requires Administrator privileges (UAC was cancelled).");
-                // Elevated instance will continue; this one must exit to prevent duplicate UI/tray.
                 BeginInvoke(_requestExit);
                 return;
-            }
-
-            await Task.Run(() =>
-            {
-                var cfg = SingBoxConfigGenerator.WriteConfig(_paths, p, _state);
-                _runner.Start(cfg);
-            });
-
-            var isTun2 = AppState.IsTunMode(_state.Mode);
-            if (!isTun2)
-            {
-                // Phase 2: only after proxy is reachable.
-                var test = await ProxySmokeTest.HttpConnectAsync(
-                    proxyHost: "127.0.0.1",
-                    proxyPort: _state.LocalMixedPort,
-                    targetHost: p.Host,
-                    targetPort: p.Port,
-                    timeout: TimeSpan.FromSeconds(3));
-
-                if (!test.Success)
-                    throw new InvalidOperationException($"Proxy smoke test failed: {test.Error}");
-
-                var prev = _proxy.ReadCurrent();
-                _proxy.Enable($"127.0.0.1:{_state.LocalMixedPort}", _state.ProxyOverride);
-                _state.PreviousProxySettings = prev;
-                _state.ProxyWasEnabledByUs = true;
-                _stateStore.Save(_state);
-            }
-            else if (string.Equals(_state.Mode, "tun_apps", StringComparison.OrdinalIgnoreCase))
-            {
-                await Task.Delay(900);
-                if (!_runner.IsRunning)
-                    throw new InvalidOperationException("sing-box завершился при запуске TUN. Откройте вкладку «Логи» и скачайте логи для диагностики.");
-                // Для split-TUN ipify из этого процесса не отражает маршрут выбранных приложений — не используем как критерий.
-            }
-            else
-            {
-                // Give TUN a moment to come up and routes/DNS to apply.
-                await Task.Delay(900);
-                if (!_runner.IsRunning)
-                    throw new InvalidOperationException("sing-box завершился при запуске TUN. Откройте вкладку «Логи» и скачайте логи для диагностики.");
-
-                // TUN can take a bit longer on first route/DNS application. Retry, but don't treat as fatal.
-                var ok = false;
-                string? lastErr = null;
-                foreach (var attempt in new[] { 4, 6, 10 })
-                {
-                    var t = await TunSmokeTest.IpifyAsync(TimeSpan.FromSeconds(attempt));
-                    ok = t.Success;
-                    lastErr = t.Error;
-                    if (ok) break;
-                    await Task.Delay(350);
-                }
-
-                if (!ok)
-                {
-                    MessageBox.Show(this,
-                        $"TUN started, but smoke test didn't confirm internet yet.\n\nError: {lastErr}\n\nCheck logs if browsing doesn't work.",
-                        "TUN warning",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Warning);
-                }
             }
 
             _logTimer.Start();
@@ -1755,7 +1695,7 @@ internal sealed class MainForm : Form
         var dupTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var seenTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var rs in _state.UserRuleSets ?? new List<UserRuleSet>())
+        foreach (var rs in _state.UserRuleSets ?? new List<UserRuleSetModel>())
         {
             if (!rs.Enabled) continue;
             if (string.IsNullOrWhiteSpace(rs.FileName) || string.IsNullOrWhiteSpace(rs.Tag))
@@ -1827,18 +1767,11 @@ internal sealed class MainForm : Form
     {
         try
         {
-            _runner.Stop();
+            _vpnConnectionService.DisconnectAsync().GetAwaiter().GetResult();
             _appLogger.Info("app/runtime", "VPN остановлен.");
         }
         finally
         {
-            if (_state.ProxyWasEnabledByUs)
-            {
-                try { _proxy.Restore(_state.PreviousProxySettings); } catch { }
-                _state.ProxyWasEnabledByUs = false;
-                _state.PreviousProxySettings = null;
-                _stateStore.Save(_state);
-            }
             UpdateButtons();
             _logTimer.Stop();
             RefreshLog();
@@ -1918,7 +1851,7 @@ internal sealed class MainForm : Form
     private void PersistTunAppsFromList()
     {
         _state.TunAppProcessPaths = TunAppPathPolicy.NormalizeDistinctPaths(EnumerateTunAppPaths());
-        _stateStore.Save(_state);
+        SaveState();
     }
 
     private IEnumerable<string> EnumerateTunAppPaths()
@@ -2145,7 +2078,7 @@ internal sealed class MainForm : Form
             if (string.IsNullOrWhiteSpace(_state.LastRecordedAppSemver))
             {
                 _state.LastRecordedAppSemver = currentSemver;
-                _stateStore.Save(_state);
+                SaveState();
             }
             else
             {
@@ -2177,12 +2110,12 @@ internal sealed class MainForm : Form
                     }).ConfigureAwait(false);
 
                     _state.LastRecordedAppSemver = currentSemver;
-                    _stateStore.Save(_state);
+                    SaveState();
                 }
                 else if (cmp < 0)
                 {
                     _state.LastRecordedAppSemver = currentSemver;
-                    _stateStore.Save(_state);
+                    SaveState();
                 }
             }
 
@@ -2287,7 +2220,7 @@ internal sealed class MainForm : Form
         }
 
         _state.UpdateLastCheckUtc = DateTimeOffset.UtcNow;
-        _stateStore.Save(_state);
+        SaveState();
 
         await UiInvokeAsync(() =>
         {
@@ -2321,7 +2254,7 @@ internal sealed class MainForm : Form
             else
             {
                 _state.UpdateDismissedModalForTag = latest.TagName;
-                _stateStore.Save(_state);
+                SaveState();
             }
         }).ConfigureAwait(false);
 

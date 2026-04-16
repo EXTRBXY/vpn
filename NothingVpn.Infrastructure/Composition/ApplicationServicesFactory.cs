@@ -1,0 +1,47 @@
+using NothingVpn.Application.Services;
+using NothingVpn.Infrastructure.Ports;
+using NothingVpn.Infrastructure.Runtime;
+
+namespace NothingVpn.Infrastructure.Composition;
+
+public static class ApplicationServicesFactory
+{
+    public static ApplicationServiceBundle CreateDefault()
+    {
+        var appPaths = new AppPathsPort();
+        var runtime = new LegacyRuntimeContext(appPaths);
+        var pathPolicy = new PathPolicyPort();
+        var profileStore = new ProfileStorePort(appPaths);
+        var stateStore = new StateStorePort(appPaths);
+        var parser = new ProfileParserPort();
+        var diagnosticsPort = new DiagnosticsPort();
+        var logPort = new LogPort(runtime);
+        var proxyPort = new ProxyPort();
+        var elevationPort = new ElevationPort();
+        var singBoxPort = new SingBoxPort(runtime);
+
+        var profileService = new ProfileService(profileStore, parser);
+        var settingsService = new SettingsService(stateStore, pathPolicy);
+        var diagnosticsService = new DiagnosticsService(diagnosticsPort, logPort, stateStore);
+        var appLifecycleService = new AppLifecycleService(elevationPort);
+        var vpnService = new VpnConnectionService(
+            profileStore,
+            stateStore,
+            singBoxPort,
+            proxyPort,
+            diagnosticsPort,
+            elevationPort,
+            appPaths,
+            pathPolicy);
+
+        return new ApplicationServiceBundle
+        {
+            ProfileService = profileService,
+            SettingsService = settingsService,
+            VpnConnectionService = vpnService,
+            DiagnosticsService = diagnosticsService,
+            AppLifecycleService = appLifecycleService
+        };
+    }
+}
+

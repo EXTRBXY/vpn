@@ -38,7 +38,7 @@ static class Program
         var startup = StartupArgs.Parse(args);
         using (primary)
         {
-            Application.Run(new MainAppContext(startup, primary));
+            System.Windows.Forms.Application.Run(new MainAppContext(startup, primary));
         }
     }    
 

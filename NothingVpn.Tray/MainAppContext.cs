@@ -1,8 +1,7 @@
 using System.Drawing;
+using NothingVpn.Infrastructure.Composition;
 using NothingVpn.Tray.Internal.Diagnostics;
-using NothingVpn.Tray.Internal.SingBox;
 using NothingVpn.Tray.Internal.Store;
-using NothingVpn.Tray.Internal.WinInet;
 using NothingVpn.Tray.Internal.Windows;
 
 namespace NothingVpn.Tray;
@@ -29,24 +28,23 @@ internal sealed class MainAppContext : ApplicationContext
         Directory.CreateDirectory(paths.RuleSetsDir);
         // No logs folder: logs are kept in-memory and exported on demand.
 
-        var profileStore = new JsonProfileStore(paths.ProfilesJsonPath);
-        var stateStore = new JsonStateStore(paths.StateJsonPath);
-        AppState? stateSnapshot = null;
-        try { stateSnapshot = stateStore.Load(); } catch { }
         var logStore = new InMemoryLogStore(maxBytes: 1_000_000);
         _appLogger = new AppLogger(logStore);
-        var runner = new SingBoxRunner(
-            paths,
-            "sing-box.exe",
-            logStore,
-            debugLogs: () => (stateSnapshot ??= stateStore.Load()).DebugLogs,
-            trustedSha256: () => (stateSnapshot ??= stateStore.Load()).TrustedSingBoxSha256);
-        var proxy = new WinInetProxyController();
+        var services = ApplicationServicesFactory.CreateDefault();
 
-        var extracted = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+        var extracted = Icon.ExtractAssociatedIcon(System.Windows.Forms.Application.ExecutablePath);
         _trayBaseIcon = extracted is null ? (Icon)SystemIcons.Application.Clone() : (Icon)extracted.Clone();
 
-        _mainForm = new MainForm(paths, profileStore, stateStore, runner, proxy, logStore, requestExit: Exit, vpnConnectionStateChanged: SetTrayConnectionState);
+        _mainForm = new MainForm(
+            paths,
+            services.ProfileService,
+            services.SettingsService,
+            services.VpnConnectionService,
+            services.DiagnosticsService,
+            services.AppLifecycleService,
+            logStore,
+            requestExit: Exit,
+            vpnConnectionStateChanged: SetTrayConnectionState);
         _appLogger.Info("app/context", "MainAppContext инициализирован.");
 
         var menu = new ContextMenuStrip();
@@ -85,7 +83,7 @@ internal sealed class MainAppContext : ApplicationContext
             }
         };
 
-        Application.ApplicationExit += (_, _) => SafeShutdown();
+        System.Windows.Forms.Application.ApplicationExit += (_, _) => SafeShutdown();
         AppDomain.CurrentDomain.ProcessExit += (_, _) => SafeShutdown();
 
         // IPC for single-instance: bring to front and apply startup args from secondary invocations.
@@ -156,7 +154,7 @@ internal sealed class MainAppContext : ApplicationContext
         _trayStatusIcon = null;
         _trayBaseIcon.Dispose();
         _mainForm.Close();
-        Application.Exit();
+        System.Windows.Forms.Application.Exit();
     }
 
     private void SafeShutdown()
