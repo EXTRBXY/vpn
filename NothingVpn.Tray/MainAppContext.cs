@@ -3,6 +3,7 @@ using NothingVpn.Infrastructure.Composition;
 using NothingVpn.Tray.Internal.Diagnostics;
 using NothingVpn.Tray.Internal.Store;
 using NothingVpn.Tray.Internal.Windows;
+using NothingVpn.Tray.Internal.UI;
 
 namespace NothingVpn.Tray;
 
@@ -48,6 +49,12 @@ internal sealed class MainAppContext : ApplicationContext
         _appLogger.Info("app/context", "MainAppContext инициализирован.");
 
         var menu = new ContextMenuStrip();
+        menu.Font = new Font("Segoe UI", 9f, FontStyle.Regular, GraphicsUnit.Point);
+        if (!UiTheme.IsHighContrast)
+        {
+            menu.BackColor = UiTheme.Surface;
+            menu.ForeColor = UiTheme.TextPrimary;
+        }
         _trayItemConnect = new ToolStripMenuItem("Подключить", null, (_, _) => _mainForm.ConnectFromTray());
         _trayItemDisconnect = new ToolStripMenuItem("Отключить", null, (_, _) => _mainForm.DisconnectFromTray());
         menu.Items.Add(_trayItemConnect);

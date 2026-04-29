@@ -14,6 +14,7 @@ using NothingVpn.Tray.Internal.TunApps;
 using NothingVpn.Tray.Internal.Windows;
 using NothingVpn.Tray.Internal.RuleSets;
 using NothingVpn.Tray.Internal.Updates;
+using NothingVpn.Tray.Internal.UI;
 
 namespace NothingVpn.Tray;
 
@@ -96,6 +97,7 @@ internal sealed class MainForm : Form
 
     private int _lastLogVersion = -1;
     private int _lastLogMinLevel = -1;
+    private bool _connectionUiUpdateQueued;
 
     public MainForm(
         AppPaths paths,
@@ -131,6 +133,9 @@ internal sealed class MainForm : Form
         Height = 600;
         MinimumSize = new Size(520, 520);
         StartPosition = FormStartPosition.CenterScreen;
+        DoubleBuffered = true;
+        SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
+        SuspendLayout();
 
         _tabs = new TabControl { Dock = DockStyle.Fill };
         var tabMain = new TabPage("Основное");
@@ -151,7 +156,7 @@ internal sealed class MainForm : Form
             AutoSize = true,
             ColumnCount = 5,
             RowCount = 4,
-            Padding = new Padding(12),
+            Padding = new Padding(UiMetrics.Space12),
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -164,7 +169,7 @@ internal sealed class MainForm : Form
         {
             DropDownStyle = ComboBoxStyle.DropDownList,
             Anchor = AnchorStyles.Left | AnchorStyles.Right,
-            MinimumSize = new Size(220, 0)
+            MinimumSize = new Size(UiMetrics.MinInputWidth, 0)
         };
         layout.Controls.Add(_profilesCombo, 1, 0);
         _importBtn = new Button { Text = "Импорт", Anchor = AnchorStyles.Right, AutoSize = true };
@@ -179,7 +184,7 @@ internal sealed class MainForm : Form
         {
             DropDownStyle = ComboBoxStyle.DropDownList,
             Anchor = AnchorStyles.Left | AnchorStyles.Right,
-            MinimumSize = new Size(220, 0)
+            MinimumSize = new Size(UiMetrics.MinInputWidth, 0)
         };
         _modeCombo.Items.AddRange(new object[] { "Прокси", "TUN (весь трафик)", "TUN (выбранные приложения)" });
         layout.Controls.Add(_modeCombo, 1, 1);
@@ -205,7 +210,7 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Top,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Padding = new Padding(12, 0, 12, 8),
+            Padding = new Padding(UiMetrics.Space12, 0, UiMetrics.Space12, UiMetrics.Space8),
             Visible = false
         };
         var tunAppsRoot = new TableLayoutPanel
@@ -225,7 +230,7 @@ internal sealed class MainForm : Form
             MaximumSize = new Size(560, 0)
         }, 0, 0);
         _tunAppIcons = TunAppIconCache.CreateImageList();
-        _tunAppsList = new ListView
+        _tunAppsList = new BufferedListView
         {
             Dock = DockStyle.Fill,
             View = View.Details,
@@ -498,7 +503,7 @@ internal sealed class MainForm : Form
         {
             Text = "",
             AutoSize = true,
-            ForeColor = SystemColors.GrayText,
+            ForeColor = UiTheme.TextMuted,
             Dock = DockStyle.Top,
             Padding = new Padding(2, 6, 2, 0),
             Visible = false
@@ -514,7 +519,7 @@ internal sealed class MainForm : Form
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Padding = new Padding(12, 10, 12, 10),
             Visible = false,
-            BackColor = SystemColors.Info
+            BackColor = UiTheme.IsHighContrast ? SystemColors.Info : Color.FromArgb(234, 244, 255)
         };
         var updateBannerFlow = new FlowLayoutPanel
         {
@@ -669,14 +674,18 @@ internal sealed class MainForm : Form
             try
             {
                 if (IsDisposed || !IsHandleCreated) return;
+                if (_connectionUiUpdateQueued) return;
+                _connectionUiUpdateQueued = true;
                 BeginInvoke(() =>
                 {
                     UpdateButtons();
                     NotifyVpnConnectionState(connected);
+                    _connectionUiUpdateQueued = false;
                 });
             }
             catch
             {
+                _connectionUiUpdateQueued = false;
                 // ignore
             }
         };
@@ -689,6 +698,9 @@ internal sealed class MainForm : Form
             _ = RunStartupUpdatesAsync();
         };
 
+        UiStyler.ApplyToForm(this);
+        ResumeLayout(false);
+        PerformLayout();
         LoadData();
         UpdateButtons();
 
@@ -955,7 +967,7 @@ internal sealed class MainForm : Form
 
     private static DataGridView CreateRuleSetsDataGridView(bool multiSelect)
     {
-        var g = new DataGridView
+        var g = new BufferedDataGridView
         {
             Dock = DockStyle.Fill,
             Height = 96,
@@ -1801,7 +1813,12 @@ internal sealed class MainForm : Form
             if (text.Length > maxLogChars)
                 text = text[^maxLogChars..];
 
-            _logBox.Text = text;
+            var current = _logBox.Text;
+            if (text.StartsWith(current, StringComparison.Ordinal))
+                _logBox.AppendText(text[current.Length..]);
+            else
+                _logBox.Text = text;
+
             _logBox.SelectionStart = _logBox.TextLength;
             _logBox.ScrollToCaret();
         }
@@ -1840,7 +1857,9 @@ internal sealed class MainForm : Form
 
     private void UpdateTunAppsPanelVisibility()
     {
-        _tunAppsPanel.Visible = string.Equals(_state.Mode, "tun_apps", StringComparison.OrdinalIgnoreCase);
+        var visible = string.Equals(_state.Mode, "tun_apps", StringComparison.OrdinalIgnoreCase);
+        if (_tunAppsPanel.Visible != visible)
+            _tunAppsPanel.Visible = visible;
     }
 
     private void SyncTunAppsListFromState()

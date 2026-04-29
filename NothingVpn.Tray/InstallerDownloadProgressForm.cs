@@ -1,4 +1,5 @@
 using NothingVpn.Tray.Internal.Updates;
+using NothingVpn.Tray.Internal.UI;
 
 namespace NothingVpn.Tray;
 
@@ -12,6 +13,7 @@ internal sealed class InstallerDownloadProgressForm : Form
     private readonly Button _cancelButton;
     private InstallerDownloader.Result _result = new(false, "Прервано.");
     private bool _downloadFinished;
+    private long _lastUiProgressTickMs;
 
     private InstallerDownloadProgressForm(string downloadUrl, string destPath, string versionLabel)
     {
@@ -29,6 +31,8 @@ internal sealed class InstallerDownloadProgressForm : Form
         MinimumSize = new Size(340, 0);
         MaximumSize = new Size(520, Math.Max(220, (Screen.PrimaryScreen?.WorkingArea.Height ?? 900) - 48));
         Padding = new Padding(0);
+        DoubleBuffered = true;
+        SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
 
         var root = new TableLayoutPanel
         {
@@ -92,6 +96,7 @@ internal sealed class InstallerDownloadProgressForm : Form
         root.Controls.Add(footer, 0, 3);
 
         Controls.Add(root);
+        UiStyler.ApplyToForm(this);
 
         FormClosing += OnFormClosing;
         Shown += OnShown;
@@ -142,6 +147,11 @@ internal sealed class InstallerDownloadProgressForm : Form
             BeginInvoke(() => ApplyProgress(p));
             return;
         }
+
+        var now = Environment.TickCount64;
+        if (now - _lastUiProgressTickMs < 75 && p.TotalBytes is > 0)
+            return;
+        _lastUiProgressTickMs = now;
 
         if (p.TotalBytes is > 0)
         {

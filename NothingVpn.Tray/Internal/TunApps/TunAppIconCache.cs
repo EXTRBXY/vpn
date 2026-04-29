@@ -3,6 +3,7 @@ namespace NothingVpn.Tray.Internal.TunApps;
 internal sealed class TunAppIconCache
 {
     private readonly Dictionary<string, int?> _byPath = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _inFlight = new(StringComparer.OrdinalIgnoreCase);
 
     public static ImageList CreateImageList()
     {
@@ -50,6 +51,42 @@ internal sealed class TunAppIconCache
             _byPath[exePath] = null;
             return fallbackIndex;
         }
+    }
+
+    public void QueueImageLoad(ImageList imageList, string exePath, Control host, Action<int> onReady, int fallbackIndex = 0)
+    {
+        if (_byPath.TryGetValue(exePath, out var known))
+        {
+            onReady(known ?? fallbackIndex);
+            return;
+        }
+
+        lock (_inFlight)
+        {
+            if (_inFlight.Contains(exePath))
+                return;
+            _inFlight.Add(exePath);
+        }
+
+        _ = Task.Run(() =>
+        {
+            var index = GetImageIndex(imageList, exePath, fallbackIndex);
+            try
+            {
+                if (host.IsDisposed || !host.IsHandleCreated)
+                    return;
+                host.BeginInvoke((MethodInvoker)(() => onReady(index)));
+            }
+            catch
+            {
+                // ignore
+            }
+            finally
+            {
+                lock (_inFlight)
+                    _inFlight.Remove(exePath);
+            }
+        });
     }
 
     private static bool TryAppendResized(ImageList imageList, Image source)

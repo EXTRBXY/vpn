@@ -35,6 +35,7 @@ static class Program
         if (primary is null) return;
 
         ApplicationConfiguration.Initialize();
+        System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);
         var startup = StartupArgs.Parse(args);
         using (primary)
         {

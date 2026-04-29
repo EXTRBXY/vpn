@@ -1,4 +1,5 @@
 using NothingVpn.Tray.Internal.Updates;
+using NothingVpn.Tray.Internal.UI;
 
 namespace NothingVpn.Tray;
 
@@ -6,6 +7,8 @@ internal sealed class ReleaseChangelogForm : Form
 {
     public ReleaseChangelogForm(string versionLabel, string body, bool loadFailed)
     {
+        DoubleBuffered = true;
+        SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
         Text = loadFailed ? AppUpdateUserMessages.ChangelogTitleProblem : AppUpdateUserMessages.ChangelogTitleOk;
         Width = 560;
         Height = 480;
@@ -63,5 +66,6 @@ internal sealed class ReleaseChangelogForm : Form
 
         Controls.Add(root);
         Controls.Add(footer);
+        UiStyler.ApplyToForm(this);
     }
 }

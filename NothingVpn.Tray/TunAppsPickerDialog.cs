@@ -1,4 +1,5 @@
 using NothingVpn.Tray.Internal.TunApps;
+using NothingVpn.Tray.Internal.UI;
 
 namespace NothingVpn.Tray;
 
@@ -42,6 +43,8 @@ internal sealed class TunAppsPickerDialog : Form
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
+        DoubleBuffered = true;
+        SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
 
         var root = new TableLayoutPanel
         {
@@ -132,6 +135,8 @@ internal sealed class TunAppsPickerDialog : Form
             await LoadInstalledAsync();
             await LoadRunningAsync();
         };
+
+        UiStyler.ApplyToForm(this);
     }
 
     protected override void Dispose(bool disposing)
@@ -159,7 +164,7 @@ internal sealed class TunAppsPickerDialog : Form
 
     private static ListView BuildCandidatesListView(ImageList smallIcons)
     {
-        var list = new ListView
+        var list = new BufferedListView
         {
             Dock = DockStyle.Fill,
             View = View.Details,
@@ -241,7 +246,12 @@ internal sealed class TunAppsPickerDialog : Form
                 var item = new ListViewItem(candidate.DisplayName);
                 item.SubItems.Add(candidate.ExePath);
                 item.Tag = candidate;
-                item.ImageIndex = _iconCache.GetImageIndex(_smallIcons, candidate.ExePath);
+                item.ImageIndex = 0;
+                _iconCache.QueueImageLoad(_smallIcons, candidate.ExePath, this, idx =>
+                {
+                    if (item.ListView is null || item.ListView.IsDisposed) return;
+                    item.ImageIndex = idx;
+                });
                 list.Items.Add(item);
             }
         }
