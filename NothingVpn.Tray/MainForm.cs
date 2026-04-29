@@ -58,8 +58,11 @@ internal sealed class MainForm : Form
     private readonly Label _modeValue;
     private readonly Label _profileValue;
     private readonly Label _portValue;
+    private readonly Label _dnsValue;
+    private readonly Label _ruleSetsValue;
 
     private readonly Panel _tunAppsPanel;
+    private readonly GroupBox _tunAppsGroup;
     private readonly ListView _tunAppsList;
     private readonly ImageList _tunAppIcons;
     private readonly TunAppIconCache _tunAppIconCache = new();
@@ -203,14 +206,44 @@ internal sealed class MainForm : Form
         _trustSingBoxBtn = new Button { Text = "Доверять sing-box.exe", Anchor = AnchorStyles.Left };
         _singBoxHashLabel = new Label { Text = "", AutoSize = true, Anchor = AnchorStyles.Left };
 
-        tabMain.Controls.Add(layout);
+        var mainStack = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 1,
+            RowCount = 3,
+            Padding = new Padding(UiMetrics.Space12, UiMetrics.Space12, UiMetrics.Space12, UiMetrics.Space8)
+        };
+        mainStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        mainStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        mainStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        var connectionGroup = new GroupBox
+        {
+            Text = "Подключение",
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Margin = new Padding(0, 0, 0, UiMetrics.Space8)
+        };
+        connectionGroup.Controls.Add(layout);
 
         _tunAppsPanel = new Panel
         {
             Dock = DockStyle.Top,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Padding = new Padding(UiMetrics.Space12, 0, UiMetrics.Space12, UiMetrics.Space8),
+            Padding = new Padding(UiMetrics.Space12, 0, UiMetrics.Space12, UiMetrics.Space12),
+            Visible = false
+        };
+        _tunAppsGroup = new GroupBox
+        {
+            Text = "TUN приложения",
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Margin = new Padding(0, 0, 0, UiMetrics.Space8),
             Visible = false
         };
         var tunAppsRoot = new TableLayoutPanel
@@ -257,15 +290,15 @@ internal sealed class MainForm : Form
         tunAppsBtns.Controls.Add(_tunAppsRemoveBtn);
         tunAppsRoot.Controls.Add(tunAppsBtns, 0, 2);
         _tunAppsPanel.Controls.Add(tunAppsRoot);
-        tabMain.Controls.Add(_tunAppsPanel);
+        _tunAppsGroup.Controls.Add(_tunAppsPanel);
 
         var statusLayout = new TableLayoutPanel
         {
             Dock = DockStyle.Top,
             AutoSize = true,
             ColumnCount = 2,
-            RowCount = 5,
-            Padding = new Padding(12),
+            RowCount = 7,
+            Padding = new Padding(UiMetrics.Space12),
         };
         statusLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
         statusLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -275,6 +308,8 @@ internal sealed class MainForm : Form
         _modeValue = new Label { AutoSize = true, Anchor = AnchorStyles.Left };
         _profileValue = new Label { AutoSize = true, Anchor = AnchorStyles.Left };
         _portValue = new Label { AutoSize = true, Anchor = AnchorStyles.Left };
+        _dnsValue = new Label { AutoSize = true, Anchor = AnchorStyles.Left };
+        _ruleSetsValue = new Label { AutoSize = true, Anchor = AnchorStyles.Left };
 
         statusLayout.Controls.Add(new Label { Text = "Статус", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
         statusLayout.Controls.Add(_statusValue, 1, 0);
@@ -286,13 +321,30 @@ internal sealed class MainForm : Form
         statusLayout.Controls.Add(_profileValue, 1, 3);
         statusLayout.Controls.Add(new Label { Text = "Порт", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 4);
         statusLayout.Controls.Add(_portValue, 1, 4);
+        statusLayout.Controls.Add(new Label { Text = "DNS", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 5);
+        statusLayout.Controls.Add(_dnsValue, 1, 5);
+        statusLayout.Controls.Add(new Label { Text = "Rule-sets", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 6);
+        statusLayout.Controls.Add(_ruleSetsValue, 1, 6);
+        statusLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        statusLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         statusLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         statusLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         statusLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         statusLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         statusLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        tabMain.Controls.Add(statusLayout);
+        var statusGroup = new GroupBox
+        {
+            Text = "Текущее состояние",
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink
+        };
+        statusGroup.Controls.Add(statusLayout);
+        mainStack.Controls.Add(statusGroup, 0, 0);
+        mainStack.Controls.Add(connectionGroup, 0, 1);
+        mainStack.Controls.Add(_tunAppsGroup, 0, 2);
+        tabMain.Controls.Add(mainStack);
 
         // Logs tab
         var logsRoot = new TableLayoutPanel
@@ -309,7 +361,7 @@ internal sealed class MainForm : Form
         {
             Dock = DockStyle.Top,
             AutoSize = true,
-            Padding = new Padding(8),
+            Padding = new Padding(UiMetrics.Space8),
             WrapContents = false,
             FlowDirection = FlowDirection.LeftToRight
         };
@@ -346,7 +398,7 @@ internal sealed class MainForm : Form
             AutoSize = true,
             ColumnCount = 2,
             RowCount = 3,
-            Padding = new Padding(12),
+            Padding = new Padding(UiMetrics.Space12),
         };
         advLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180));
         advLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -375,8 +427,8 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Top,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Padding = new Padding(10),
-            Margin = new Padding(0, 0, 0, 8)
+            Padding = new Padding(UiMetrics.Space12),
+            Margin = new Padding(0, 0, 0, UiMetrics.Space8)
         };
         var builtinLayout = new TableLayoutPanel
         {
@@ -413,7 +465,7 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Top,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Padding = new Padding(10)
+            Padding = new Padding(UiMetrics.Space12)
         };
         var userLayout = new TableLayoutPanel
         {
@@ -452,7 +504,7 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Top,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Padding = new Padding(10)
+            Padding = new Padding(UiMetrics.Space12)
         };
         var dnsLayout = new TableLayoutPanel
         {
@@ -1647,6 +1699,32 @@ internal sealed class MainForm : Form
         };
         _profileValue.Text = _profilesCombo.SelectedItem is VpnProfile p ? p.Name : "(не выбран)";
         _portValue.Text = _state.LocalMixedPort.ToString();
+        _dnsValue.Text = BuildDnsStatusText();
+        _ruleSetsValue.Text = BuildRuleSetsStatusText();
+    }
+
+    private string BuildDnsStatusText()
+    {
+        var mode = (_state.DnsMode ?? "").Trim().ToLowerInvariant();
+        var detour = (_state.DnsDetour ?? "direct").Trim().ToLowerInvariant();
+        var detourLabel = detour == "proxy" ? "через proxy" : "напрямую";
+        if (mode == "doh")
+        {
+            var server = string.IsNullOrWhiteSpace(_state.DohServer) ? "(не задан)" : _state.DohServer.Trim();
+            var sni = string.IsNullOrWhiteSpace(_state.DohSni) ? "(без SNI)" : _state.DohSni.Trim();
+            return $"DoH: {server}, SNI: {sni}, {detourLabel}";
+        }
+
+        return $"Системный/по умолчанию, {detourLabel}";
+    }
+
+    private string BuildRuleSetsStatusText()
+    {
+        var all = _state.UserRuleSets ?? new List<UserRuleSetModel>();
+        var enabled = all.Count(x => x.Enabled);
+        var builtinEnabled = all.Count(x => x.Enabled && !string.IsNullOrWhiteSpace(x.BuiltinId));
+        var customEnabled = all.Count(x => x.Enabled && string.IsNullOrWhiteSpace(x.BuiltinId));
+        return $"{enabled} активных (встроенные: {builtinEnabled}, пользовательские: {customEnabled})";
     }
 
     private void ImportFromClipboard()
@@ -1858,6 +1936,8 @@ internal sealed class MainForm : Form
     private void UpdateTunAppsPanelVisibility()
     {
         var visible = string.Equals(_state.Mode, "tun_apps", StringComparison.OrdinalIgnoreCase);
+        if (_tunAppsGroup.Visible != visible)
+            _tunAppsGroup.Visible = visible;
         if (_tunAppsPanel.Visible != visible)
             _tunAppsPanel.Visible = visible;
     }
