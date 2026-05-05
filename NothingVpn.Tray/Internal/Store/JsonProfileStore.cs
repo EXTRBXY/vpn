@@ -26,6 +26,14 @@ internal sealed class JsonProfileStore
         return list;
     }
 
+    public IReadOnlyList<VlessProfile> Delete(string profileId)
+    {
+        var list = Load().ToList();
+        list.RemoveAll(p => string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase));
+        Save(list);
+        return list;
+    }
+
     private void Save(List<VlessProfile> profiles)
     {
         DpapiJsonFile.Save(_path, profiles);

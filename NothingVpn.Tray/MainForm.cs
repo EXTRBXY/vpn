@@ -39,7 +39,7 @@ internal sealed class MainForm : Form
     private readonly TabPage _tabLogs;
 
     private readonly ComboBox _profilesCombo;
-    private readonly Button _importBtn;
+    private readonly Button _profilesBtn;
     private readonly Button _startBtn;
     private readonly Button _stopBtn;
     private readonly NumericUpDown _port;
@@ -157,14 +157,12 @@ internal sealed class MainForm : Form
         {
             Dock = DockStyle.Top,
             AutoSize = true,
-            ColumnCount = 5,
+            ColumnCount = 3,
             RowCount = 4,
             Padding = new Padding(UiMetrics.Space12),
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
         layout.Controls.Add(new Label { Text = "Профиль", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
@@ -175,12 +173,21 @@ internal sealed class MainForm : Form
             MinimumSize = new Size(UiMetrics.MinInputWidth, 0)
         };
         layout.Controls.Add(_profilesCombo, 1, 0);
-        _importBtn = new Button { Text = "Импорт", Anchor = AnchorStyles.Right, AutoSize = true };
-        layout.Controls.Add(_importBtn, 2, 0);
-        // no logs folder button
-        _pingBtn = new Button { Text = "Пинг", Anchor = AnchorStyles.Right, AutoSize = true };
-        layout.Controls.Add(_pingBtn, 3, 0);
-        layout.Controls.Add(new Label { Text = "", AutoSize = true }, 4, 0);
+        _profilesBtn = new Button { Text = "Профили", AutoSize = true, Margin = new Padding(0, 2, 4, 2) };
+        _pingBtn = new Button { Text = "Пинг", AutoSize = true, Margin = new Padding(0, 2, 0, 2) };
+        var profileActions = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Anchor = AnchorStyles.Left | AnchorStyles.Top,
+            Margin = new Padding(6, 0, 0, 0),
+            Padding = Padding.Empty
+        };
+        profileActions.Controls.Add(_profilesBtn);
+        profileActions.Controls.Add(_pingBtn);
+        layout.Controls.Add(profileActions, 2, 0);
 
         layout.Controls.Add(new Label { Text = "Режим", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
         _modeCombo = new ComboBox
@@ -191,11 +198,21 @@ internal sealed class MainForm : Form
         };
         _modeCombo.Items.AddRange(new object[] { "Прокси", "TUN (весь трафик)", "TUN (выбранные приложения)" });
         layout.Controls.Add(_modeCombo, 1, 1);
-        _startBtn = new Button { Text = "Старт", Anchor = AnchorStyles.Right, AutoSize = true };
-        layout.Controls.Add(_startBtn, 2, 1);
-        _stopBtn = new Button { Text = "Стоп", Anchor = AnchorStyles.Right, AutoSize = true };
-        layout.Controls.Add(_stopBtn, 3, 1);
-        layout.Controls.Add(new Label { Text = "", AutoSize = true }, 4, 1);
+        _startBtn = new Button { Text = "Старт", AutoSize = true, Margin = new Padding(0, 2, 4, 2) };
+        _stopBtn = new Button { Text = "Стоп", AutoSize = true, Margin = new Padding(0, 2, 0, 2) };
+        var modeActions = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Anchor = AnchorStyles.Left | AnchorStyles.Top,
+            Margin = new Padding(6, 0, 0, 0),
+            Padding = Padding.Empty
+        };
+        modeActions.Controls.Add(_startBtn);
+        modeActions.Controls.Add(_stopBtn);
+        layout.Controls.Add(modeActions, 2, 1);
 
         layout.Controls.Add(new Label { Text = "Локальный порт", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
         _port = new NumericUpDown { Minimum = 1, Maximum = 65535, Anchor = AnchorStyles.Left | AnchorStyles.Right };
@@ -639,7 +656,7 @@ internal sealed class MainForm : Form
             SaveDnsFromUi(showDialogs: false);
         };
 
-        _importBtn.Click += (_, _) => ImportFromClipboard();
+        _profilesBtn.Click += (_, _) => OpenProfilesDialog();
         _startBtn.Click += async (_, _) => await StartAsync();
         _stopBtn.Click += (_, _) => Stop();
         _profilesCombo.SelectedIndexChanged += (_, _) =>
@@ -857,6 +874,11 @@ internal sealed class MainForm : Form
         {
             _profilesCombo.SelectedItem = active;
             _state.ActiveProfileId = active.Id;
+            SaveState();
+        }
+        else if (!string.IsNullOrWhiteSpace(_state.ActiveProfileId))
+        {
+            _state.ActiveProfileId = string.Empty;
             SaveState();
         }
 
@@ -1680,7 +1702,7 @@ internal sealed class MainForm : Form
         var running = _vpnConnectionService.GetStatus().IsRunning;
         _startBtn.Enabled = !running && _profilesCombo.SelectedItem is VpnProfile;
         _stopBtn.Enabled = running;
-        _importBtn.Enabled = !running;
+        _profilesBtn.Enabled = !running;
         _port.Enabled = !running;
         _modeCombo.Enabled = !running;
         var editTunApps = !running && string.Equals(_state.Mode, "tun_apps", StringComparison.OrdinalIgnoreCase);
@@ -1727,20 +1749,25 @@ internal sealed class MainForm : Form
         return $"{enabled} активных (встроенные: {builtinEnabled}, пользовательские: {customEnabled})";
     }
 
-    private void ImportFromClipboard()
+    private void OpenProfilesDialog()
     {
         try
         {
-            if (!Clipboard.ContainsText()) return;
-            var text = Clipboard.GetText(TextDataFormat.Text)?.Trim();
-            if (string.IsNullOrWhiteSpace(text)) return;
+            using var dlg = new ProfilesDialog(_profileService, _state.ActiveProfileId);
+            dlg.ShowDialog(this);
 
-            _profiles = _profileService.ImportFromVlessLink(text);
+            if (dlg.ResultActiveProfileId is not null)
+            {
+                _state.ActiveProfileId = dlg.ResultActiveProfileId;
+                SaveState();
+            }
+
             LoadData();
+            UpdateButtons();
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "Import failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, ex.Message, "Профили", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 

@@ -18,5 +18,8 @@ public sealed class ProfileStorePort : IProfileStorePort
 
     public IReadOnlyList<VpnProfile> Upsert(VpnProfile profile)
         => _store.Upsert(LegacyModelMapper.ToLegacy(profile)).Select(LegacyModelMapper.ToModel).ToList();
+
+    public IReadOnlyList<VpnProfile> Delete(string profileId)
+        => _store.Delete(profileId).Select(LegacyModelMapper.ToModel).ToList();
 }
 

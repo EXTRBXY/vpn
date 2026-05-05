@@ -75,6 +75,11 @@ public sealed class VpnConnectionServiceTests
 
         public IReadOnlyList<VpnProfile> Load() => _profiles;
         public IReadOnlyList<VpnProfile> Upsert(VpnProfile profile) => _profiles;
+        public IReadOnlyList<VpnProfile> Delete(string profileId)
+        {
+            _profiles.RemoveAll(p => string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase));
+            return _profiles;
+        }
     }
 
     private sealed class FakeStateStorePort : IStateStorePort
