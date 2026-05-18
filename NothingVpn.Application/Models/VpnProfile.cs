@@ -3,6 +3,7 @@ namespace NothingVpn.Application.Models;
 public sealed class VpnProfile
 {
     public string Id { get; set; } = string.Empty;
+    public string? SubscriptionId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Uuid { get; set; } = string.Empty;
     public string Host { get; set; } = string.Empty;

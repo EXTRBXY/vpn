@@ -9,6 +9,7 @@ namespace NothingVpn.Tray;
 internal sealed class ProfilesDialog : Form
 {
     private readonly IProfileService _profileService;
+    private readonly ISubscriptionService? _subscriptionService;
     private readonly string? _initialActiveProfileId;
     private string? _effectiveActiveProfileId;
 
@@ -16,6 +17,7 @@ internal sealed class ProfilesDialog : Form
 
     private readonly ListView _profilesList;
     private readonly Button _addBtn;
+    private readonly Button _subscriptionsBtn;
     private readonly Button _deleteBtn;
     private readonly Button _editBtn;
 
@@ -27,8 +29,17 @@ internal sealed class ProfilesDialog : Form
             : null;
 
     public ProfilesDialog(IProfileService profileService, string? initialActiveProfileId)
+        : this(profileService, subscriptionService: null, initialActiveProfileId)
+    {
+    }
+
+    public ProfilesDialog(
+        IProfileService profileService,
+        ISubscriptionService? subscriptionService,
+        string? initialActiveProfileId)
     {
         _profileService = profileService;
+        _subscriptionService = subscriptionService;
         _initialActiveProfileId = NormalizeId(initialActiveProfileId);
         _effectiveActiveProfileId = _initialActiveProfileId;
 
@@ -72,8 +83,9 @@ internal sealed class ProfilesDialog : Form
             HideSelection = false,
             MultiSelect = false,
         };
-        _profilesList.Columns.Add("Имя", 320);
-        _profilesList.Columns.Add("Хост/порт", 240);
+        _profilesList.Columns.Add("Имя", 240);
+        _profilesList.Columns.Add("Хост/порт", 180);
+        _profilesList.Columns.Add("Источник", 120);
         _profilesList.SelectedIndexChanged += (_, _) => UpdateButtons();
         _profilesList.DoubleClick += (_, _) => BeginEditSelected();
         root.Controls.Add(_profilesList, 0, 1);
@@ -95,8 +107,12 @@ internal sealed class ProfilesDialog : Form
         _addBtn = new Button { Text = "Добавить", AutoSize = true };
         _addBtn.Click += (_, _) => BeginAdd();
 
+        _subscriptionsBtn = new Button { Text = "Подписки…", AutoSize = true, Enabled = _subscriptionService is not null };
+        _subscriptionsBtn.Click += (_, _) => OpenSubscriptions();
+
         footer.Controls.Add(_editBtn);
         footer.Controls.Add(_deleteBtn);
+        footer.Controls.Add(_subscriptionsBtn);
         footer.Controls.Add(_addBtn);
         root.Controls.Add(footer, 0, 2);
 
@@ -126,6 +142,7 @@ internal sealed class ProfilesDialog : Form
             {
                 var item = new ListViewItem(p.Name);
                 item.SubItems.Add($"{p.Host}:{p.Port}");
+                item.SubItems.Add(string.IsNullOrWhiteSpace(p.SubscriptionId) ? "Вручную" : "Подписка");
                 item.Tag = p;
                 _profilesList.Items.Add(item);
             }
@@ -178,11 +195,32 @@ internal sealed class ProfilesDialog : Form
         SelectProfileById(dlg.ResultProfileId);
     }
 
+    private void OpenSubscriptions()
+    {
+        if (_subscriptionService is null)
+            return;
+
+        using var dlg = new SubscriptionsDialog(_subscriptionService);
+        dlg.ShowDialog(this);
+        ReloadProfiles();
+    }
+
     private void BeginEditSelected()
     {
         var selected = SelectedProfile;
         if (selected is null)
             return;
+
+        if (!string.IsNullOrWhiteSpace(selected.SubscriptionId))
+        {
+            MessageBox.Show(
+                this,
+                "Профиль из подписки нельзя редактировать вручную. Обновите подписку или измените узел на панели.",
+                "Профиль",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
 
         using var dlg = new ProfileUpsertDialog(_profileService, selected);
         if (dlg.ShowDialog(this) != DialogResult.OK)

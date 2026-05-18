@@ -10,6 +10,7 @@ internal static class LegacyModelMapper
     public static VpnProfile ToModel(VlessProfile source) => new()
     {
         Id = source.Id,
+        SubscriptionId = source.SubscriptionId,
         Name = source.Name,
         Uuid = source.Uuid,
         Host = source.Host,
@@ -32,6 +33,7 @@ internal static class LegacyModelMapper
     public static VlessProfile ToLegacy(VpnProfile source) => new()
     {
         Id = source.Id,
+        SubscriptionId = source.SubscriptionId,
         Name = source.Name,
         Uuid = source.Uuid,
         Host = source.Host,

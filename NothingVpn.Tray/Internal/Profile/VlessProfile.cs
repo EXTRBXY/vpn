@@ -3,6 +3,7 @@ namespace NothingVpn.Tray.Internal.Profile;
 internal sealed class VlessProfile
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string? SubscriptionId { get; set; }
     public string Name { get; set; } = "Unnamed";
 
     public string Uuid { get; set; } = "";

@@ -1,4 +1,5 @@
 using System.Drawing;
+using NothingVpn.Application.Services;
 using NothingVpn.Infrastructure.Composition;
 using NothingVpn.Tray.Internal.Diagnostics;
 using NothingVpn.Tray.Internal.Store;
@@ -18,6 +19,9 @@ internal sealed class MainAppContext : ApplicationContext
     private bool _allowClose;
     private readonly SingleInstance _singleInstance;
     private readonly AppLogger _appLogger;
+    private readonly ISubscriptionService _subscriptionService;
+    private readonly System.Windows.Forms.Timer _subscriptionRefreshTimer;
+    private int _subscriptionRefreshRunning;
 
     public MainAppContext(StartupArgs? startup, SingleInstance singleInstance)
     {
@@ -32,6 +36,7 @@ internal sealed class MainAppContext : ApplicationContext
         var logStore = new InMemoryLogStore(maxBytes: 1_000_000);
         _appLogger = new AppLogger(logStore);
         var services = ApplicationServicesFactory.CreateDefault();
+        _subscriptionService = services.SubscriptionService;
 
         var extracted = Icon.ExtractAssociatedIcon(System.Windows.Forms.Application.ExecutablePath);
         _trayBaseIcon = extracted is null ? (Icon)SystemIcons.Application.Clone() : (Icon)extracted.Clone();
@@ -39,6 +44,7 @@ internal sealed class MainAppContext : ApplicationContext
         _mainForm = new MainForm(
             paths,
             services.ProfileService,
+            services.SubscriptionService,
             services.SettingsService,
             services.VpnConnectionService,
             services.DiagnosticsService,
@@ -71,6 +77,11 @@ internal sealed class MainAppContext : ApplicationContext
 
         _mainForm.Show();
         _mainForm.ApplyStartup(startup);
+
+        _subscriptionRefreshTimer = new System.Windows.Forms.Timer { Interval = 15 * 60 * 1000 };
+        _subscriptionRefreshTimer.Tick += (_, _) => _ = RefreshDueSubscriptionsQuietlyAsync();
+        _subscriptionRefreshTimer.Start();
+        _ = ScheduleStartupSubscriptionRefreshAsync();
 
         _mainForm.Resize += (_, _) =>
         {
@@ -153,6 +164,8 @@ internal sealed class MainAppContext : ApplicationContext
     {
         _appLogger.Info("app/context", "Запрошен выход из приложения.");
         _allowClose = true;
+        _subscriptionRefreshTimer?.Stop();
+        _subscriptionRefreshTimer?.Dispose();
         SafeShutdown();
         _tray.Visible = false;
         try { _tray.Icon = null; } catch { }
@@ -162,6 +175,51 @@ internal sealed class MainAppContext : ApplicationContext
         _trayBaseIcon.Dispose();
         _mainForm.Close();
         System.Windows.Forms.Application.Exit();
+    }
+
+    private async Task ScheduleStartupSubscriptionRefreshAsync()
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5)).ConfigureAwait(true);
+            await RefreshDueSubscriptionsQuietlyAsync().ConfigureAwait(true);
+        }
+        catch
+        {
+            _appLogger.Warn("app/subscription", "Не удалось выполнить отложенное обновление подписок при старте.");
+        }
+    }
+
+    private async Task RefreshDueSubscriptionsQuietlyAsync()
+    {
+        if (Interlocked.Exchange(ref _subscriptionRefreshRunning, 1) == 1)
+            return;
+
+        try
+        {
+            var results = await _subscriptionService.RefreshAllDueAsync().ConfigureAwait(true);
+            if (results.Count == 0)
+                return;
+
+            var ok = results.Count(r => r.Success);
+            var failed = results.Count - ok;
+            _appLogger.Info("app/subscription", $"Автообновление подписок: успешно {ok}, ошибок {failed}.");
+            if (failed > 0)
+            {
+                foreach (var r in results.Where(x => !x.Success))
+                    _appLogger.Warn("app/subscription", $"Подписка {r.SubscriptionId}: {r.Error}");
+            }
+
+            _mainForm.BeginInvoke(_mainForm.ReloadProfilesFromSubscriptions);
+        }
+        catch (Exception ex)
+        {
+            _appLogger.Warn("app/subscription", $"Автообновление подписок: {ex.Message}");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _subscriptionRefreshRunning, 0);
+        }
     }
 
     private void SafeShutdown()

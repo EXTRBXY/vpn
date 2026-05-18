@@ -21,5 +21,21 @@ public sealed class ProfileStorePort : IProfileStorePort
 
     public IReadOnlyList<VpnProfile> Delete(string profileId)
         => _store.Delete(profileId).Select(LegacyModelMapper.ToModel).ToList();
+
+    public ProfileSyncResult SyncForSubscription(string subscriptionId, IReadOnlyList<VpnProfile> profilesFromSubscription)
+    {
+        var legacyProfiles = profilesFromSubscription.Select(LegacyModelMapper.ToLegacy).ToList();
+        var (profiles, added, updated, removed) = _store.SyncForSubscription(subscriptionId, legacyProfiles);
+        return new ProfileSyncResult
+        {
+            Profiles = profiles.Select(LegacyModelMapper.ToModel).ToList(),
+            Added = added,
+            Updated = updated,
+            Removed = removed
+        };
+    }
+
+    public IReadOnlyList<VpnProfile> DeleteBySubscription(string subscriptionId)
+        => _store.DeleteBySubscription(subscriptionId).Select(LegacyModelMapper.ToModel).ToList();
 }
 

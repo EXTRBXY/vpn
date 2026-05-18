@@ -6,6 +6,7 @@ internal sealed record AppPaths(
     string RuleSetsDir,
     string LogsDir,
     string ProfilesJsonPath,
+    string SubscriptionsJsonPath,
     string StateJsonPath)
 {
     public static AppPaths CreateDefault()
@@ -17,6 +18,7 @@ internal sealed record AppPaths(
             RuleSetsDir: Path.Combine(baseDir, "rulesets"),
             LogsDir: Path.Combine(baseDir, "logs"),
             ProfilesJsonPath: Path.Combine(baseDir, "profiles.json"),
+            SubscriptionsJsonPath: Path.Combine(baseDir, "subscriptions.json"),
             StateJsonPath: Path.Combine(baseDir, "state.json")
         );
     }

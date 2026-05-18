@@ -104,13 +104,28 @@ internal sealed class ProfileUpsertDialog : Form
         Controls.Add(_root);
         UiStyler.ApplyToForm(this);
 
-        if (_existingProfile is null)
+        if (_existingProfile is not null && !string.IsNullOrWhiteSpace(_existingProfile.SubscriptionId))
+            InitSubscriptionProfileReadOnly();
+        else if (_existingProfile is null)
             InitAddFromClipboard();
         else
             InitEditFromExisting();
 
         AcceptButton = _saveBtn;
         CancelButton = _cancelBtn;
+    }
+
+    private void InitSubscriptionProfileReadOnly()
+    {
+        if (_existingProfile is null)
+            return;
+
+        _nameBox.Text = _existingProfile.Name ?? "";
+        _linkBox.Text = VlessLinkFormatter.Build(_existingProfile);
+        _nameBox.ReadOnly = true;
+        _linkBox.ReadOnly = true;
+        _saveBtn.Enabled = false;
+        Text = "Профиль из подписки";
     }
 
     private void InitEditFromExisting()

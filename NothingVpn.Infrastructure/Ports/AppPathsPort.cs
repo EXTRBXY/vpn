@@ -20,6 +20,7 @@ public sealed class AppPathsPort : IAppPathsPort
             RuleSetsDir = paths.RuleSetsDir,
             LogsDir = paths.LogsDir,
             ProfilesJsonPath = paths.ProfilesJsonPath,
+            SubscriptionsJsonPath = paths.SubscriptionsJsonPath,
             StateJsonPath = paths.StateJsonPath
         };
     }

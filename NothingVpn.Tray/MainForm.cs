@@ -22,6 +22,7 @@ internal sealed class MainForm : Form
 {
     private readonly AppPaths _paths;
     private readonly IProfileService _profileService;
+    private readonly ISubscriptionService _subscriptionService;
     private readonly ISettingsService _settingsService;
     private readonly IVpnConnectionService _vpnConnectionService;
     private readonly IDiagnosticsService _diagnosticsService;
@@ -105,6 +106,7 @@ internal sealed class MainForm : Form
     public MainForm(
         AppPaths paths,
         IProfileService profileService,
+        ISubscriptionService subscriptionService,
         ISettingsService settingsService,
         IVpnConnectionService vpnConnectionService,
         IDiagnosticsService diagnosticsService,
@@ -115,6 +117,7 @@ internal sealed class MainForm : Form
     {
         _paths = paths;
         _profileService = profileService;
+        _subscriptionService = subscriptionService;
         _settingsService = settingsService;
         _vpnConnectionService = vpnConnectionService;
         _diagnosticsService = diagnosticsService;
@@ -859,6 +862,18 @@ internal sealed class MainForm : Form
         {
             // best-effort
         }
+    }
+
+    public void ReloadProfilesFromSubscriptions()
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(ReloadProfilesFromSubscriptions);
+            return;
+        }
+
+        LoadData();
+        UpdateButtons();
     }
 
     private void LoadData()
@@ -1753,7 +1768,7 @@ internal sealed class MainForm : Form
     {
         try
         {
-            using var dlg = new ProfilesDialog(_profileService, _state.ActiveProfileId);
+            using var dlg = new ProfilesDialog(_profileService, _subscriptionService, _state.ActiveProfileId);
             dlg.ShowDialog(this);
 
             if (dlg.ResultActiveProfileId is not null)

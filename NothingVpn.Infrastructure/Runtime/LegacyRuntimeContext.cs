@@ -20,6 +20,7 @@ internal sealed class LegacyRuntimeContext
             model.RuleSetsDir,
             model.LogsDir,
             model.ProfilesJsonPath,
+            model.SubscriptionsJsonPath,
             model.StateJsonPath);
 
         var stateStore = new JsonStateStore(Paths.StateJsonPath);

@@ -80,6 +80,19 @@ public sealed class VpnConnectionServiceTests
             _profiles.RemoveAll(p => string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase));
             return _profiles;
         }
+
+        public ProfileSyncResult SyncForSubscription(string subscriptionId, IReadOnlyList<VpnProfile> profilesFromSubscription)
+        {
+            foreach (var profile in profilesFromSubscription)
+                Upsert(profile);
+            return new ProfileSyncResult { Profiles = _profiles };
+        }
+
+        public IReadOnlyList<VpnProfile> DeleteBySubscription(string subscriptionId)
+        {
+            _profiles.RemoveAll(p => string.Equals(p.SubscriptionId, subscriptionId, StringComparison.OrdinalIgnoreCase));
+            return _profiles;
+        }
     }
 
     private sealed class FakeStateStorePort : IStateStorePort

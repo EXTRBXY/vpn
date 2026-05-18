@@ -7,6 +7,7 @@ public sealed class AppPathsModel
     public string RuleSetsDir { get; init; } = string.Empty;
     public string LogsDir { get; init; } = string.Empty;
     public string ProfilesJsonPath { get; init; } = string.Empty;
+    public string SubscriptionsJsonPath { get; init; } = string.Empty;
     public string StateJsonPath { get; init; } = string.Empty;
 }
 
