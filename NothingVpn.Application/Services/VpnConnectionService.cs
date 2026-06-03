@@ -9,8 +9,9 @@ public sealed class VpnConnectionService : IVpnConnectionService
 {
     private static readonly TimeSpan TcpReachTimeout = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan ProxySmokeTimeout = TimeSpan.FromSeconds(8);
-    private const string ProxySmokeHost = "1.1.1.1";
+    private const string ProxySmokeHost = "api.ipify.org";
     private const int ProxySmokePort = 443;
+    private static readonly TimeSpan TunSmokeTimeout = TimeSpan.FromSeconds(12);
 
     private readonly IProfileStorePort _profileStore;
     private readonly IStateStorePort _stateStore;
@@ -97,6 +98,13 @@ public sealed class VpnConnectionService : IVpnConnectionService
             await Task.Delay(900, cancellationToken);
             if (!_singBoxPort.IsRunning)
                 throw new InvalidOperationException("sing-box завершился при запуске TUN.");
+
+            if (string.Equals(state.Mode, ConnectionPolicy.TunMode, StringComparison.Ordinal))
+            {
+                var tunTest = await _diagnosticsPort.TunSmokeTestAsync(TunSmokeTimeout, cancellationToken);
+                if (!tunTest.Success)
+                    throw new InvalidOperationException($"Проверка TUN не прошла: {tunTest.Error}");
+            }
         }
 
         state.ActiveProfileId = profile.Id;

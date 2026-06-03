@@ -1,5 +1,6 @@
+using System.Net;
+using System.Net.Http;
 using System.Net.Sockets;
-using System.Text;
 
 namespace NothingVpn.Tray.Internal.Diagnostics;
 
@@ -41,38 +42,49 @@ internal static class ProxySmokeTest
         int targetPort,
         TimeSpan timeout)
     {
-        using var cts = new CancellationTokenSource(timeout);
+        var url = string.Equals(targetHost, "api.ipify.org", StringComparison.OrdinalIgnoreCase)
+            ? "https://api.ipify.org"
+            : $"https://{targetHost}:{targetPort}/";
+
+        return await HttpGetViaProxyAsync(proxyHost, proxyPort, url, timeout);
+    }
+
+    public static async Task<ProxySmokeTestResult> HttpGetViaProxyAsync(
+        string proxyHost,
+        int proxyPort,
+        string url,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(timeout);
 
         try
         {
-            using var client = new TcpClient();
-            await client.ConnectAsync(proxyHost, proxyPort, cts.Token);
-            await using var stream = client.GetStream();
+            using var handler = new HttpClientHandler
+            {
+                Proxy = new WebProxy($"http://{proxyHost}:{proxyPort}"),
+                UseProxy = true
+            };
+            using var http = new HttpClient(handler, disposeHandler: true);
+            using var resp = await http.GetAsync(url, cts.Token);
+            var body = (await resp.Content.ReadAsStringAsync(cts.Token)).Trim();
+            if (!resp.IsSuccessStatusCode)
+                return ProxySmokeTestResult.Fail($"HTTP {(int)resp.StatusCode}: {body}");
 
-            var req = $"CONNECT {targetHost}:{targetPort} HTTP/1.1\r\nHost: {targetHost}:{targetPort}\r\nProxy-Connection: Keep-Alive\r\n\r\n";
-            var bytes = Encoding.ASCII.GetBytes(req);
-            await stream.WriteAsync(bytes, cts.Token);
+            if (body.Length < 7 || body.Contains('\n', StringComparison.Ordinal))
+                return ProxySmokeTestResult.Fail("Unexpected tunnel response.");
 
-            var buffer = new byte[4096];
-            var read = await stream.ReadAsync(buffer, cts.Token);
-            if (read <= 0) return ProxySmokeTestResult.Fail("No response from proxy.");
-
-            var head = Encoding.ASCII.GetString(buffer, 0, read);
-            if (head.StartsWith("HTTP/", StringComparison.OrdinalIgnoreCase) && head.Contains(" 200 "))
-                return ProxySmokeTestResult.Ok();
-
-            return ProxySmokeTestResult.Fail($"Unexpected response: {FirstLine(head)}");
+            return ProxySmokeTestResult.Ok();
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return ProxySmokeTestResult.Fail("Timeout.");
         }
         catch (Exception ex)
         {
             return ProxySmokeTestResult.Fail(ex.Message);
         }
-    }
-
-    private static string FirstLine(string s)
-    {
-        var idx = s.IndexOf("\r\n", StringComparison.Ordinal);
-        return idx >= 0 ? s[..idx] : s;
     }
 }
 

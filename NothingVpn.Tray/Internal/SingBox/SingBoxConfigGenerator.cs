@@ -100,7 +100,6 @@ internal static class SingBoxConfigGenerator
         }
 
         var rules = BuildTunHeadRules(profile);
-        rules.AddRange(userRules);
 
         if (string.Equals(mode, ConnectionPolicy.TunAppsMode, StringComparison.Ordinal))
         {
@@ -114,7 +113,12 @@ internal static class SingBoxConfigGenerator
                 Action = "route",
                 Outbound = "proxy"
             });
+        }
 
+        rules.AddRange(userRules);
+
+        if (string.Equals(mode, ConnectionPolicy.TunAppsMode, StringComparison.Ordinal))
+        {
             return new SingBoxRoute
             {
                 Final = "direct",
