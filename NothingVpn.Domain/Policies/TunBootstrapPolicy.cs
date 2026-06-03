@@ -19,7 +19,9 @@ public static class TunBootstrapPolicy
     {
         if (!useTun)
             return null;
-        return useDohResolver ? BootstrapLocalDnsTag : LocalDnsTag;
+
+        // Must match a DNS server tag present in the generated config (see BuildDns).
+        return BootstrapLocalDnsTag;
     }
 
     public static string? ResolveSingBoxDohDetour(string? connectionMode, bool tunStrictRoute, string? userDetour)
@@ -28,8 +30,12 @@ public static class TunBootstrapPolicy
         if (!ConnectionPolicy.IsTunMode(mode))
             return null;
 
+        if (TunAppsPolicy.UseSystemDnsOnly(mode))
+            return null;
+
+        var effectiveStrictRoute = TunAppsPolicy.UseStrictRoute(mode, tunStrictRoute);
         var detour = NormalizeDetour(userDetour);
-        if (tunStrictRoute && detour != "proxy")
+        if (effectiveStrictRoute && detour != "proxy")
             return "proxy";
 
         return detour == "proxy" ? "proxy" : null;

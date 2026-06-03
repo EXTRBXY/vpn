@@ -23,7 +23,7 @@ internal static class SingBoxConfigGenerator
         var mode = ConnectionPolicy.NormalizeMode(state.Mode);
         var useTun = ConnectionPolicy.IsTunMode(mode);
         var inbounds = useTun
-            ? new List<SingBoxInbound> { BuildTunInbound(state, profile) }
+            ? new List<SingBoxInbound> { BuildTunInbound(state, profile, mode) }
             : new List<SingBoxInbound> { BuildMixedInbound(state.LocalMixedPort) };
 
         var outbound = new SingBoxOutbound
@@ -39,7 +39,9 @@ internal static class SingBoxConfigGenerator
 
         outbound.Transport = BuildTransport(profile);
 
-        var useDohResolver = useTun && string.Equals(state.DnsMode, "doh", StringComparison.OrdinalIgnoreCase);
+        var useDohResolver = useTun
+            && string.Equals(state.DnsMode, "doh", StringComparison.OrdinalIgnoreCase)
+            && !TunAppsPolicy.UseSystemDnsOnly(mode);
         var hasEnabledUserRuleSets = (state.UserRuleSets ?? []).Any(x => x.Enabled);
 
         return new SingBoxConfig
@@ -57,14 +59,22 @@ internal static class SingBoxConfigGenerator
         };
     }
 
-    private static List<SingBoxRouteRule> BuildTunHeadRules(VlessProfile profile)
+    private static List<SingBoxRouteRule> BuildTunHeadRules(VlessProfile profile, string mode)
     {
         var rules = new List<SingBoxRouteRule>
         {
             new() { Action = "sniff" },
-            new() { Port = new List<int> { 53 }, Action = "hijack-dns" },
             new() { IpIsPrivate = true, Action = "route", Outbound = "direct" }
         };
+
+        if (TunAppsPolicy.HijackDns(mode))
+        {
+            rules.Insert(1, new SingBoxRouteRule
+            {
+                Port = new List<int> { 53 },
+                Action = "hijack-dns"
+            });
+        }
 
         foreach (var domain in TunBootstrapPolicy.CollectEndpointDomains(profile.Host, profile.Sni))
         {
@@ -99,7 +109,7 @@ internal static class SingBoxConfigGenerator
             };
         }
 
-        var rules = BuildTunHeadRules(profile);
+        var rules = BuildTunHeadRules(profile, mode);
 
         if (string.Equals(mode, ConnectionPolicy.TunAppsMode, StringComparison.Ordinal))
         {
@@ -220,7 +230,7 @@ internal static class SingBoxConfigGenerator
         ListenPort = localMixedPort
     };
 
-    private static SingBoxInbound BuildTunInbound(AppState state, VlessProfile profile)
+    private static SingBoxInbound BuildTunInbound(AppState state, VlessProfile profile, string mode)
     {
         var addr = NormalizeTunCidr(state.TunAddressCidr, profile.Id);
         var ifBase = string.IsNullOrWhiteSpace(state.TunInterfaceName) ? "NothingVpn" : state.TunInterfaceName.Trim();
@@ -239,7 +249,7 @@ internal static class SingBoxConfigGenerator
             Address = new List<string> { addr },
             Mtu = mtu,
             AutoRoute = state.TunAutoRoute,
-            StrictRoute = state.TunStrictRoute,
+            StrictRoute = TunAppsPolicy.UseStrictRoute(mode, state.TunStrictRoute),
             Stack = stack
         };
     }
@@ -282,12 +292,15 @@ internal static class SingBoxConfigGenerator
         var mode = (state.DnsMode ?? "system").Trim().ToLowerInvariant();
         if (!useTun && mode != "doh" && !hasEnabledUserRuleSets) return null;
 
+        if (TunAppsPolicy.UseSystemDnsOnly(connectionMode))
+            return BuildTunSystemDns(profile, reverseMapping: false);
+
         if (mode == "doh")
         {
             var server = string.IsNullOrWhiteSpace(state.DohServer) ? "1.1.1.1" : state.DohServer.Trim();
             var path = string.IsNullOrWhiteSpace(state.DohPath) ? "/dns-query" : state.DohPath.Trim();
             var sni = string.IsNullOrWhiteSpace(state.DohSni) ? null : state.DohSni.Trim();
-            var strictRoute = state.TunStrictRoute;
+            var strictRoute = TunAppsPolicy.UseStrictRoute(connectionMode, state.TunStrictRoute);
             var bootstrapDomains = useTun
                 ? TunBootstrapPolicy.CollectEndpointDomains(profile.Host, profile.Sni)
                 : Array.Empty<string>();
@@ -332,20 +345,35 @@ internal static class SingBoxConfigGenerator
             };
         }
 
+        return BuildTunSystemDns(profile, reverseMapping: useTun);
+    }
+
+    private static SingBoxDns BuildTunSystemDns(VlessProfile profile, bool reverseMapping)
+    {
+        var bootstrapDomains = TunBootstrapPolicy.CollectEndpointDomains(profile.Host, profile.Sni);
+        const string tag = TunBootstrapPolicy.BootstrapLocalDnsTag;
+
         return new SingBoxDns
         {
-            Final = TunBootstrapPolicy.LocalDnsTag,
-            ReverseMapping = useTun ? true : null,
-            Strategy = useTun ? "prefer_ipv4" : null,
+            Final = tag,
+            ReverseMapping = reverseMapping ? true : null,
+            Strategy = "prefer_ipv4",
             Servers =
             [
                 new SingBoxDnsServer
                 {
                     Type = "local",
-                    Tag = TunBootstrapPolicy.LocalDnsTag,
+                    Tag = tag,
                     PreferGo = false
                 }
-            ]
+            ],
+            Rules = bootstrapDomains.Count > 0
+                ? bootstrapDomains.Select(d => new SingBoxDnsRule
+                {
+                    Domain = new List<string> { d },
+                    Server = tag
+                }).ToList()
+                : null
         };
     }
 

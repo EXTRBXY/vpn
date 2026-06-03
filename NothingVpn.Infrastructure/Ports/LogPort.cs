@@ -17,5 +17,8 @@ public sealed class LogPort : ILogPort
         var text = _context.LogStore.SnapshotText(minLevel, out _);
         return text;
     }
+
+    public string? TryGetLatestMessage(int minLevel) =>
+        _context.LogStore.TryGetLatestMessage(minLevel);
 }
 

@@ -40,7 +40,8 @@ public static class ApplicationServicesFactory
             diagnosticsPort,
             elevationPort,
             appPaths,
-            pathPolicy);
+            pathPolicy,
+            logPort);
 
         return new ApplicationServiceBundle
         {

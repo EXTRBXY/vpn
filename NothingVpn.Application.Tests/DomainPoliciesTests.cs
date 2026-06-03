@@ -44,7 +44,8 @@ public sealed class DomainPoliciesTests
     [InlineData("tun", true, "direct", "proxy")]
     [InlineData("tun", true, "proxy", "proxy")]
     [InlineData("tun", false, "direct", null)]
-    [InlineData("tun_apps", true, "direct", "proxy")]
+    [InlineData("tun_apps", true, "direct", null)]
+    [InlineData("tun_apps", true, "proxy", null)]
     [InlineData("proxy", true, "direct", null)]
     public void ResolveSingBoxDohDetour_ReturnsExpected(
         string connectionMode,
@@ -53,6 +54,15 @@ public sealed class DomainPoliciesTests
         string? expected)
     {
         Assert.Equal(expected, TunBootstrapPolicy.ResolveSingBoxDohDetour(connectionMode, strictRoute, userDetour));
+    }
+
+    [Theory]
+    [InlineData(true, true, "bootstrap-local")]
+    [InlineData(true, false, "bootstrap-local")]
+    [InlineData(false, true, null)]
+    public void ResolveDefaultDomainResolver_ReturnsBootstrapLocalForTun(bool useTun, bool useDoh, string? expected)
+    {
+        Assert.Equal(expected, TunBootstrapPolicy.ResolveDefaultDomainResolver(useTun, useDoh));
     }
 
     [Fact]
@@ -68,5 +78,16 @@ public sealed class DomainPoliciesTests
     public void CollectEndpointDomains_DeduplicatesMatchingHostAndSni()
     {
         Assert.Single(TunBootstrapPolicy.CollectEndpointDomains("node.example", "node.example"));
+    }
+
+    [Theory]
+    [InlineData("tun_apps", false, true)]
+    [InlineData("tun", true, false)]
+    [InlineData("proxy", true, false)]
+    public void TunAppsPolicy_SplitTunnelFlags(string mode, bool userStrictRoute, bool expectedSystemDns)
+    {
+        Assert.Equal(expectedSystemDns, TunAppsPolicy.UseSystemDnsOnly(mode));
+        Assert.Equal(!expectedSystemDns, TunAppsPolicy.HijackDns(mode));
+        Assert.Equal(userStrictRoute && !expectedSystemDns, TunAppsPolicy.UseStrictRoute(mode, userStrictRoute));
     }
 }

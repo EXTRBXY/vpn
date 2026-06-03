@@ -64,6 +64,10 @@ internal sealed class SingBoxRunner : IDisposable
                     throw new InvalidOperationException($"sing-box.exe hash mismatch.\nTrusted: {trusted}\nActual:   {actual}");
             }
 
+            var checkError = TryCheckConfig(exePath, configPath);
+            if (checkError is not null)
+                throw new InvalidOperationException(checkError);
+
             // Logs are kept in-memory to minimize disk IO and avoid a logs folder.
             // Users can export logs on demand from the UI.
             _logStore.Clear();
@@ -329,6 +333,53 @@ internal sealed class SingBoxRunner : IDisposable
     public void Dispose()
     {
         Stop();
+    }
+
+    private static string? TryCheckConfig(string exePath, string configPath)
+    {
+        try
+        {
+            using var p = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = exePath,
+                    Arguments = $"check -c \"{configPath}\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardError = true,
+                    RedirectStandardOutput = true,
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8
+                }
+            };
+
+            if (!p.Start())
+                return "Не удалось запустить sing-box check.";
+
+            var stderr = p.StandardError.ReadToEnd();
+            var stdout = p.StandardOutput.ReadToEnd();
+            p.WaitForExit(10_000);
+
+            if (p.ExitCode == 0)
+                return null;
+
+            var text = StripAnsi(string.IsNullOrWhiteSpace(stderr) ? stdout : stderr).Trim();
+            if (text.Length == 0)
+                return "sing-box check завершился с ошибкой.";
+
+            var line = text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .FirstOrDefault(l => l.Contains("FATAL", StringComparison.OrdinalIgnoreCase)
+                    || l.Contains("ERROR", StringComparison.OrdinalIgnoreCase))
+                ?? text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault()
+                ?? text;
+
+            return line.Length > 400 ? line[..400] + "…" : line;
+        }
+        catch (Exception ex)
+        {
+            return ex.Message;
+        }
     }
 
     private static string? ResolveSingBoxExePath(string hint)

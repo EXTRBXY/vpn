@@ -63,7 +63,8 @@ public sealed class VpnConnectionServiceTests
             new FakeDiagnosticsPort(),
             new FakeElevationPort(isAdmin),
             new FakeAppPathsPort(),
-            new FakePathPolicyPort());
+            new FakePathPolicyPort(),
+            new FakeLogPort());
     }
 
     private sealed class FakeProfileStorePort : IProfileStorePort
@@ -156,6 +157,12 @@ public sealed class VpnConnectionServiceTests
             normalizedPath = rawPath ?? string.Empty;
             return !string.IsNullOrWhiteSpace(normalizedPath);
         }
+    }
+
+    private sealed class FakeLogPort : ILogPort
+    {
+        public string SnapshotText(int minLevel) => string.Empty;
+        public string? TryGetLatestMessage(int minLevel) => null;
     }
 }
 

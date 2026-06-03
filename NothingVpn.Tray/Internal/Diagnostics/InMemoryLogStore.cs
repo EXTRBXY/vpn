@@ -106,6 +106,21 @@ internal sealed class InMemoryLogStore
         return SnapshotText(minLevel: 0);
     }
 
+    public string? TryGetLatestMessage(int minLevel)
+    {
+        lock (_gate)
+        {
+            if (_entries.Count == 0) return null;
+            foreach (var e in _entries.Reverse())
+            {
+                if (e.Level >= minLevel)
+                    return e.Message;
+            }
+        }
+
+        return null;
+    }
+
     private static string LevelToText(int level)
     {
         return level switch

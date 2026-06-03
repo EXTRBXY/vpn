@@ -21,6 +21,7 @@ public sealed class VpnConnectionService : IVpnConnectionService
     private readonly IElevationPort _elevationPort;
     private readonly IAppPathsPort _appPathsPort;
     private readonly IPathPolicyPort _pathPolicy;
+    private readonly ILogPort _logPort;
 
     public VpnConnectionService(
         IProfileStorePort profileStore,
@@ -30,7 +31,8 @@ public sealed class VpnConnectionService : IVpnConnectionService
         IDiagnosticsPort diagnosticsPort,
         IElevationPort elevationPort,
         IAppPathsPort appPathsPort,
-        IPathPolicyPort pathPolicy)
+        IPathPolicyPort pathPolicy,
+        ILogPort logPort)
     {
         _profileStore = profileStore;
         _stateStore = stateStore;
@@ -40,6 +42,7 @@ public sealed class VpnConnectionService : IVpnConnectionService
         _elevationPort = elevationPort;
         _appPathsPort = appPathsPort;
         _pathPolicy = pathPolicy;
+        _logPort = logPort;
         _singBoxPort.ProcessExited += (_, _) => ConnectionStateChanged?.Invoke(this, false);
     }
 
@@ -73,38 +76,47 @@ public sealed class VpnConnectionService : IVpnConnectionService
         }
 
         var configPath = _singBoxPort.WriteConfig(profile, state);
-        _singBoxPort.Start(configPath);
 
-        if (!ConnectionPolicy.IsTunMode(state.Mode))
+        try
         {
-            var test = await _diagnosticsPort.ProxySmokeTestAsync(
-                "127.0.0.1",
-                state.LocalMixedPort,
-                ProxySmokeHost,
-                ProxySmokePort,
-                ProxySmokeTimeout,
-                cancellationToken);
+            _singBoxPort.Start(configPath);
 
-            if (!test.Success)
-                throw new InvalidOperationException($"Проверка прокси не прошла: {test.Error}");
-
-            var previous = _proxyPort.ReadCurrent();
-            _proxyPort.Enable($"127.0.0.1:{state.LocalMixedPort}", state.ProxyOverride);
-            state.PreviousProxySettings = previous;
-            state.ProxyWasEnabledByUs = true;
-        }
-        else
-        {
-            await Task.Delay(900, cancellationToken);
-            if (!_singBoxPort.IsRunning)
-                throw new InvalidOperationException("sing-box завершился при запуске TUN.");
-
-            if (string.Equals(state.Mode, ConnectionPolicy.TunMode, StringComparison.Ordinal))
+            if (!ConnectionPolicy.IsTunMode(state.Mode))
             {
-                var tunTest = await _diagnosticsPort.TunSmokeTestAsync(TunSmokeTimeout, cancellationToken);
-                if (!tunTest.Success)
-                    throw new InvalidOperationException($"Проверка TUN не прошла: {tunTest.Error}");
+                var test = await _diagnosticsPort.ProxySmokeTestAsync(
+                    "127.0.0.1",
+                    state.LocalMixedPort,
+                    ProxySmokeHost,
+                    ProxySmokePort,
+                    ProxySmokeTimeout,
+                    cancellationToken);
+
+                if (!test.Success)
+                    throw new InvalidOperationException($"Проверка прокси не прошла: {test.Error}");
+
+                var previous = _proxyPort.ReadCurrent();
+                _proxyPort.Enable($"127.0.0.1:{state.LocalMixedPort}", state.ProxyOverride);
+                state.PreviousProxySettings = previous;
+                state.ProxyWasEnabledByUs = true;
             }
+            else
+            {
+                await Task.Delay(900, cancellationToken);
+                if (!_singBoxPort.IsRunning)
+                    throw new InvalidOperationException(DescribeSingBoxStartupFailure());
+
+                if (string.Equals(state.Mode, ConnectionPolicy.TunMode, StringComparison.Ordinal))
+                {
+                    var tunTest = await _diagnosticsPort.TunSmokeTestAsync(TunSmokeTimeout, cancellationToken);
+                    if (!tunTest.Success)
+                        throw new InvalidOperationException($"Проверка TUN не прошла: {tunTest.Error}");
+                }
+            }
+        }
+        catch
+        {
+            RollbackFailedConnect(state);
+            throw;
         }
 
         state.ActiveProfileId = profile.Id;
@@ -162,6 +174,42 @@ public sealed class VpnConnectionService : IVpnConnectionService
             Action = x.Action
         });
         RuleSetPolicyValidator.ValidateEnabled(entries, ruleSetsDir);
+    }
+
+    private string DescribeSingBoxStartupFailure()
+    {
+        var detail = _logPort.TryGetLatestMessage(5) ?? _logPort.TryGetLatestMessage(4);
+        return detail is null
+            ? "sing-box завершился при запуске TUN."
+            : $"sing-box завершился при запуске TUN: {detail}";
+    }
+
+    private void RollbackFailedConnect(AppStateModel state)
+    {
+        try
+        {
+            _singBoxPort.Stop();
+        }
+        catch
+        {
+            // best-effort
+        }
+
+        if (!state.ProxyWasEnabledByUs)
+            return;
+
+        try
+        {
+            _proxyPort.Restore(state.PreviousProxySettings);
+        }
+        catch
+        {
+            // best-effort
+        }
+
+        state.ProxyWasEnabledByUs = false;
+        state.PreviousProxySettings = null;
+        _stateStore.Save(state);
     }
 }
 
