@@ -1,8 +1,9 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using NothingVpn.Tray.Internal.Diagnostics;
-using NothingVpn.Tray.Internal.Store;
 using NothingVpn.Tray.Internal.Security;
+using NothingVpn.Tray.Internal.Store;
+using NothingVpn.Tray.Internal.Windows;
 
 namespace NothingVpn.Tray.Internal.SingBox;
 
@@ -14,6 +15,8 @@ internal sealed class SingBoxRunner : IDisposable
     private readonly Func<string?> _trustedSha256;
     private readonly InMemoryLogStore _logStore;
     private Process? _process;
+    private ProcessJobScope? _processJob;
+    private string? _lastConfigPath;
     private readonly object _gate = new();
 
     public event EventHandler? ProcessExited;
@@ -47,14 +50,21 @@ internal sealed class SingBoxRunner : IDisposable
     {
         lock (_gate)
         {
-            if (_process is { HasExited: false })
-                throw new InvalidOperationException("sing-box is already running.");
-
             var exePath = ResolveSingBoxExePath(_singBoxExePathHint);
             if (exePath is null)
                 throw new FileNotFoundException(
                     "sing-box.exe not found. Put it next to the app or into a ./bin folder near it.",
                     _singBoxExePathHint);
+
+            if (_process is { HasExited: false })
+            {
+                if (TunInterfaceCleaner.TryReadInterfaceName(configPath) is not null)
+                    StopLocked();
+                else
+                    throw new InvalidOperationException("sing-box is already running.");
+            }
+
+            PrepareTunResources(exePath, configPath);
 
             var trusted = _trustedSha256();
             if (!string.IsNullOrWhiteSpace(trusted))
@@ -86,12 +96,28 @@ internal sealed class SingBoxRunner : IDisposable
             };
 
             var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
-            p.Exited += (_, _) => ProcessExited?.Invoke(this, EventArgs.Empty);
+            p.Exited += (_, _) =>
+            {
+                string? tunConfig;
+                lock (_gate)
+                {
+                    _processJob?.Dispose();
+                    _processJob = null;
+                    _process = null;
+                    tunConfig = _lastConfigPath;
+                }
+
+                ReleaseTunIfNeeded(tunConfig);
+                ProcessExited?.Invoke(this, EventArgs.Empty);
+            };
 
             if (!p.Start())
                 throw new InvalidOperationException("Failed to start sing-box process.");
 
+            _processJob?.Dispose();
+            _processJob = ProcessJobScope.TryAttach(p);
             _process = p;
+            _lastConfigPath = configPath;
 
             // Async log pumping
             _ = Task.Run(() => PumpAsync(p.StandardOutput, "sing-box/stdout", redact: !_debugLogs(), _logStore));
@@ -99,28 +125,54 @@ internal sealed class SingBoxRunner : IDisposable
         }
     }
 
+    private void PrepareTunResources(string exePath, string configPath)
+    {
+        if (TunInterfaceCleaner.TryReadInterfaceName(configPath) is null)
+            return;
+
+        VpnRuntimeRecovery.PrepareTunConnect(exePath, configPath);
+    }
+
+    private void StopLocked()
+    {
+        if (_process is null) return;
+        try
+        {
+            if (!_process.HasExited)
+            {
+                _process.Kill(entireProcessTree: true);
+                _process.WaitForExit(3000);
+            }
+        }
+        catch
+        {
+            // best-effort
+        }
+        finally
+        {
+            _processJob?.Dispose();
+            _processJob = null;
+            try { _process.Dispose(); } catch { }
+            _process = null;
+            ReleaseTunIfNeeded(_lastConfigPath);
+        }
+    }
+
+    private static void ReleaseTunIfNeeded(string? configPath)
+    {
+        if (string.IsNullOrWhiteSpace(configPath))
+            return;
+
+        var name = TunInterfaceCleaner.TryReadInterfaceName(configPath);
+        if (!string.IsNullOrWhiteSpace(name))
+            VpnRuntimeRecovery.ReleaseAdapterByName(name);
+    }
+
     public void Stop()
     {
         lock (_gate)
         {
-            if (_process is null) return;
-            try
-            {
-                if (!_process.HasExited)
-                {
-                    _process.Kill(entireProcessTree: true);
-                    _process.WaitForExit(3000);
-                }
-            }
-            catch
-            {
-                // best-effort
-            }
-            finally
-            {
-                try { _process.Dispose(); } catch { }
-                _process = null;
-            }
+            StopLocked();
         }
     }
 
@@ -334,6 +386,8 @@ internal sealed class SingBoxRunner : IDisposable
     {
         Stop();
     }
+
+    internal static string? ResolveSingBoxExePathPublic(string hint) => ResolveSingBoxExePath(hint);
 
     private static string? TryCheckConfig(string exePath, string configPath)
     {

@@ -32,6 +32,8 @@ internal sealed class LegacyRuntimeContext
             LogStore,
             debugLogs: () => (stateSnapshot ??= stateStore.Load()).DebugLogs,
             trustedSha256: () => (stateSnapshot ??= stateStore.Load()).TrustedSingBoxSha256);
+
+        _ = Task.Run(() => VpnRuntimeRecovery.RecoverOnStartup("sing-box.exe"));
     }
 }
 

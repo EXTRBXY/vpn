@@ -49,17 +49,78 @@ public sealed class VpnConnectionServiceTests
         Assert.Equal("p1", stateStore.State.ActiveProfileId);
     }
 
+    [Fact]
+    public async Task DisconnectAsync_ClearsActiveProfileAndProxyFlags()
+    {
+        var stateStore = new FakeStateStorePort
+        {
+            State = new AppStateModel
+            {
+                Mode = "proxy",
+                ActiveProfileId = "p1",
+                ProxyWasEnabledByUs = true,
+                PreviousProxySettings = new ProxySettingsSnapshotModel()
+            }
+        };
+        var proxy = new FakeProxyPort();
+        var singBox = new FakeSingBoxPort { IsRunning = true };
+        var service = CreateService(new FakeProfileStorePort(), stateStore, isAdmin: true, singBoxPort: singBox, proxyPort: proxy);
+
+        await service.DisconnectAsync();
+
+        Assert.False(singBox.IsRunning);
+        Assert.True(proxy.RestoreCalled);
+        Assert.Null(stateStore.State.ActiveProfileId);
+        Assert.False(stateStore.State.ProxyWasEnabledByUs);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_StopsExistingSession_BeforeStart()
+    {
+        var stateStore = new FakeStateStorePort { State = new AppStateModel { Mode = "proxy", LocalMixedPort = 1080 } };
+        var singBox = new FakeSingBoxPort { IsRunning = true };
+        var service = CreateService(new FakeProfileStorePort(), stateStore, isAdmin: true, singBoxPort: singBox);
+
+        await service.ConnectAsync(new ConnectRequest { ProfileId = "p1" });
+
+        Assert.True(singBox.StopCalled);
+        Assert.True(singBox.StartCalled);
+    }
+
+    [Fact]
+    public void RecoverStaleRuntimeState_ClearsStaleSession()
+    {
+        var stateStore = new FakeStateStorePort
+        {
+            State = new AppStateModel
+            {
+                ActiveProfileId = "p1",
+                ProxyWasEnabledByUs = true,
+                PreviousProxySettings = new ProxySettingsSnapshotModel()
+            }
+        };
+        var proxy = new FakeProxyPort();
+        var service = CreateService(new FakeProfileStorePort(), stateStore, isAdmin: true, proxyPort: proxy);
+
+        service.RecoverStaleRuntimeState();
+
+        Assert.True(proxy.RestoreCalled);
+        Assert.Null(stateStore.State.ActiveProfileId);
+        Assert.False(stateStore.State.ProxyWasEnabledByUs);
+    }
+
     private static VpnConnectionService CreateService(
         FakeProfileStorePort profileStore,
         FakeStateStorePort stateStore,
         bool isAdmin,
-        FakeSingBoxPort? singBoxPort = null)
+        FakeSingBoxPort? singBoxPort = null,
+        FakeProxyPort? proxyPort = null)
     {
         return new VpnConnectionService(
             profileStore,
             stateStore,
             singBoxPort ?? new FakeSingBoxPort(),
-            new FakeProxyPort(),
+            proxyPort ?? new FakeProxyPort(),
             new FakeDiagnosticsPort(),
             new FakeElevationPort(isAdmin),
             new FakeAppPathsPort(),
@@ -106,22 +167,29 @@ public sealed class VpnConnectionServiceTests
     private sealed class FakeSingBoxPort : ISingBoxPort
     {
         public event EventHandler? ProcessExited { add { } remove { } }
-        public bool IsRunning { get; private set; }
+        public bool IsRunning { get; set; }
         public bool StartCalled { get; private set; }
+        public bool StopCalled { get; private set; }
         public string WriteConfig(VpnProfile profile, AppStateModel state) => "config.json";
         public void Start(string configPath)
         {
             StartCalled = true;
             IsRunning = true;
         }
-        public void Stop() => IsRunning = false;
+        public void Stop()
+        {
+            StopCalled = true;
+            IsRunning = false;
+        }
     }
 
     private sealed class FakeProxyPort : IProxyPort
     {
+        public bool RestoreCalled { get; private set; }
+
         public ProxySettingsSnapshotModel ReadCurrent() => new();
         public void Enable(string proxyServer, string proxyOverride) { }
-        public void Restore(ProxySettingsSnapshotModel? previous) { }
+        public void Restore(ProxySettingsSnapshotModel? previous) => RestoreCalled = true;
     }
 
     private sealed class FakeDiagnosticsPort : IDiagnosticsPort

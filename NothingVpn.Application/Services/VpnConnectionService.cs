@@ -43,7 +43,7 @@ public sealed class VpnConnectionService : IVpnConnectionService
         _appPathsPort = appPathsPort;
         _pathPolicy = pathPolicy;
         _logPort = logPort;
-        _singBoxPort.ProcessExited += (_, _) => ConnectionStateChanged?.Invoke(this, false);
+        _singBoxPort.ProcessExited += (_, _) => RecoverStaleRuntimeState();
     }
 
     public event EventHandler<bool>? ConnectionStateChanged;
@@ -77,6 +77,9 @@ public sealed class VpnConnectionService : IVpnConnectionService
 
         var configPath = _singBoxPort.WriteConfig(profile, state);
 
+        if (_singBoxPort.IsRunning)
+            await DisconnectAsync(cancellationToken);
+
         try
         {
             _singBoxPort.Start(configPath);
@@ -101,7 +104,7 @@ public sealed class VpnConnectionService : IVpnConnectionService
             }
             else
             {
-                await Task.Delay(900, cancellationToken);
+                await WaitForSingBoxRunningAsync(cancellationToken);
                 if (!_singBoxPort.IsRunning)
                     throw new InvalidOperationException(DescribeSingBoxStartupFailure());
 
@@ -144,8 +147,10 @@ public sealed class VpnConnectionService : IVpnConnectionService
                 _proxyPort.Restore(state.PreviousProxySettings);
                 state.ProxyWasEnabledByUs = false;
                 state.PreviousProxySettings = null;
-                _stateStore.Save(state);
             }
+
+            state.ActiveProfileId = null;
+            _stateStore.Save(state);
         }
 
         ConnectionStateChanged?.Invoke(this, false);
@@ -161,6 +166,54 @@ public sealed class VpnConnectionService : IVpnConnectionService
             Mode = ConnectionPolicy.NormalizeMode(state.Mode),
             ActiveProfileId = state.ActiveProfileId
         };
+    }
+
+    public void RecoverStaleRuntimeState()
+    {
+        var state = _stateStore.Load();
+        if (_singBoxPort.IsRunning)
+            return;
+
+        var changed = false;
+
+        if (state.ProxyWasEnabledByUs)
+        {
+            try
+            {
+                _proxyPort.Restore(state.PreviousProxySettings);
+            }
+            catch
+            {
+                // best-effort
+            }
+
+            state.ProxyWasEnabledByUs = false;
+            state.PreviousProxySettings = null;
+            changed = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(state.ActiveProfileId))
+        {
+            state.ActiveProfileId = null;
+            changed = true;
+        }
+
+        if (!changed)
+            return;
+
+        _stateStore.Save(state);
+        ConnectionStateChanged?.Invoke(this, false);
+    }
+
+    private async Task WaitForSingBoxRunningAsync(CancellationToken cancellationToken)
+    {
+        for (var i = 0; i < 20; i++)
+        {
+            if (_singBoxPort.IsRunning)
+                return;
+
+            await Task.Delay(50, cancellationToken);
+        }
     }
 
     private static void ValidateRuleSets(AppStateModel state, string ruleSetsDir)

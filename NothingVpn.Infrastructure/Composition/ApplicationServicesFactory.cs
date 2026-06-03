@@ -42,6 +42,7 @@ public static class ApplicationServicesFactory
             appPaths,
             pathPolicy,
             logPort);
+        vpnService.RecoverStaleRuntimeState();
 
         return new ApplicationServiceBundle
         {
