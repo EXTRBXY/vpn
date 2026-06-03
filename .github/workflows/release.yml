@@ -18,7 +18,7 @@ permissions:
 env:
   DOTNET_VERSION: '8.0.x'
   # Версия sing-box из https://github.com/SagerNet/sing-box/releases (имя архива sing-box-VERSION-windows-amd64.zip)
-  SING_BOX_VERSION: '1.13.6'
+  SING_BOX_VERSION: '1.13.12'
   WINTUN_VERSION: '0.14.1'
   PUBLISH_REL: NothingVpn.Tray\bin\Release\net8.0-windows\win-x64\publish
 

@@ -5,6 +5,16 @@ namespace NothingVpn.Infrastructure.Ports;
 
 public sealed class DiagnosticsPort : IDiagnosticsPort
 {
+    public async Task<(bool Success, string? Error)> CanReachTcpAsync(
+        string host,
+        int port,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await ProxySmokeTest.TcpConnectAsync(host, port, timeout, cancellationToken);
+        return (result.Success, result.Error);
+    }
+
     public async Task<(bool Success, string? Error)> ProxySmokeTestAsync(
         string proxyHost,
         int proxyPort,

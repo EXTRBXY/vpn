@@ -125,6 +125,9 @@ public sealed class VpnConnectionServiceTests
 
     private sealed class FakeDiagnosticsPort : IDiagnosticsPort
     {
+        public Task<(bool Success, string? Error)> CanReachTcpAsync(string host, int port, TimeSpan timeout, CancellationToken cancellationToken = default)
+            => Task.FromResult((true, (string?)null));
+
         public Task<(bool Success, string? Error)> ProxySmokeTestAsync(string proxyHost, int proxyPort, string targetHost, int targetPort, TimeSpan timeout, CancellationToken cancellationToken = default)
             => Task.FromResult((true, (string?)null));
 

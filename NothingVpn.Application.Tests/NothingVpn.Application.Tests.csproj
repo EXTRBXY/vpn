@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
@@ -23,6 +23,7 @@
   <ItemGroup>
     <ProjectReference Include="..\NothingVpn.Application\NothingVpn.Application.csproj" />
     <ProjectReference Include="..\NothingVpn.Domain\NothingVpn.Domain.csproj" />
+    <ProjectReference Include="..\NothingVpn.Infrastructure\NothingVpn.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

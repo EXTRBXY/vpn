@@ -37,8 +37,7 @@ internal sealed class AppState
     // "auto" means derive a unique /30 per profile to avoid collisions.
     public string TunAddressCidr { get; set; } = "auto";
     public int TunMtu { get; set; } = 9000;
-    // system|gvisor|mixed (sing-box tun stack)
-    public string TunStack { get; set; } = "system";
+    public string TunStack { get; set; } = "mixed";
     public bool TunAutoRoute { get; set; } = true;
     public bool TunStrictRoute { get; set; } = true;
 

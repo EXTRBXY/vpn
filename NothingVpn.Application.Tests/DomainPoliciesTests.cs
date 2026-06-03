@@ -12,8 +12,7 @@ public sealed class DomainPoliciesTests
     [InlineData("unknown", "proxy")]
     public void NormalizeMode_ReturnsExpected(string input, string expected)
     {
-        var actual = ConnectionPolicy.NormalizeMode(input);
-        Assert.Equal(expected, actual);
+        Assert.Equal(expected, ConnectionPolicy.NormalizeMode(input));
     }
 
     [Fact]
@@ -40,5 +39,34 @@ public sealed class DomainPoliciesTests
         Assert.Equal("direct", settings.Detour);
         Assert.Equal("/dns-query", settings.DohPath);
     }
-}
 
+    [Theory]
+    [InlineData("tun", true, "direct", "proxy")]
+    [InlineData("tun", true, "proxy", "proxy")]
+    [InlineData("tun", false, "direct", null)]
+    [InlineData("tun_apps", true, "direct", "proxy")]
+    [InlineData("proxy", true, "direct", null)]
+    public void ResolveSingBoxDohDetour_ReturnsExpected(
+        string connectionMode,
+        bool strictRoute,
+        string userDetour,
+        string? expected)
+    {
+        Assert.Equal(expected, TunBootstrapPolicy.ResolveSingBoxDohDetour(connectionMode, strictRoute, userDetour));
+    }
+
+    [Fact]
+    public void CollectEndpointDomains_IncludesHostAndDistinctSni()
+    {
+        var domains = TunBootstrapPolicy.CollectEndpointDomains("node.example", "cdn.example");
+        Assert.Equal(2, domains.Count);
+        Assert.Contains("node.example", domains, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("cdn.example", domains, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void CollectEndpointDomains_DeduplicatesMatchingHostAndSni()
+    {
+        Assert.Single(TunBootstrapPolicy.CollectEndpointDomains("node.example", "node.example"));
+    }
+}

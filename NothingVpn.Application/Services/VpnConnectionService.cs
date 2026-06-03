@@ -7,6 +7,11 @@ namespace NothingVpn.Application.Services;
 
 public sealed class VpnConnectionService : IVpnConnectionService
 {
+    private static readonly TimeSpan TcpReachTimeout = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan ProxySmokeTimeout = TimeSpan.FromSeconds(8);
+    private const string ProxySmokeHost = "1.1.1.1";
+    private const int ProxySmokePort = 443;
+
     private readonly IProfileStorePort _profileStore;
     private readonly IStateStorePort _stateStore;
     private readonly ISingBoxPort _singBoxPort;
@@ -51,6 +56,10 @@ public sealed class VpnConnectionService : IVpnConnectionService
         ConnectionPolicy.EnsureTunAppsHasTargets(state.Mode, state.TunAppProcessPaths);
         ValidateRuleSets(state, _appPathsPort.Get().RuleSetsDir);
 
+        var reach = await _diagnosticsPort.CanReachTcpAsync(profile.Host, profile.Port, TcpReachTimeout, cancellationToken);
+        if (!reach.Success)
+            throw new InvalidOperationException($"Узел {profile.Host}:{profile.Port} недоступен по TCP ({reach.Error}).");
+
         if (ConnectionPolicy.IsTunMode(state.Mode) && !_elevationPort.IsAdministrator())
         {
             var args = $"--takeover --start --mode {state.Mode} --profile \"{profile.Id}\"";
@@ -68,15 +77,15 @@ public sealed class VpnConnectionService : IVpnConnectionService
         if (!ConnectionPolicy.IsTunMode(state.Mode))
         {
             var test = await _diagnosticsPort.ProxySmokeTestAsync(
-                proxyHost: "127.0.0.1",
-                proxyPort: state.LocalMixedPort,
-                targetHost: profile.Host,
-                targetPort: profile.Port,
-                timeout: TimeSpan.FromSeconds(3),
-                cancellationToken: cancellationToken);
+                "127.0.0.1",
+                state.LocalMixedPort,
+                ProxySmokeHost,
+                ProxySmokePort,
+                ProxySmokeTimeout,
+                cancellationToken);
 
             if (!test.Success)
-                throw new InvalidOperationException($"Proxy smoke test failed: {test.Error}");
+                throw new InvalidOperationException($"Проверка прокси не прошла: {test.Error}");
 
             var previous = _proxyPort.ReadCurrent();
             _proxyPort.Enable($"127.0.0.1:{state.LocalMixedPort}", state.ProxyOverride);

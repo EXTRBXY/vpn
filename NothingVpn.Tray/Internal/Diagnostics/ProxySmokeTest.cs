@@ -5,6 +5,35 @@ namespace NothingVpn.Tray.Internal.Diagnostics;
 
 internal static class ProxySmokeTest
 {
+    public static async Task<ProxySmokeTestResult> TcpConnectAsync(
+        string host,
+        int port,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+            return ProxySmokeTestResult.Fail("Host is empty.");
+        if (port <= 0 || port > 65535)
+            return ProxySmokeTestResult.Fail("Port is invalid.");
+
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(timeout);
+            using var client = new TcpClient();
+            await client.ConnectAsync(host, port, cts.Token);
+            return ProxySmokeTestResult.Ok();
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return ProxySmokeTestResult.Fail("Timeout.");
+        }
+        catch (Exception ex)
+        {
+            return ProxySmokeTestResult.Fail(ex.Message);
+        }
+    }
+
     public static async Task<ProxySmokeTestResult> HttpConnectAsync(
         string proxyHost,
         int proxyPort,
@@ -29,7 +58,6 @@ internal static class ProxySmokeTest
             if (read <= 0) return ProxySmokeTestResult.Fail("No response from proxy.");
 
             var head = Encoding.ASCII.GetString(buffer, 0, read);
-            // Expect "HTTP/1.1 200" or similar
             if (head.StartsWith("HTTP/", StringComparison.OrdinalIgnoreCase) && head.Contains(" 200 "))
                 return ProxySmokeTestResult.Ok();
 

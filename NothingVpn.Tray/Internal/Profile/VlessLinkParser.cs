@@ -112,8 +112,7 @@ internal static class VlessLinkParser
 
     private static string StableId(VlessProfile p)
     {
-        // Stable across imports: uuid@host:port + type + security + sni + flow
-        var key = $"{p.Uuid}|{p.Host}|{p.Port}|{p.Type}|{p.Security}|{p.Sni}|{p.Flow}|{p.WsPath}|{p.WsHost}|{p.GrpcServiceName}";
+        var key = $"{p.Uuid}|{p.Host}|{p.Port}|{p.Type}|{p.Security}|{p.Sni}|{p.Flow}|{p.RealityPublicKey}|{p.RealityShortId}|{p.WsPath}|{p.WsHost}|{p.GrpcServiceName}";
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(key));
         return Convert.ToHexString(bytes).ToLowerInvariant()[..16];
     }
