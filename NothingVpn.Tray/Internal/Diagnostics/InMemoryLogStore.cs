@@ -27,18 +27,6 @@ internal sealed class InMemoryLogStore
         }
     }
 
-    public void Append(int level, string line)
-    {
-        if (line is null) return;
-        // Backward-compatible plain line append.
-        AppendStructured(
-            level: level,
-            source: "legacy",
-            message: line,
-            raw: line,
-            timestampUtc: DateTimeOffset.UtcNow);
-    }
-
     public void AppendStructured(
         int level,
         string source,

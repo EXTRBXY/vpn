@@ -40,13 +40,16 @@ public sealed class VpnConnectionServiceTests
             }
         };
         var singBox = new FakeSingBoxPort();
-        var service = CreateService(profileStore, stateStore, isAdmin: true, singBoxPort: singBox);
+        var proxy = new FakeProxyPort();
+        var service = CreateService(profileStore, stateStore, isAdmin: true, singBoxPort: singBox, proxyPort: proxy);
 
         var result = await service.ConnectAsync(new ConnectRequest { ProfileId = "p1" });
 
         Assert.True(result.Started);
         Assert.True(singBox.StartCalled);
+        Assert.True(proxy.EnableCalled);
         Assert.Equal("p1", stateStore.State.ActiveProfileId);
+        Assert.True(stateStore.State.ProxyWasEnabledByUs);
     }
 
     [Fact]
@@ -109,19 +112,61 @@ public sealed class VpnConnectionServiceTests
         Assert.False(stateStore.State.ProxyWasEnabledByUs);
     }
 
+    [Fact]
+    public async Task ConnectAsync_ThrowsAndRollsBack_WhenSingBoxExitsDuringConnect()
+    {
+        var stateStore = new FakeStateStorePort { State = new AppStateModel { Mode = "proxy", LocalMixedPort = 1080 } };
+        var singBox = new FakeSingBoxPort { ExitOnStart = true };
+        var proxy = new FakeProxyPort();
+        var service = CreateService(new FakeProfileStorePort(), stateStore, isAdmin: true, singBoxPort: singBox, proxyPort: proxy);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ConnectAsync(new ConnectRequest { ProfileId = "p1" }));
+
+        Assert.Null(stateStore.State.ActiveProfileId);
+        Assert.False(stateStore.State.ProxyWasEnabledByUs);
+        Assert.False(proxy.EnableCalled);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_IgnoresProcessExitedRecoverWhileInProgress()
+    {
+        var stateStore = new FakeStateStorePort
+        {
+            State = new AppStateModel
+            {
+                Mode = "proxy",
+                LocalMixedPort = 1080,
+                ProxyWasEnabledByUs = true,
+                PreviousProxySettings = new ProxySettingsSnapshotModel()
+            }
+        };
+        var singBox = new FakeSingBoxPort { FireExitedOnStart = true };
+        var proxy = new FakeProxyPort();
+        var service = CreateService(new FakeProfileStorePort(), stateStore, isAdmin: true, singBoxPort: singBox, proxyPort: proxy);
+
+        var result = await service.ConnectAsync(new ConnectRequest { ProfileId = "p1" });
+
+        Assert.True(result.Started);
+        Assert.True(proxy.EnableCalled);
+        Assert.Equal("p1", stateStore.State.ActiveProfileId);
+        Assert.True(stateStore.State.ProxyWasEnabledByUs);
+    }
+
     private static VpnConnectionService CreateService(
         FakeProfileStorePort profileStore,
         FakeStateStorePort stateStore,
         bool isAdmin,
         FakeSingBoxPort? singBoxPort = null,
-        FakeProxyPort? proxyPort = null)
+        FakeProxyPort? proxyPort = null,
+        FakeDiagnosticsPort? diagnosticsPort = null)
     {
         return new VpnConnectionService(
             profileStore,
             stateStore,
             singBoxPort ?? new FakeSingBoxPort(),
             proxyPort ?? new FakeProxyPort(),
-            new FakeDiagnosticsPort(),
+            diagnosticsPort ?? new FakeDiagnosticsPort(),
             new FakeElevationPort(isAdmin),
             new FakeAppPathsPort(),
             new FakePathPolicyPort(),
@@ -166,16 +211,32 @@ public sealed class VpnConnectionServiceTests
 
     private sealed class FakeSingBoxPort : ISingBoxPort
     {
-        public event EventHandler? ProcessExited { add { } remove { } }
+        public event EventHandler? ProcessExited;
         public bool IsRunning { get; set; }
         public bool StartCalled { get; private set; }
         public bool StopCalled { get; private set; }
+        public bool ExitOnStart { get; init; }
+        public bool FireExitedOnStart { get; init; }
+
         public string WriteConfig(VpnProfile profile, AppStateModel state) => "config.json";
+
         public void Start(string configPath)
         {
             StartCalled = true;
+            if (ExitOnStart)
+            {
+                IsRunning = false;
+                return;
+            }
+
             IsRunning = true;
+            if (FireExitedOnStart)
+            {
+                IsRunning = true;
+                ProcessExited?.Invoke(this, EventArgs.Empty);
+            }
         }
+
         public void Stop()
         {
             StopCalled = true;
@@ -186,9 +247,10 @@ public sealed class VpnConnectionServiceTests
     private sealed class FakeProxyPort : IProxyPort
     {
         public bool RestoreCalled { get; private set; }
+        public bool EnableCalled { get; private set; }
 
         public ProxySettingsSnapshotModel ReadCurrent() => new();
-        public void Enable(string proxyServer, string proxyOverride) { }
+        public void Enable(string proxyServer, string proxyOverride) => EnableCalled = true;
         public void Restore(ProxySettingsSnapshotModel? previous) => RestoreCalled = true;
     }
 
@@ -230,7 +292,6 @@ public sealed class VpnConnectionServiceTests
     private sealed class FakeLogPort : ILogPort
     {
         public string SnapshotText(int minLevel) => string.Empty;
-        public string? TryGetLatestMessage(int minLevel) => null;
+        public string? TryGetLatestMessage(int minLevel) => "FATAL test";
     }
 }
-

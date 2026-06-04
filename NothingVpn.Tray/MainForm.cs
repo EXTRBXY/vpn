@@ -661,7 +661,7 @@ internal sealed class MainForm : Form
 
         _profilesBtn.Click += (_, _) => OpenProfilesDialog();
         _startBtn.Click += async (_, _) => await StartAsync();
-        _stopBtn.Click += (_, _) => Stop();
+        _stopBtn.Click += (_, _) => _ = StopAsync();
         _profilesCombo.SelectedIndexChanged += (_, _) =>
         {
             if (_profilesCombo.SelectedItem is VpnProfile p)
@@ -842,7 +842,7 @@ internal sealed class MainForm : Form
         void Go()
         {
             if (!_vpnConnectionService.GetStatus().IsRunning) return;
-            Stop();
+            _ = StopAsync();
         }
 
         if (InvokeRequired)
@@ -855,8 +855,7 @@ internal sealed class MainForm : Form
     {
         try
         {
-            // Idempotent cleanup.
-            Stop();
+            StopAsync().Wait(TimeSpan.FromSeconds(5));
         }
         catch
         {
@@ -1617,16 +1616,15 @@ internal sealed class MainForm : Form
             if (!isTun)
             {
                 var r = await _diagnosticsService.RunProxySmokeTestAsync(
-                    targetHost: "1.1.1.1",
+                    targetHost: "api.ipify.org",
                     targetPort: 443,
-                    timeout: TimeSpan.FromSeconds(3));
+                    timeout: TimeSpan.FromSeconds(8));
 
                 sw.Stop();
                 if (!r.Success)
                     throw new InvalidOperationException(r.Error ?? "Proxy test failed.");
 
                 MessageBox.Show(this, $"Прокси: OK\nВремя: {sw.ElapsedMilliseconds} мс", "Пинг", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                _appLogger.Info("app/smoke", $"Proxy smoke test: OK, {sw.ElapsedMilliseconds} ms");
                 return;
             }
 
@@ -1639,11 +1637,10 @@ internal sealed class MainForm : Form
                     throw new InvalidOperationException(r.Error ?? "TUN test failed.");
 
                 MessageBox.Show(this,
-                    $"Связность: OK\nВремя: {sw.ElapsedMilliseconds} мс\n\nВ режиме «TUN (выбранные приложения)» этот тест идёт из процесса приложения и может не совпадать с маршрутом выбранных .exe.",
+                    $"Связность: OK\nВремя: {sw.ElapsedMilliseconds} мс\n\nВажно: в режиме «TUN (выбранные приложения)» тест идёт из процесса Nothing VPN (обычно напрямую, без VLESS). OK здесь не означает, что выбранные .exe ходят в интернет через туннель — проверяйте сами браузер/игру из списка.",
                     "Пинг",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
-                _appLogger.Info("app/smoke", $"TUN apps smoke test: OK, {sw.ElapsedMilliseconds} ms");
                 return;
             }
 
@@ -1654,7 +1651,6 @@ internal sealed class MainForm : Form
                 throw new InvalidOperationException(r2.Error ?? "TUN test failed.");
 
             MessageBox.Show(this, $"TUN: OK\nВремя: {sw.ElapsedMilliseconds} мс", "Пинг", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            _appLogger.Info("app/smoke", $"TUN smoke test: OK, {sw.ElapsedMilliseconds} ms");
         }
         catch (Exception ex)
         {
@@ -1793,7 +1789,6 @@ internal sealed class MainForm : Form
         try
         {
             UpdateButtons();
-            _appLogger.Info("app/runtime", $"Запрос запуска VPN, режим={_state.Mode}");
             var result = await _vpnConnectionService.ConnectAsync(new ConnectRequest { ProfileId = p.Id });
             if (result.RequiresElevation)
             {
@@ -1806,13 +1801,12 @@ internal sealed class MainForm : Form
 
             _logTimer.Start();
             NotifyVpnConnectionState(true);
-            _appLogger.Info("app/runtime", "VPN запущен.");
         }
         catch (Exception ex)
         {
             _appLogger.Error("app/runtime", ex, "Запуск VPN завершился ошибкой.");
             MessageBox.Show(this, ex.Message, "Start failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            Stop();
+            await StopAsync();
         }
         finally
         {
@@ -1895,19 +1889,25 @@ internal sealed class MainForm : Form
         try { _vpnConnectionStateChanged?.Invoke(connected); } catch { }
     }
 
-    private void Stop()
+    private async Task StopAsync()
     {
+        _stopBtn.Enabled = false;
+        _startBtn.Enabled = false;
         try
         {
-            _vpnConnectionService.DisconnectAsync().GetAwaiter().GetResult();
-            _appLogger.Info("app/runtime", "VPN остановлен.");
+            await _vpnConnectionService.DisconnectAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _appLogger.Error("app/runtime", ex, "Остановка VPN завершилась ошибкой.");
+            MessageBox.Show(this, ex.Message, "Стоп", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
         finally
         {
-            UpdateButtons();
             _logTimer.Stop();
             RefreshLog();
             NotifyVpnConnectionState(false);
+            UpdateButtons();
         }
     }
 

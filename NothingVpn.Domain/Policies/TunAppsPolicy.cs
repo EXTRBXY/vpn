@@ -7,8 +7,4 @@ public static class TunAppsPolicy
 
     public static bool UseStrictRoute(string? mode, bool userPreference) =>
         userPreference && !IsTunApps(mode);
-
-    public static bool HijackDns(string? mode) => !IsTunApps(mode);
-
-    public static bool UseSystemDnsOnly(string? mode) => IsTunApps(mode);
 }

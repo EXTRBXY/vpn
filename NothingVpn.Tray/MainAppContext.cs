@@ -52,7 +52,6 @@ internal sealed class MainAppContext : ApplicationContext
             logStore,
             requestExit: Exit,
             vpnConnectionStateChanged: SetTrayConnectionState);
-        _appLogger.Info("app/context", "MainAppContext инициализирован.");
 
         var menu = new ContextMenuStrip();
         menu.Font = new Font("Segoe UI", 9f, FontStyle.Regular, GraphicsUnit.Point);

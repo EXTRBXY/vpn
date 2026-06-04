@@ -27,13 +27,10 @@ internal sealed class LegacyRuntimeContext
         AppState? stateSnapshot = null;
         LogStore = new InMemoryLogStore(maxBytes: 1_000_000);
         Runner = new SingBoxRunner(
-            Paths,
             "sing-box.exe",
             LogStore,
             debugLogs: () => (stateSnapshot ??= stateStore.Load()).DebugLogs,
             trustedSha256: () => (stateSnapshot ??= stateStore.Load()).TrustedSingBoxSha256);
-
-        _ = Task.Run(() => VpnRuntimeRecovery.RecoverOnStartup("sing-box.exe"));
     }
 }
 

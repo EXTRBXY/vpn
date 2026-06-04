@@ -40,8 +40,7 @@ internal static class SingBoxConfigGenerator
         outbound.Transport = BuildTransport(profile);
 
         var useDohResolver = useTun
-            && string.Equals(state.DnsMode, "doh", StringComparison.OrdinalIgnoreCase)
-            && !TunAppsPolicy.UseSystemDnsOnly(mode);
+            && string.Equals(state.DnsMode, "doh", StringComparison.OrdinalIgnoreCase);
         var hasEnabledUserRuleSets = (state.UserRuleSets ?? []).Any(x => x.Enabled);
 
         return new SingBoxConfig
@@ -67,11 +66,11 @@ internal static class SingBoxConfigGenerator
             new() { IpIsPrivate = true, Action = "route", Outbound = "direct" }
         };
 
-        if (TunAppsPolicy.HijackDns(mode))
+        if (TunRoutingPolicy.HijackDns(mode))
         {
             rules.Insert(1, new SingBoxRouteRule
             {
-                Port = new List<int> { 53 },
+                Protocol = "dns",
                 Action = "hijack-dns"
             });
         }
@@ -83,6 +82,33 @@ internal static class SingBoxConfigGenerator
                 Domain = new List<string> { domain },
                 Action = "route",
                 Outbound = "direct"
+            });
+        }
+
+        rules.Add(new SingBoxRouteRule
+        {
+            Domain = [.. TunRoutingPolicy.KnownSecureDnsDomains],
+            Action = "route",
+            Outbound = "proxy"
+        });
+
+        if (TunRoutingPolicy.RouteQuicThroughProxy(mode))
+        {
+            rules.Add(new SingBoxRouteRule
+            {
+                Protocol = "quic",
+                Action = "route",
+                Outbound = "proxy"
+            });
+        }
+
+        if (TunRoutingPolicy.RouteIpv6ThroughProxy(mode))
+        {
+            rules.Add(new SingBoxRouteRule
+            {
+                IpVersion = 6,
+                Action = "route",
+                Outbound = "proxy"
             });
         }
 
@@ -235,8 +261,6 @@ internal static class SingBoxConfigGenerator
         var addr = NormalizeTunCidr(state.TunAddressCidr, profile.Id);
         var ifBase = string.IsNullOrWhiteSpace(state.TunInterfaceName) ? "NothingVpn" : state.TunInterfaceName.Trim();
         var ifName = $"{ifBase}-{profile.Id[..Math.Min(6, profile.Id.Length)]}";
-        // 9000 MTU is often counterproductive on Windows TUN and can increase latency due to fragmentation/PMTU quirks.
-        // Prefer a safe default unless explicitly overridden.
         var configuredMtu = state.TunMtu <= 0 ? 9000 : state.TunMtu;
         var mtu = configuredMtu == 9000 ? 1500 : configuredMtu;
         var stack = NormalizeTunStack(state.TunStack);
@@ -256,31 +280,31 @@ internal static class SingBoxConfigGenerator
 
     private static string NormalizeTunStack(string? stack)
     {
-        var s = (stack ?? "mixed").Trim().ToLowerInvariant();
+        var s = (stack ?? "").Trim().ToLowerInvariant();
+        if (s.Length == 0)
+            return OperatingSystem.IsWindows() ? "system" : "mixed";
+
         return s switch
         {
             "system" => "system",
             "mixed" => "mixed",
             "gvisor" => "gvisor",
-            _ => "mixed"
+            _ => OperatingSystem.IsWindows() ? "system" : "mixed"
         };
     }
 
     private static string NormalizeTunCidr(string? configured, string profileId)
     {
         var c = (configured ?? "").Trim();
-        // Legacy default used in earlier build; treat as auto to avoid collisions.
         if (c.Length == 0 || c.Equals("auto", StringComparison.OrdinalIgnoreCase) || c.Equals("172.19.0.1/30", StringComparison.OrdinalIgnoreCase))
         {
-            // Use 198.18.0.0/15 (benchmarking range, unlikely to clash with LAN/VPNs).
-            // Derive a stable /30 per profile.
             var n = 0;
             for (var i = 0; i < profileId.Length; i++)
                 n = unchecked(n * 31 + profileId[i]);
             n = Math.Abs(n);
-            var block = n % 32768; // number of /30 blocks inside /15
+            var block = n % 32768;
             var third = (block >> 6) & 0xFF;
-            var fourth = (block & 0x3F) * 4 + 1; // +1 -> host address inside /30
+            var fourth = (block & 0x3F) * 4 + 1;
             return $"198.18.{third}.{fourth}/30";
         }
 
@@ -291,9 +315,6 @@ internal static class SingBoxConfigGenerator
     {
         var mode = (state.DnsMode ?? "system").Trim().ToLowerInvariant();
         if (!useTun && mode != "doh" && !hasEnabledUserRuleSets) return null;
-
-        if (TunAppsPolicy.UseSystemDnsOnly(connectionMode))
-            return BuildTunSystemDns(profile, reverseMapping: false);
 
         if (mode == "doh")
         {
@@ -333,7 +354,7 @@ internal static class SingBoxConfigGenerator
             {
                 Final = "doh",
                 ReverseMapping = useTun,
-                Strategy = useTun ? "prefer_ipv4" : null,
+                Strategy = useTun ? "ipv4_only" : null,
                 Servers = servers,
                 Rules = useTun && bootstrapDomains.Count > 0
                     ? bootstrapDomains.Select(d => new SingBoxDnsRule
@@ -357,7 +378,7 @@ internal static class SingBoxConfigGenerator
         {
             Final = tag,
             ReverseMapping = reverseMapping ? true : null,
-            Strategy = "prefer_ipv4",
+            Strategy = "ipv4_only",
             Servers =
             [
                 new SingBoxDnsServer
@@ -557,6 +578,10 @@ internal sealed class SingBoxRouteRule
     public List<int>? Port { get; set; }
 
     public List<string>? Domain { get; set; }
+
+    public string? Protocol { get; set; }
+
+    public int? IpVersion { get; set; }
 
     public bool? IpIsPrivate { get; set; }
 

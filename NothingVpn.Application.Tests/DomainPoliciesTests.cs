@@ -45,7 +45,7 @@ public sealed class DomainPoliciesTests
     [InlineData("tun", true, "proxy", "proxy")]
     [InlineData("tun", false, "direct", null)]
     [InlineData("tun_apps", true, "direct", null)]
-    [InlineData("tun_apps", true, "proxy", null)]
+    [InlineData("tun_apps", true, "proxy", "proxy")]
     [InlineData("proxy", true, "direct", null)]
     public void ResolveSingBoxDohDetour_ReturnsExpected(
         string connectionMode,
@@ -81,13 +81,28 @@ public sealed class DomainPoliciesTests
     }
 
     [Theory]
-    [InlineData("tun_apps", false, true)]
-    [InlineData("tun", true, false)]
-    [InlineData("proxy", true, false)]
-    public void TunAppsPolicy_SplitTunnelFlags(string mode, bool userStrictRoute, bool expectedSystemDns)
+    [InlineData("tun_apps", false)]
+    [InlineData("tun", true)]
+    [InlineData("proxy", true)]
+    public void TunAppsPolicy_SplitTunnelFlags(string mode, bool userStrictRoute)
     {
-        Assert.Equal(expectedSystemDns, TunAppsPolicy.UseSystemDnsOnly(mode));
-        Assert.Equal(!expectedSystemDns, TunAppsPolicy.HijackDns(mode));
-        Assert.Equal(userStrictRoute && !expectedSystemDns, TunAppsPolicy.UseStrictRoute(mode, userStrictRoute));
+        var isTunApps = string.Equals(mode, "tun_apps", StringComparison.Ordinal);
+        Assert.Equal(isTunApps, TunAppsPolicy.IsTunApps(mode));
+        Assert.Equal(userStrictRoute && !isTunApps, TunAppsPolicy.UseStrictRoute(mode, userStrictRoute));
+    }
+
+    [Theory]
+    [InlineData("tun", true)]
+    [InlineData("tun_apps", true)]
+    [InlineData("proxy", false)]
+    public void TunRoutingPolicy_HijackDns_ForAllTunModes(string mode, bool expected)
+    {
+        Assert.Equal(expected, TunRoutingPolicy.HijackDns(mode));
+    }
+
+    [Fact]
+    public void TunRoutingPolicy_KnownSecureDnsDomains_IsNonEmpty()
+    {
+        Assert.NotEmpty(TunRoutingPolicy.KnownSecureDnsDomains);
     }
 }

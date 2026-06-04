@@ -5,7 +5,6 @@ namespace NothingVpn.Domain.Policies;
 public static class TunBootstrapPolicy
 {
     public const string BootstrapLocalDnsTag = "bootstrap-local";
-    public const string LocalDnsTag = "local";
 
     public static IReadOnlyList<string> CollectEndpointDomains(string? host, string? sni)
     {
@@ -20,7 +19,6 @@ public static class TunBootstrapPolicy
         if (!useTun)
             return null;
 
-        // Must match a DNS server tag present in the generated config (see BuildDns).
         return BootstrapLocalDnsTag;
     }
 
@@ -28,9 +26,6 @@ public static class TunBootstrapPolicy
     {
         var mode = ConnectionPolicy.NormalizeMode(connectionMode);
         if (!ConnectionPolicy.IsTunMode(mode))
-            return null;
-
-        if (TunAppsPolicy.UseSystemDnsOnly(mode))
             return null;
 
         var effectiveStrictRoute = TunAppsPolicy.UseStrictRoute(mode, tunStrictRoute);
