@@ -261,8 +261,7 @@ internal static class SingBoxConfigGenerator
         var addr = NormalizeTunCidr(state.TunAddressCidr, profile.Id);
         var ifBase = string.IsNullOrWhiteSpace(state.TunInterfaceName) ? "NothingVpn" : state.TunInterfaceName.Trim();
         var ifName = $"{ifBase}-{profile.Id[..Math.Min(6, profile.Id.Length)]}";
-        var configuredMtu = state.TunMtu <= 0 ? 9000 : state.TunMtu;
-        var mtu = configuredMtu == 9000 ? 1500 : configuredMtu;
+        var mtu = TunSettingsPolicy.NormalizeMtu(state.TunMtu);
         var stack = NormalizeTunStack(state.TunStack);
 
         return new SingBoxInbound

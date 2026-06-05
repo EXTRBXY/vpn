@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using NothingVpn.Application.Mappers;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Services;
 using NothingVpn.Domain.Models;
@@ -38,6 +39,7 @@ internal sealed class MainForm : Form
 
     private readonly TabControl _tabs;
     private readonly TabPage _tabLogs;
+    private readonly ConnectionSettingsUi _connectionSettings;
 
     private readonly ComboBox _profilesCombo;
     private readonly Button _profilesBtn;
@@ -61,6 +63,8 @@ internal sealed class MainForm : Form
     private readonly Label _portValue;
     private readonly Label _dnsValue;
     private readonly Label _ruleSetsValue;
+    private readonly Label _tunValue;
+    private readonly Label _proxyBypassValue;
 
     private readonly Panel _tunAppsPanel;
     private readonly GroupBox _tunAppsGroup;
@@ -81,12 +85,21 @@ internal sealed class MainForm : Form
     private BindingList<UserRuleSetModel> _builtinRuleSetsBinding = new();
     private BindingList<UserRuleSetModel> _userRuleSetsBinding = new();
 
+    private readonly ComboBox _dnsModeCombo;
     private readonly ComboBox _dnsPresetCombo;
     private readonly ComboBox _dnsDetourCombo;
     private readonly TextBox _dohServerBox;
     private readonly TextBox _dohPathBox;
     private readonly TextBox _dohSniBox;
     private readonly Label _dnsNotice;
+    private readonly TextBox _proxyOverrideBox;
+    private readonly TextBox _tunInterfaceNameBox;
+    private readonly ComboBox _tunAddressCidrModeCombo;
+    private readonly TextBox _tunAddressCidrBox;
+    private readonly NumericUpDown _tunMtu;
+    private readonly ComboBox _tunStackCombo;
+    private readonly CheckBox _tunAutoRoute;
+    private readonly CheckBox _tunStrictRoute;
     private readonly System.Windows.Forms.Timer _dnsDebounceTimer;
     private bool _dnsUiReady;
 
@@ -145,15 +158,35 @@ internal sealed class MainForm : Form
 
         _tabs = new TabControl { Dock = DockStyle.Fill };
         var tabMain = new TabPage("Основное");
+        _connectionSettings = ConnectionSettingsPanelBuilder.Build();
+        var tabRouting = new TabPage("Маршрутизация");
         _tabLogs = new TabPage("Логи");
         var tabAdvanced = new TabPage("Дополнительно");
         _tabs.TabPages.Add(tabMain);
+        _tabs.TabPages.Add(_connectionSettings.Tab);
+        _tabs.TabPages.Add(tabRouting);
         _tabs.TabPages.Add(_tabLogs);
         _tabs.TabPages.Add(tabAdvanced);
         Controls.Add(_tabs);
 
-        // Main tab: no SplitContainer -> no forced empty space
+        _dnsModeCombo = _connectionSettings.DnsModeCombo;
+        _dnsPresetCombo = _connectionSettings.DnsPresetCombo;
+        _dnsDetourCombo = _connectionSettings.DnsDetourCombo;
+        _dohServerBox = _connectionSettings.DohServerBox;
+        _dohPathBox = _connectionSettings.DohPathBox;
+        _dohSniBox = _connectionSettings.DohSniBox;
+        _dnsNotice = _connectionSettings.DnsNotice;
+        _proxyOverrideBox = _connectionSettings.ProxyOverrideBox;
+        _tunInterfaceNameBox = _connectionSettings.TunInterfaceNameBox;
+        _tunAddressCidrModeCombo = _connectionSettings.TunAddressCidrModeCombo;
+        _tunAddressCidrBox = _connectionSettings.TunAddressCidrBox;
+        _tunMtu = _connectionSettings.TunMtu;
+        _tunStackCombo = _connectionSettings.TunStackCombo;
+        _tunAutoRoute = _connectionSettings.TunAutoRoute;
+        _tunStrictRoute = _connectionSettings.TunStrictRoute;
+
         tabMain.AutoScroll = true;
+        tabRouting.AutoScroll = true;
         tabAdvanced.AutoScroll = true;
 
         var layout = new TableLayoutPanel
@@ -232,10 +265,9 @@ internal sealed class MainForm : Form
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 1,
-            RowCount = 3,
+            RowCount = 2,
             Padding = new Padding(UiMetrics.Space12, UiMetrics.Space12, UiMetrics.Space12, UiMetrics.Space8)
         };
-        mainStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         mainStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         mainStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
@@ -278,7 +310,7 @@ internal sealed class MainForm : Form
         tunAppsRoot.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         tunAppsRoot.Controls.Add(new Label
         {
-            Text = "Исполняемые файлы, чей трафик идёт через VPN (полный путь .exe). Дочерние процессы нужно добавлять отдельно.\n\nПримечание: доменные rule-set (direct/block) применяются до правила выбора процессов.",
+            Text = "Исполняемые файлы, чей трафик идёт через VPN (полный путь .exe). Дочерние процессы нужно добавлять отдельно.\n\nСписки доменов из вкладки «Маршрутизация» применяются раньше выбора приложений.",
             AutoSize = true,
             MaximumSize = new Size(560, 0)
         }, 0, 0);
@@ -317,7 +349,7 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Top,
             AutoSize = true,
             ColumnCount = 2,
-            RowCount = 7,
+            RowCount = 9,
             Padding = new Padding(UiMetrics.Space12),
         };
         statusLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
@@ -330,6 +362,8 @@ internal sealed class MainForm : Form
         _portValue = new Label { AutoSize = true, Anchor = AnchorStyles.Left };
         _dnsValue = new Label { AutoSize = true, Anchor = AnchorStyles.Left };
         _ruleSetsValue = new Label { AutoSize = true, Anchor = AnchorStyles.Left };
+        _tunValue = new Label { AutoSize = true, Anchor = AnchorStyles.Left };
+        _proxyBypassValue = new Label { AutoSize = true, Anchor = AnchorStyles.Left };
 
         statusLayout.Controls.Add(new Label { Text = "Статус", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
         statusLayout.Controls.Add(_statusValue, 1, 0);
@@ -345,13 +379,12 @@ internal sealed class MainForm : Form
         statusLayout.Controls.Add(_dnsValue, 1, 5);
         statusLayout.Controls.Add(new Label { Text = "Rule-sets", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 6);
         statusLayout.Controls.Add(_ruleSetsValue, 1, 6);
-        statusLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        statusLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        statusLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        statusLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        statusLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        statusLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        statusLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        statusLayout.Controls.Add(new Label { Text = "TUN", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 7);
+        statusLayout.Controls.Add(_tunValue, 1, 7);
+        statusLayout.Controls.Add(new Label { Text = "Исключения прокси", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 8);
+        statusLayout.Controls.Add(_proxyBypassValue, 1, 8);
+        for (var i = 0; i < 9; i++)
+            statusLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         var statusGroup = new GroupBox
         {
@@ -363,8 +396,10 @@ internal sealed class MainForm : Form
         statusGroup.Controls.Add(statusLayout);
         mainStack.Controls.Add(statusGroup, 0, 0);
         mainStack.Controls.Add(connectionGroup, 0, 1);
-        mainStack.Controls.Add(_tunAppsGroup, 0, 2);
         tabMain.Controls.Add(mainStack);
+
+        _connectionSettings.TunAppsHost.Controls.Add(_tunAppsGroup);
+        _tunAppsGroup.Dock = DockStyle.Top;
 
         // Logs tab
         var logsRoot = new TableLayoutPanel
@@ -516,73 +551,7 @@ internal sealed class MainForm : Form
 
         rsOuter.Controls.Add(userGroup);
         rsOuter.Controls.Add(builtinGroup);
-
-        // DNS
-        var dnsGroup = new GroupBox
-        {
-            Text = "DNS (sing-box)",
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Padding = new Padding(UiMetrics.Space12)
-        };
-        var dnsLayout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            ColumnCount = 2,
-            RowCount = 5
-        };
-        dnsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160));
-        dnsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-
-        _dnsPresetCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Anchor = AnchorStyles.Left | AnchorStyles.Right };
-        _dnsPresetCombo.Items.AddRange(new object[]
-        {
-            "Cloudflare (1.1.1.1, SNI cloudflare-dns.com)",
-            "Google (8.8.8.8, SNI dns.google)",
-            "Quad9 (9.9.9.9, SNI dns.quad9.net)",
-            "AdGuard (94.140.14.14, SNI dns.adguard.com)",
-            "Пользовательский"
-        });
-        dnsLayout.Controls.Add(new Label { Text = "Пресет DoH", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
-        dnsLayout.Controls.Add(_dnsPresetCombo, 1, 0);
-
-        _dnsDetourCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
-        _dnsDetourCombo.Items.AddRange(new object[] { "direct", "proxy" });
-        var detourRow = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = false };
-        detourRow.Controls.Add(_dnsDetourCombo);
-        detourRow.Controls.Add(new Label
-        {
-            Text = " (куда отправлять DoH-запросы)",
-            AutoSize = true,
-            Margin = new Padding(6, 6, 0, 0)
-        });
-        dnsLayout.Controls.Add(new Label { Text = "DNS detour", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
-        dnsLayout.Controls.Add(detourRow, 1, 1);
-
-        _dohServerBox = new TextBox { Anchor = AnchorStyles.Left | AnchorStyles.Right };
-        _dohPathBox = new TextBox { Anchor = AnchorStyles.Left | AnchorStyles.Right };
-        _dohSniBox = new TextBox { Anchor = AnchorStyles.Left | AnchorStyles.Right };
-        dnsLayout.Controls.Add(new Label { Text = "DoH IP", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
-        dnsLayout.Controls.Add(_dohServerBox, 1, 2);
-        dnsLayout.Controls.Add(new Label { Text = "DoH path", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 3);
-        dnsLayout.Controls.Add(_dohPathBox, 1, 3);
-        dnsLayout.Controls.Add(new Label { Text = "DoH SNI", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 4);
-        dnsLayout.Controls.Add(_dohSniBox, 1, 4);
-
-        _dnsNotice = new Label
-        {
-            Text = "",
-            AutoSize = true,
-            ForeColor = UiTheme.TextMuted,
-            Dock = DockStyle.Top,
-            Padding = new Padding(2, 6, 2, 0),
-            Visible = false
-        };
-
-        dnsGroup.Controls.Add(dnsLayout);
-        dnsGroup.Controls.Add(_dnsNotice);
+        tabRouting.Controls.Add(rsOuter);
 
         _updateBannerPanel = new Panel
         {
@@ -640,8 +609,6 @@ internal sealed class MainForm : Form
         updateManualCheckPanel.Controls.Add(_updateManualCheckBtn);
 
         tabAdvanced.Controls.Add(updateManualCheckPanel);
-        tabAdvanced.Controls.Add(rsOuter);
-        tabAdvanced.Controls.Add(dnsGroup);
         tabAdvanced.Controls.Add(advLayout);
         tabAdvanced.Controls.Add(_updateBannerPanel);
 
@@ -656,7 +623,7 @@ internal sealed class MainForm : Form
         {
             _dnsDebounceTimer.Stop();
             if (!_dnsUiReady) return;
-            SaveDnsFromUi(showDialogs: false);
+            SaveConnectionSettingsFromUi(showDialogs: false);
         };
 
         _profilesBtn.Click += (_, _) => OpenProfilesDialog();
@@ -681,7 +648,7 @@ internal sealed class MainForm : Form
             _state.Mode = ComboIndexToMode(_modeCombo.SelectedIndex);
             SaveState();
             UpdateTitle();
-            UpdateTunAppsPanelVisibility();
+            UpdateConnectionTabVisibility();
             UpdateButtons();
         };
         _tunAppsAddBtn.Click += (_, _) => AddTunAppExecutable();
@@ -731,15 +698,28 @@ internal sealed class MainForm : Form
         _userRuleSetsGrid.CellValueChanged += (_, _) => SaveRuleSetsFromGrid();
         _userRuleSetsGrid.DataError += (_, _) => { };
 
+        _dnsModeCombo.SelectedIndexChanged += (_, _) =>
+        {
+            _connectionSettings.UpdateDohFieldsEnabled();
+            if (_dnsUiReady) RestartConnectionSettingsDebounce();
+        };
         _dnsPresetCombo.SelectedIndexChanged += (_, _) =>
         {
             ApplyDnsPresetToBoxes();
-            if (_dnsUiReady) RestartDnsDebounce();
+            if (_dnsUiReady) RestartConnectionSettingsDebounce();
         };
-        _dnsDetourCombo.SelectedIndexChanged += (_, _) => { if (_dnsUiReady) RestartDnsDebounce(); };
-        _dohServerBox.TextChanged += (_, _) => { if (_dnsUiReady) RestartDnsDebounce(); };
-        _dohPathBox.TextChanged += (_, _) => { if (_dnsUiReady) RestartDnsDebounce(); };
-        _dohSniBox.TextChanged += (_, _) => { if (_dnsUiReady) RestartDnsDebounce(); };
+        _dnsDetourCombo.SelectedIndexChanged += (_, _) => { if (_dnsUiReady) RestartConnectionSettingsDebounce(); };
+        _dohServerBox.TextChanged += (_, _) => { if (_dnsUiReady) RestartConnectionSettingsDebounce(); };
+        _dohPathBox.TextChanged += (_, _) => { if (_dnsUiReady) RestartConnectionSettingsDebounce(); };
+        _dohSniBox.TextChanged += (_, _) => { if (_dnsUiReady) RestartConnectionSettingsDebounce(); };
+        _proxyOverrideBox.TextChanged += (_, _) => { if (_dnsUiReady) RestartConnectionSettingsDebounce(); };
+        _tunInterfaceNameBox.TextChanged += (_, _) => { if (_dnsUiReady) RestartConnectionSettingsDebounce(); };
+        _tunAddressCidrModeCombo.SelectedIndexChanged += (_, _) => { if (_dnsUiReady) RestartConnectionSettingsDebounce(); };
+        _tunAddressCidrBox.TextChanged += (_, _) => { if (_dnsUiReady) RestartConnectionSettingsDebounce(); };
+        _tunMtu.ValueChanged += (_, _) => { if (_dnsUiReady) RestartConnectionSettingsDebounce(); };
+        _tunStackCombo.SelectedIndexChanged += (_, _) => { if (_dnsUiReady) RestartConnectionSettingsDebounce(); };
+        _tunAutoRoute.CheckedChanged += (_, _) => { if (_dnsUiReady) RestartConnectionSettingsDebounce(); };
+        _tunStrictRoute.CheckedChanged += (_, _) => { if (_dnsUiReady) RestartConnectionSettingsDebounce(); };
 
         _vpnConnectionService.ConnectionStateChanged += (_, connected) =>
         {
@@ -803,7 +783,7 @@ internal sealed class MainForm : Form
 
         _modeCombo.SelectedIndex = ModeToComboIndex(_state.Mode);
         SyncTunAppsListFromState();
-        UpdateTunAppsPanelVisibility();
+        UpdateConnectionTabVisibility();
         UpdateTitle();
         UpdateButtons();
 
@@ -906,11 +886,11 @@ internal sealed class MainForm : Form
         _modeCombo.SelectedIndex = ModeToComboIndex(_state.Mode);
         SyncTunAppsListFromState();
         SyncRuleSetsGridFromState();
-        UpdateTunAppsPanelVisibility();
+        UpdateConnectionTabVisibility();
         _debugLogs.Checked = _state.DebugLogs;
         if (_logFilterCombo.SelectedIndex < 0) _logFilterCombo.SelectedIndex = 2; // INFO
         UpdateSingBoxHashLabel();
-        SyncDnsUiFromState();
+        _connectionSettings.LoadFromState(_state);
         _dnsUiReady = true;
         UpdateTitle();
     }
@@ -920,31 +900,10 @@ internal sealed class MainForm : Form
         _settingsService.SaveState(_state);
     }
 
-    private void RestartDnsDebounce()
+    private void RestartConnectionSettingsDebounce()
     {
         _dnsDebounceTimer.Stop();
         _dnsDebounceTimer.Start();
-    }
-
-    private void SyncDnsUiFromState()
-    {
-        _dohServerBox.Text = _state.DohServer ?? "";
-        _dohPathBox.Text = _state.DohPath ?? "/dns-query";
-        _dohSniBox.Text = _state.DohSni ?? "";
-        var detour = (_state.DnsDetour ?? "direct").Trim().ToLowerInvariant();
-        _dnsDetourCombo.SelectedItem = detour == "proxy" ? "proxy" : "direct";
-        _dnsPresetCombo.SelectedIndex = DnsStateToPresetIndex(_state);
-    }
-
-    private int DnsStateToPresetIndex(AppStateModel state)
-    {
-        var s = (state.DohServer ?? "").Trim();
-        var sn = (state.DohSni ?? "").Trim();
-        if (s == "1.1.1.1" && sn.Equals("cloudflare-dns.com", StringComparison.OrdinalIgnoreCase)) return 0;
-        if (s == "8.8.8.8" && sn.Equals("dns.google", StringComparison.OrdinalIgnoreCase)) return 1;
-        if (s == "9.9.9.9" && sn.Equals("dns.quad9.net", StringComparison.OrdinalIgnoreCase)) return 2;
-        if (s == "94.140.14.14" && sn.Equals("dns.adguard.com", StringComparison.OrdinalIgnoreCase)) return 3;
-        return 4;
     }
 
     private void ApplyDnsPresetToBoxes()
@@ -990,43 +949,72 @@ internal sealed class MainForm : Form
         }
     }
 
-    private void SaveDnsFromUi(bool showDialogs)
+    private void SaveConnectionSettingsFromUi(bool showDialogs)
     {
         try
         {
-            var server = (_dohServerBox.Text ?? "").Trim();
-            var path = (_dohPathBox.Text ?? "").Trim();
-            var sni = (_dohSniBox.Text ?? "").Trim();
-            var detour = (_dnsDetourCombo.SelectedItem?.ToString() ?? "direct").Trim().ToLowerInvariant();
-
-            if (string.IsNullOrWhiteSpace(server))
+            var proxy = new ProxyConnectionSettings
             {
-                if (showDialogs) throw new InvalidOperationException("DoH IP не задан.");
-                return;
-            }
-            if (string.IsNullOrWhiteSpace(path))
-                path = "/dns-query";
-            if (string.IsNullOrWhiteSpace(sni))
-            {
-                if (showDialogs) throw new InvalidOperationException("DoH SNI не задан (нужен для TLS).");
-                return;
-            }
-            if (detour != "direct" && detour != "proxy")
-                detour = "direct";
+                ProxyOverride = _proxyOverrideBox.Text
+            };
+            ProxyConnectionPolicy.Validate(proxy);
+            ConnectionSettingsMapper.ApplyProxySettings(_state, proxy);
 
-            _state.DnsMode = "doh";
-            _state.DohServer = server;
-            _state.DohPath = path;
-            _state.DohSni = sni;
-            _state.DnsDetour = detour;
+            var tun = new TunSettings
+            {
+                InterfaceName = _tunInterfaceNameBox.Text,
+                AddressCidr = _tunAddressCidrModeCombo.SelectedIndex == 0
+                    ? "auto"
+                    : (_tunAddressCidrBox.Text ?? "").Trim(),
+                Mtu = (int)_tunMtu.Value,
+                Stack = TunSettingsPolicy.ComboIndexToStack(_tunStackCombo.SelectedIndex),
+                AutoRoute = _tunAutoRoute.Checked,
+                StrictRoute = _tunStrictRoute.Checked
+            };
+            TunSettingsPolicy.Validate(tun);
+            ConnectionSettingsMapper.ApplyTunSettings(_state, tun);
+
+            var dnsMode = _dnsModeCombo.SelectedIndex == 0 ? "system" : "doh";
+            var detour = DnsPolicy.ComboIndexToDetour(_dnsDetourCombo.SelectedIndex);
+
+            var dns = ConnectionSettingsMapper.ToDnsSettings(_state);
+            dns.Mode = dnsMode;
+            dns.Detour = detour;
+
+            if (dnsMode == "doh")
+            {
+                var server = (_dohServerBox.Text ?? "").Trim();
+                var path = (_dohPathBox.Text ?? "").Trim();
+                var sni = (_dohSniBox.Text ?? "").Trim();
+
+                if (string.IsNullOrWhiteSpace(server))
+                {
+                    if (showDialogs) throw new InvalidOperationException("DoH IP не задан.");
+                    return;
+                }
+                if (string.IsNullOrWhiteSpace(path))
+                    path = "/dns-query";
+                if (string.IsNullOrWhiteSpace(sni))
+                {
+                    if (showDialogs) throw new InvalidOperationException("DoH SNI не задан (нужен для TLS).");
+                    return;
+                }
+
+                dns.DohServer = server;
+                dns.DohPath = path;
+                dns.DohSni = sni;
+            }
+
+            DnsPolicy.Normalize(dns);
+            ConnectionSettingsMapper.ApplyDnsSettings(_state, dns);
             SaveState();
 
-            ShowDnsNotice("DNS сохранён. Вступит в силу после переподключения.");
+            ShowDnsNotice("Настройки соединения сохранены. Вступят в силу после переподключения.");
         }
         catch (Exception ex)
         {
             if (showDialogs)
-                MessageBox.Show(this, ex.Message, "DNS", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, ex.Message, "Соединение", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -1734,13 +1722,16 @@ internal sealed class MainForm : Form
         _portValue.Text = _state.LocalMixedPort.ToString();
         _dnsValue.Text = BuildDnsStatusText();
         _ruleSetsValue.Text = BuildRuleSetsStatusText();
+        _tunValue.Text = BuildTunStatusText();
+        _proxyBypassValue.Text = BuildProxyBypassStatusText();
+        _connectionSettings.SetConnectionFieldsEnabled(!running);
     }
 
     private string BuildDnsStatusText()
     {
         var mode = (_state.DnsMode ?? "").Trim().ToLowerInvariant();
         var detour = (_state.DnsDetour ?? "direct").Trim().ToLowerInvariant();
-        var detourLabel = detour == "proxy" ? "через proxy" : "напрямую";
+        var detourLabel = DnsPolicy.DetourToDisplayLabel(detour).ToLowerInvariant();
         if (mode == "doh")
         {
             var server = string.IsNullOrWhiteSpace(_state.DohServer) ? "(не задан)" : _state.DohServer.Trim();
@@ -1758,6 +1749,29 @@ internal sealed class MainForm : Form
         var builtinEnabled = all.Count(x => x.Enabled && !string.IsNullOrWhiteSpace(x.BuiltinId));
         var customEnabled = all.Count(x => x.Enabled && string.IsNullOrWhiteSpace(x.BuiltinId));
         return $"{enabled} активных (встроенные: {builtinEnabled}, пользовательские: {customEnabled})";
+    }
+
+    private string BuildTunStatusText()
+    {
+        if (!ConnectionPolicy.IsTunMode(_state.Mode))
+            return "—";
+
+        var mtu = TunSettingsPolicy.NormalizeMtu(_state.TunMtu);
+        var stack = TunSettingsPolicy.StackToDisplayLabel(_state.TunStack);
+        var strict = _state.TunStrictRoute ? "вкл." : "выкл.";
+        return $"MTU {mtu}, стек {stack}, строгая маршрутизация {strict}";
+    }
+
+    private string BuildProxyBypassStatusText()
+    {
+        if (!string.Equals(_state.Mode, ConnectionPolicy.ProxyMode, StringComparison.OrdinalIgnoreCase))
+            return "—";
+
+        var value = (_state.ProxyOverride ?? "").Trim();
+        if (value.Length == 0)
+            return ProxyConnectionPolicy.DefaultProxyOverride;
+
+        return value.Length > 48 ? value[..48] + "…" : value;
     }
 
     private void OpenProfilesDialog()
@@ -1975,13 +1989,15 @@ internal sealed class MainForm : Form
         _ => "proxy"
     };
 
-    private void UpdateTunAppsPanelVisibility()
+    private void UpdateConnectionTabVisibility()
     {
-        var visible = string.Equals(_state.Mode, "tun_apps", StringComparison.OrdinalIgnoreCase);
-        if (_tunAppsGroup.Visible != visible)
-            _tunAppsGroup.Visible = visible;
-        if (_tunAppsPanel.Visible != visible)
-            _tunAppsPanel.Visible = visible;
+        _connectionSettings.UpdateVisibility(_state.Mode);
+
+        var tunAppsVisible = string.Equals(_state.Mode, ConnectionPolicy.TunAppsMode, StringComparison.OrdinalIgnoreCase);
+        if (_tunAppsGroup.Visible != tunAppsVisible)
+            _tunAppsGroup.Visible = tunAppsVisible;
+        if (_tunAppsPanel.Visible != tunAppsVisible)
+            _tunAppsPanel.Visible = tunAppsVisible;
     }
 
     private void SyncTunAppsListFromState()

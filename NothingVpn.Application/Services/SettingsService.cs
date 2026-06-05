@@ -1,3 +1,4 @@
+using NothingVpn.Application.Mappers;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
 using NothingVpn.Domain.Models;
@@ -15,6 +16,7 @@ public sealed class SettingsService(IStateStorePort stateStore, IPathPolicyPort 
     {
         state.Mode = ConnectionPolicy.NormalizeMode(state.Mode);
         state.TunAppProcessPaths = pathPolicy.NormalizeDistinctExePaths(state.TunAppProcessPaths).ToList();
+        NormalizeConnectionSettings(state);
         stateStore.Save(state);
         StateChanged?.Invoke(this, state);
     }
@@ -38,11 +40,23 @@ public sealed class SettingsService(IStateStorePort stateStore, IPathPolicyPort 
             Detour = detour
         };
         DnsPolicy.Normalize(dns);
-        state.DnsMode = dns.Mode;
-        state.DohServer = dns.DohServer;
-        state.DohPath = dns.DohPath;
-        state.DohSni = dns.DohSni;
-        state.DnsDetour = dns.Detour;
+        ConnectionSettingsMapper.ApplyDnsSettings(state, dns);
+        SaveState(state);
+    }
+
+    public void UpdateTunSettings(TunSettings settings)
+    {
+        var state = stateStore.Load();
+        TunSettingsPolicy.Normalize(settings);
+        ConnectionSettingsMapper.ApplyTunSettings(state, settings);
+        SaveState(state);
+    }
+
+    public void UpdateProxySettings(ProxyConnectionSettings settings)
+    {
+        var state = stateStore.Load();
+        ProxyConnectionPolicy.Normalize(settings);
+        ConnectionSettingsMapper.ApplyProxySettings(state, settings);
         SaveState(state);
     }
 
@@ -58,6 +72,21 @@ public sealed class SettingsService(IStateStorePort stateStore, IPathPolicyPort 
         var state = stateStore.Load();
         state.TunAppProcessPaths = pathPolicy.NormalizeDistinctExePaths(paths).ToList();
         SaveState(state);
+    }
+
+    private static void NormalizeConnectionSettings(AppStateModel state)
+    {
+        var dns = ConnectionSettingsMapper.ToDnsSettings(state);
+        DnsPolicy.Normalize(dns);
+        ConnectionSettingsMapper.ApplyDnsSettings(state, dns);
+
+        var tun = ConnectionSettingsMapper.ToTunSettings(state);
+        TunSettingsPolicy.Normalize(tun);
+        ConnectionSettingsMapper.ApplyTunSettings(state, tun);
+
+        var proxy = ConnectionSettingsMapper.ToProxySettings(state);
+        ProxyConnectionPolicy.Normalize(proxy);
+        ConnectionSettingsMapper.ApplyProxySettings(state, proxy);
     }
 }
 

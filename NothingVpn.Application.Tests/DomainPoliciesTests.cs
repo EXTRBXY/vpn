@@ -105,4 +105,76 @@ public sealed class DomainPoliciesTests
     {
         Assert.NotEmpty(TunRoutingPolicy.KnownSecureDnsDomains);
     }
+
+    [Theory]
+    [InlineData(0, 1500)]
+    [InlineData(-1, 1500)]
+    [InlineData(500, 576)]
+    [InlineData(10000, 9000)]
+    [InlineData(1500, 1500)]
+    [InlineData(9000, 1500)]
+    public void TunSettingsPolicy_NormalizeMtu_ClampsAndDefaults(int input, int expected)
+    {
+        Assert.Equal(expected, TunSettingsPolicy.NormalizeMtu(input));
+    }
+
+    [Theory]
+    [InlineData("auto", true)]
+    [InlineData("198.18.1.1/30", true)]
+    [InlineData("not-a-cidr", false)]
+    [InlineData("10.0.0.1/33", false)]
+    public void TunSettingsPolicy_IsValidAddressCidr(string cidr, bool expected)
+    {
+        Assert.Equal(expected, TunSettingsPolicy.IsValidAddressCidr(cidr));
+    }
+
+    [Fact]
+    public void TunSettingsPolicy_Normalize_SanitizesInterfaceName()
+    {
+        var settings = new TunSettings { InterfaceName = "bad/name", Mtu = 1500 };
+        TunSettingsPolicy.Normalize(settings);
+        Assert.Equal("NothingVpn", settings.InterfaceName);
+    }
+
+    [Theory]
+    [InlineData("gvisor", "gvisor")]
+    [InlineData("system", "system")]
+    [InlineData("unknown", "")]
+    [InlineData("", "")]
+    public void TunSettingsPolicy_NormalizeStack(string input, string expected)
+    {
+        Assert.Equal(expected, TunSettingsPolicy.NormalizeStack(input));
+    }
+
+    [Fact]
+    public void ProxyConnectionPolicy_Normalize_EmptyUsesDefault()
+    {
+        var settings = new ProxyConnectionSettings { ProxyOverride = "   " };
+        ProxyConnectionPolicy.Normalize(settings);
+        Assert.Equal(ProxyConnectionPolicy.DefaultProxyOverride, settings.ProxyOverride);
+    }
+
+    [Fact]
+    public void ProxyConnectionPolicy_Validate_RejectsControlChars()
+    {
+        var settings = new ProxyConnectionSettings { ProxyOverride = "localhost;\u0001" };
+        Assert.Throws<ArgumentException>(() => ProxyConnectionPolicy.Validate(settings));
+    }
+
+    [Fact]
+    public void DnsPolicy_IsDohMode_DetectsMode()
+    {
+        Assert.True(DnsPolicy.IsDohMode(new DnsSettings { Mode = "doh" }));
+        Assert.False(DnsPolicy.IsDohMode(new DnsSettings { Mode = "system" }));
+    }
+
+    [Theory]
+    [InlineData("proxy", 1, "Через VPN")]
+    [InlineData("direct", 0, "Напрямую")]
+    public void DnsPolicy_DetourUiMapping(string detour, int expectedIndex, string expectedLabel)
+    {
+        Assert.Equal(expectedIndex, DnsPolicy.DetourToComboIndex(detour));
+        Assert.Equal(detour, DnsPolicy.ComboIndexToDetour(expectedIndex));
+        Assert.Equal(expectedLabel, DnsPolicy.DetourToDisplayLabel(detour));
+    }
 }

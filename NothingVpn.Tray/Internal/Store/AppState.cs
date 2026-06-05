@@ -22,7 +22,7 @@ internal sealed class AppState
 
     public string TunInterfaceName { get; set; } = "NothingVpn";
     public string TunAddressCidr { get; set; } = "auto";
-    public int TunMtu { get; set; } = 9000;
+    public int TunMtu { get; set; } = 1500;
     public string TunStack { get; set; } = "";
     public bool TunAutoRoute { get; set; } = true;
     public bool TunStrictRoute { get; set; } = true;

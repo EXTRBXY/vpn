@@ -140,4 +140,38 @@ public sealed class SingBoxConfigGeneratorTests
         Assert.Equal(2080, mixed.ListenPort);
         Assert.Equal("127.0.0.1", mixed.Listen);
     }
+
+    [Fact]
+    public void Build_TunMode_CustomMtuStackAndStrictRoute()
+    {
+        var paths = AppPaths.CreateDefault();
+        var profile = new VlessProfile
+        {
+            Id = "tuncustom",
+            Host = "node.example",
+            Port = 443,
+            Uuid = Guid.NewGuid().ToString(),
+            Security = "tls",
+            Sni = "node.example"
+        };
+        var state = new AppState
+        {
+            Mode = "tun",
+            DnsMode = "doh",
+            TunMtu = 1400,
+            TunStack = "gvisor",
+            TunStrictRoute = false,
+            TunInterfaceName = "CustomVpn",
+            TunAddressCidr = "198.18.50.1/30"
+        };
+
+        var config = SingBoxConfigGenerator.Build(paths, profile, state);
+        var tun = Assert.Single(config.Inbounds, i => i.Type == "tun");
+
+        Assert.Equal(1400, tun.Mtu);
+        Assert.Equal("gvisor", tun.Stack);
+        Assert.False(tun.StrictRoute);
+        Assert.Equal("198.18.50.1/30", Assert.Single(tun.Address));
+        Assert.StartsWith("CustomVpn-", tun.InterfaceName, StringComparison.Ordinal);
+    }
 }
