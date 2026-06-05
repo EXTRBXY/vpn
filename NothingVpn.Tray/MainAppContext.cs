@@ -225,10 +225,7 @@ internal sealed class MainAppContext : ApplicationContext
     {
         try
         {
-            if (_mainForm.InvokeRequired)
-                _mainForm.Invoke(() => _mainForm.Shutdown());
-            else
-                _mainForm.Shutdown();
+            _mainForm.Shutdown();
         }
         catch
         {

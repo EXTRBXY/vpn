@@ -835,12 +835,19 @@ internal sealed class MainForm : Form
     {
         try
         {
-            StopAsync().Wait(TimeSpan.FromSeconds(5));
+            DisconnectVpnSync();
+            _logTimer.Stop();
+            NotifyVpnConnectionState(false);
         }
         catch
         {
             // best-effort
         }
+    }
+
+    private void DisconnectVpnSync()
+    {
+        _vpnConnectionService.DisconnectAsync().ConfigureAwait(false).GetAwaiter().GetResult();
     }
 
     public void ReloadProfilesFromSubscriptions()
@@ -1909,19 +1916,36 @@ internal sealed class MainForm : Form
         _startBtn.Enabled = false;
         try
         {
-            await _vpnConnectionService.DisconnectAsync().ConfigureAwait(true);
+            await _vpnConnectionService.DisconnectAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             _appLogger.Error("app/runtime", ex, "Остановка VPN завершилась ошибкой.");
-            MessageBox.Show(this, ex.Message, "Стоп", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            if (!IsDisposed && IsHandleCreated)
+            {
+                if (InvokeRequired)
+                    BeginInvoke(() => MessageBox.Show(this, ex.Message, "Стоп", MessageBoxButtons.OK, MessageBoxIcon.Warning));
+                else
+                    MessageBox.Show(this, ex.Message, "Стоп", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
         finally
         {
             _logTimer.Stop();
-            RefreshLog();
             NotifyVpnConnectionState(false);
-            UpdateButtons();
+            if (!IsDisposed && IsHandleCreated)
+            {
+                void UiFinish()
+                {
+                    RefreshLog();
+                    UpdateButtons();
+                }
+
+                if (InvokeRequired)
+                    BeginInvoke(UiFinish);
+                else
+                    UiFinish();
+            }
         }
     }
 
@@ -2141,8 +2165,21 @@ internal sealed class MainForm : Form
         if (confirm != DialogResult.Yes)
             return;
 
+        if (!File.Exists(installerPath))
+        {
+            MessageBox.Show(
+                this,
+                "Файл обновления не найден. Скачайте установщик снова.",
+                AppUpdateUserMessages.DialogTitle,
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            SyncUpdateBannerCachedInstallerUi();
+            return;
+        }
+
         try
         {
+            DisconnectVpnSync();
             InstallerLauncher.ScheduleAfterApplicationExits(installerPath);
         }
         catch (Exception ex)
