@@ -232,11 +232,22 @@ public sealed class DomainPoliciesTests
 
     [Theory]
     [InlineData("tun", true)]
-    [InlineData("tun_apps", false)]
+    [InlineData("tun_apps", true)]
     [InlineData("proxy", false)]
-    public void TunRoutingPolicy_HijackDns_OnlyFullTun(string mode, bool expected)
+    public void TunRoutingPolicy_HijackDns_AllTunModes(string mode, bool expected)
     {
         Assert.Equal(expected, TunRoutingPolicy.HijackDns(mode));
+    }
+
+    [Theory]
+    [InlineData("tun", true)]
+    [InlineData("tun_apps", false)]
+    [InlineData("proxy", false)]
+    public void TunRoutingPolicy_RouteQuicAndSecureDns_OnlyFullTun(string mode, bool expected)
+    {
+        Assert.Equal(expected, TunRoutingPolicy.RouteQuicThroughProxy(mode));
+        Assert.Equal(expected, TunRoutingPolicy.RouteSecureDnsThroughProxy(mode));
+        Assert.Equal(expected, TunRoutingPolicy.RouteIpv6ThroughProxy(mode));
     }
 
     [Fact]

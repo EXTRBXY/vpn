@@ -910,7 +910,7 @@ internal sealed class MainForm : Form
         if (TunAppsPolicy.IsTunApps(_state.Mode))
         {
             _connectionSettings.DnsNotice.Text =
-                "TUN (приложения): системный DNS без hijack; DoH detour через proxy недоступен.";
+                "TUN (приложения): DNS перехватывается sing-box (DoH/system); в proxy уходит только трафик выбранных .exe. DoH detour через proxy недоступен.";
             _connectionSettings.DnsNotice.Visible = true;
         }
         else
@@ -1699,8 +1699,8 @@ internal sealed class MainForm : Form
         if (TunAppsPolicy.IsTunApps(_state.Mode))
         {
             return mode == "doh"
-                ? $"DoH (sing-box), системный DNS приложений, {detourLabel}"
-                : "Системный DNS приложений (без hijack)";
+                ? $"DoH (hijack), трафик приложений по списку, {detourLabel}"
+                : "Системный DNS (hijack), трафик приложений по списку";
         }
 
         if (mode == "doh")

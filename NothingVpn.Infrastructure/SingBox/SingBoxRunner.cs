@@ -474,12 +474,17 @@ internal sealed class SingBoxRunner : IDisposable
             return Path.GetFullPath(hint);
 
         var baseDir = AppContext.BaseDirectory;
+        var installedDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Programs",
+            "NothingVpn");
 
         var candidates = new List<string>
         {
             Path.Combine(baseDir, hint),
             Path.Combine(baseDir, "sing-box.exe"),
             Path.Combine(baseDir, "bin", "sing-box.exe"),
+            Path.Combine(installedDir, "sing-box.exe"),
         };
 
         var dir = new DirectoryInfo(baseDir);
@@ -490,12 +495,21 @@ internal sealed class SingBoxRunner : IDisposable
             candidates.Add(Path.Combine(dir.FullName, "bin", "sing-box.exe"));
         }
 
+        string? fallback = null;
         foreach (var c in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            if (File.Exists(c))
-                return c;
+            if (!File.Exists(c))
+                continue;
+
+            var full = Path.GetFullPath(c);
+            // TUN на Windows грузит wintun.dll из каталога sing-box (WorkingDirectory).
+            // Предпочитаем полный комплект, чтобы publish без wintun не перекрывал установку.
+            if (File.Exists(Path.Combine(Path.GetDirectoryName(full)!, "wintun.dll")))
+                return full;
+
+            fallback ??= full;
         }
 
-        return null;
+        return fallback;
     }
 }

@@ -11,7 +11,7 @@
 #define MyAppPublisher "NothingVpn"
 ; URL и версию при CI переопределяют: ISCC /DMyAppURL=... /DMyAppVersion=...
 #define MyAppURL "https://github.com/"
-#define MyAppVersion "0.5.8"
+#define MyAppVersion "0.5.9"
 [Setup]
 AppId={{A2D610D2-2A69-4D7A-9B06-6C0B4E5F5C87}
 AppName={#MyAppName}

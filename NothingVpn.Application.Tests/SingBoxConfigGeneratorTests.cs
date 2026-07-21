@@ -344,18 +344,23 @@ public sealed class SingBoxConfigGeneratorTests
 
         Assert.Contains(inbounds, i => string.Equals(i.Type, "tun", StringComparison.Ordinal));
         Assert.DoesNotContain(inbounds, i => i.StrictRoute == true);
-        Assert.DoesNotContain(rules, r => string.Equals(r.Action, "hijack-dns", StringComparison.Ordinal));
+        Assert.Contains(rules, r => string.Equals(r.Action, "hijack-dns", StringComparison.Ordinal));
         Assert.Contains(rules, r =>
             r.Domain is not null
             && r.Domain.Contains("node.example", StringComparer.OrdinalIgnoreCase)
             && string.Equals(r.Outbound, "direct", StringComparison.Ordinal));
-        Assert.Contains(rules, r =>
+        Assert.DoesNotContain(rules, r =>
             r.Domain is not null
-            && r.Domain.Contains("dns.google", StringComparer.OrdinalIgnoreCase)
-            && string.Equals(r.Outbound, "proxy", StringComparison.Ordinal));
+            && r.Domain.Contains("dns.google", StringComparer.OrdinalIgnoreCase));
+        Assert.DoesNotContain(rules, r =>
+            string.Equals(r.Protocol, "quic", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(rules, r =>
             r.ProcessPath is not null
             && r.ProcessPath.Contains("C:\\Apps\\firefox.exe", StringComparer.OrdinalIgnoreCase)
+            && string.Equals(r.Outbound, "proxy", StringComparison.Ordinal));
+        Assert.Contains(rules, r =>
+            r.ProcessName is not null
+            && r.ProcessName.Contains("firefox.exe", StringComparer.OrdinalIgnoreCase)
             && string.Equals(r.Outbound, "proxy", StringComparison.Ordinal));
         Assert.Equal("direct", config.Route.Final);
         Assert.Equal("ipv4_only", config.Dns!.Strategy);

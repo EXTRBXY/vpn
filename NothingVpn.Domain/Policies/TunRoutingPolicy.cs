@@ -22,12 +22,28 @@ public static class TunRoutingPolicy
 
     public static IReadOnlyList<string> KnownSecureDnsDomains { get; } = KnownSecureDnsDomainsArray;
 
+    /// <summary>
+    /// DNS hijack нужен во всех TUN-режимах: на Windows DNS часто идёт от svchost,
+    /// а не от целевого .exe — без hijack process_path не спасает от отравления DNS.
+    /// </summary>
     public static bool HijackDns(string? mode) =>
-        string.Equals(ConnectionPolicy.NormalizeMode(mode), ConnectionPolicy.TunMode, StringComparison.Ordinal);
+        ConnectionPolicy.IsTunMode(ConnectionPolicy.NormalizeMode(mode));
 
     public static bool RouteIpv6ThroughProxy(string? mode) =>
         string.Equals(ConnectionPolicy.NormalizeMode(mode), ConnectionPolicy.TunMode, StringComparison.Ordinal);
 
+    /// <summary>
+    /// В полном TUN QUIC/HTTP3 уводим в proxy (иначе часто обходит правила).
+    /// В tun_apps — нет: иначе весь QUIC системы уйдёт в VPN до process_path.
+    /// </summary>
     public static bool RouteQuicThroughProxy(string? mode) =>
-        ConnectionPolicy.IsTunMode(ConnectionPolicy.NormalizeMode(mode));
+        string.Equals(ConnectionPolicy.NormalizeMode(mode), ConnectionPolicy.TunMode, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Принудительный увод известных DoH-доменов в proxy только в полном TUN.
+    /// В tun_apps DoH dial остаётся direct (DnsDetour запрещён), а TCP приложений
+    /// идёт через process_path.
+    /// </summary>
+    public static bool RouteSecureDnsThroughProxy(string? mode) =>
+        string.Equals(ConnectionPolicy.NormalizeMode(mode), ConnectionPolicy.TunMode, StringComparison.Ordinal);
 }

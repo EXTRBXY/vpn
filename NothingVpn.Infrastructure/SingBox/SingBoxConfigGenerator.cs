@@ -116,12 +116,15 @@ internal static class SingBoxConfigGenerator
             });
         }
 
-        rules.Add(new SingBoxRouteRule
+        if (TunRoutingPolicy.RouteSecureDnsThroughProxy(mode))
         {
-            Domain = [.. TunRoutingPolicy.KnownSecureDnsDomains],
-            Action = "route",
-            Outbound = "proxy"
-        });
+            rules.Add(new SingBoxRouteRule
+            {
+                Domain = [.. TunRoutingPolicy.KnownSecureDnsDomains],
+                Action = "route",
+                Outbound = "proxy"
+            });
+        }
 
         if (TunRoutingPolicy.RouteQuicThroughProxy(mode))
         {
@@ -189,12 +192,22 @@ internal static class SingBoxConfigGenerator
             if (procPaths.Count == 0)
                 throw new ArgumentException("tun_apps requires at least one process path.");
 
+            var procNames = DeriveProcessNames(procPaths);
             rules.Add(new SingBoxRouteRule
             {
                 ProcessPath = procPaths,
                 Action = "route",
                 Outbound = "proxy"
             });
+            if (procNames.Count > 0)
+            {
+                rules.Add(new SingBoxRouteRule
+                {
+                    ProcessName = procNames,
+                    Action = "route",
+                    Outbound = "proxy"
+                });
+            }
 
             return new SingBoxRoute
             {
@@ -267,6 +280,19 @@ internal static class SingBoxConfigGenerator
             var t = (raw ?? "").Trim();
             if (t.Length == 0) continue;
             set.Add(t);
+        }
+
+        return set.ToList();
+    }
+
+    internal static List<string> DeriveProcessNames(IEnumerable<string> processPaths)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in processPaths)
+        {
+            var name = Path.GetFileName(path);
+            if (string.IsNullOrWhiteSpace(name)) continue;
+            set.Add(name);
         }
 
         return set.ToList();
@@ -650,6 +676,8 @@ internal sealed class SingBoxRouteRule
     public bool? IpIsPrivate { get; set; }
 
     public List<string>? ProcessPath { get; set; }
+
+    public List<string>? ProcessName { get; set; }
 
     public List<string>? RuleSet { get; set; }
 
