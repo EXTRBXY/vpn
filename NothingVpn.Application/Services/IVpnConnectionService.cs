@@ -8,5 +8,6 @@ public interface IVpnConnectionService
     Task<ConnectResult> ConnectAsync(ConnectRequest request, CancellationToken cancellationToken = default);
     Task DisconnectAsync(CancellationToken cancellationToken = default);
     VpnConnectionStatus GetStatus();
+    void RecoverStaleRuntimeState();
 }
 

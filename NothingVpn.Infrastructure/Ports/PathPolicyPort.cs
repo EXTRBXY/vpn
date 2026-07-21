@@ -1,5 +1,5 @@
-using NothingVpn.Application.Ports;
-using NothingVpn.Tray.Internal.TunApps;
+﻿using NothingVpn.Application.Ports;
+using NothingVpn.Infrastructure.TunApps;
 
 namespace NothingVpn.Infrastructure.Ports;
 

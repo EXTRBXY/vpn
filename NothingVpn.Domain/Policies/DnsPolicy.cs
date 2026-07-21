@@ -36,6 +36,20 @@ public static class DnsPolicy
         return 4;
     }
 
+    public static bool IsDohMode(DnsSettings settings) =>
+        string.Equals(NormalizeMode(settings.Mode), "doh", StringComparison.Ordinal);
+
+    public static int DetourToComboIndex(string? detour) =>
+        string.Equals(NormalizeDetour(detour), "proxy", StringComparison.Ordinal) ? 1 : 0;
+
+    public static string ComboIndexToDetour(int index) =>
+        index == 1 ? "proxy" : "direct";
+
+    public static string DetourToDisplayLabel(string? detour) =>
+        string.Equals(NormalizeDetour(detour), "proxy", StringComparison.Ordinal)
+            ? "Через VPN"
+            : "Напрямую";
+
     public static DnsSettings ApplyPreset(int presetIndex, DnsSettings settings)
     {
         switch (presetIndex)

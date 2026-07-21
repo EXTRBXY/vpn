@@ -1,0 +1,56 @@
+using System.Net;
+
+namespace NothingVpn.Domain.Policies;
+
+public static class TunBootstrapPolicy
+{
+    public const string BootstrapLocalDnsTag = "bootstrap-local";
+
+    public static IReadOnlyList<string> CollectEndpointDomains(string? host, string? sni)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        AddDomain(set, host);
+        AddDomain(set, sni);
+        return set.ToList();
+    }
+
+    public static string? ResolveDefaultDomainResolver(bool useTun, bool useDohResolver)
+    {
+        if (!useTun)
+            return null;
+
+        return BootstrapLocalDnsTag;
+    }
+
+    public static string? ResolveSingBoxDohDetour(string? connectionMode, bool tunStrictRoute, string? userDetour)
+    {
+        var mode = ConnectionPolicy.NormalizeMode(connectionMode);
+        if (!ConnectionPolicy.IsTunMode(mode))
+            return null;
+
+        // tun_apps: DNS через proxy запрещён (модель split-tunnel + DnsDetourPolicy).
+        if (TunAppsPolicy.IsTunApps(mode))
+            return null;
+
+        var effectiveStrictRoute = TunAppsPolicy.UseStrictRoute(mode, tunStrictRoute);
+        var detour = NormalizeDetour(userDetour);
+        if (effectiveStrictRoute && detour != "proxy")
+            return "proxy";
+
+        return detour == "proxy" ? "proxy" : null;
+    }
+
+    private static void AddDomain(ISet<string> set, string? value)
+    {
+        var domain = (value ?? string.Empty).Trim();
+        if (domain.Length == 0 || IPAddress.TryParse(domain, out _))
+            return;
+        set.Add(domain);
+    }
+
+    private static string NormalizeDetour(string? detour)
+    {
+        var normalized = (detour ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized == "proxy" ? "proxy" : "direct";
+    }
+}

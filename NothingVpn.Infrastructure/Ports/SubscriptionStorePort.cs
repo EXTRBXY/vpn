@@ -1,6 +1,6 @@
-using NothingVpn.Application.Models;
+﻿using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
-using NothingVpn.Tray.Internal.Store;
+using NothingVpn.Infrastructure.Store;
 
 namespace NothingVpn.Infrastructure.Ports;
 

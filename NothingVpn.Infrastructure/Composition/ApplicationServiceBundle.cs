@@ -1,4 +1,5 @@
-using NothingVpn.Application.Services;
+﻿using NothingVpn.Application.Services;
+using NothingVpn.Infrastructure.Diagnostics;
 
 namespace NothingVpn.Infrastructure.Composition;
 
@@ -10,5 +11,7 @@ public sealed class ApplicationServiceBundle
     public required IVpnConnectionService VpnConnectionService { get; init; }
     public required IDiagnosticsService DiagnosticsService { get; init; }
     public required IAppLifecycleService AppLifecycleService { get; init; }
-}
 
+    /// <summary>Единый in-memory лог для UI и sing-box runner.</summary>
+    public required InMemoryLogStore SharedLogStore { get; init; }
+}

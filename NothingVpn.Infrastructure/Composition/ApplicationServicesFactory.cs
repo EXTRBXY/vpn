@@ -1,6 +1,7 @@
-using NothingVpn.Application.Services;
+﻿using NothingVpn.Application.Services;
 using NothingVpn.Infrastructure.Ports;
 using NothingVpn.Infrastructure.Runtime;
+using NothingVpn.Infrastructure.Diagnostics;
 
 namespace NothingVpn.Infrastructure.Composition;
 
@@ -9,7 +10,8 @@ public static class ApplicationServicesFactory
     public static ApplicationServiceBundle CreateDefault()
     {
         var appPaths = new AppPathsPort();
-        var runtime = new LegacyRuntimeContext(appPaths);
+        var logStore = new InMemoryLogStore(maxBytes: 1_000_000);
+        var runtime = new LegacyRuntimeContext(appPaths, logStore);
         var pathPolicy = new PathPolicyPort();
         var profileStore = new ProfileStorePort(appPaths);
         var subscriptionStore = new SubscriptionStorePort(appPaths);
@@ -40,7 +42,9 @@ public static class ApplicationServicesFactory
             diagnosticsPort,
             elevationPort,
             appPaths,
-            pathPolicy);
+            pathPolicy,
+            logPort);
+        vpnService.RecoverStaleRuntimeState();
 
         return new ApplicationServiceBundle
         {
@@ -49,8 +53,8 @@ public static class ApplicationServicesFactory
             SettingsService = settingsService,
             VpnConnectionService = vpnService,
             DiagnosticsService = diagnosticsService,
-            AppLifecycleService = appLifecycleService
+            AppLifecycleService = appLifecycleService,
+            SharedLogStore = logStore
         };
     }
 }
-

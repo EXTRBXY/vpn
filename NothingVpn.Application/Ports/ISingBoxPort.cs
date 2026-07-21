@@ -7,6 +7,7 @@ public interface ISingBoxPort
     event EventHandler? ProcessExited;
     bool IsRunning { get; }
     string WriteConfig(VpnProfile profile, AppStateModel state);
+    void ValidateConfig(string configPath);
     void Start(string configPath);
     void Stop();
     void TryDeleteLastConfig();

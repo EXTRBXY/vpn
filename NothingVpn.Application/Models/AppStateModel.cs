@@ -12,8 +12,8 @@ public sealed class AppStateModel
     public string ProxyOverride { get; set; } = "localhost;127.*;10.*;192.168.*;172.16.*";
     public string TunInterfaceName { get; set; } = "NothingVpn";
     public string TunAddressCidr { get; set; } = "auto";
-    public int TunMtu { get; set; } = 9000;
-    public string TunStack { get; set; } = "system";
+    public int TunMtu { get; set; } = 1500;
+    public string TunStack { get; set; } = "";
     public bool TunAutoRoute { get; set; } = true;
     public bool TunStrictRoute { get; set; } = true;
     public string DnsMode { get; set; } = "doh";

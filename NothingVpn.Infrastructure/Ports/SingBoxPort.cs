@@ -1,8 +1,8 @@
-using NothingVpn.Application.Models;
+﻿using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
 using NothingVpn.Infrastructure.Mappers;
 using NothingVpn.Infrastructure.Runtime;
-using NothingVpn.Tray.Internal.SingBox;
+using NothingVpn.Infrastructure.SingBox;
 
 namespace NothingVpn.Infrastructure.Ports;
 
@@ -31,6 +31,8 @@ public sealed class SingBoxPort : ISingBoxPort
     }
 
     public void Start(string configPath) => _context.Runner.Start(configPath);
+
+    public void ValidateConfig(string configPath) => _context.Runner.ValidateConfig(configPath);
 
     public void Stop() => _context.Runner.Stop();
 

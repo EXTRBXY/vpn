@@ -1,5 +1,5 @@
 using NothingVpn.Application.Ports;
-using NothingVpn.Tray.Internal.Windows;
+using NothingVpn.Infrastructure.Windows;
 
 namespace NothingVpn.Infrastructure.Ports;
 

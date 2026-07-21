@@ -1,7 +1,7 @@
-using NothingVpn.Application.Models;
-using NothingVpn.Tray.Internal.Profile;
-using NothingVpn.Tray.Internal.Store;
-using NothingVpn.Tray.Internal.WinInet;
+﻿using NothingVpn.Application.Models;
+using NothingVpn.Infrastructure.Profile;
+using NothingVpn.Infrastructure.Store;
+using NothingVpn.Infrastructure.WinInet;
 
 namespace NothingVpn.Infrastructure.Mappers;
 

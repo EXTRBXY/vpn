@@ -1,6 +1,7 @@
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
 using NothingVpn.Application.Services;
+using NothingVpn.Domain.Models;
 
 namespace NothingVpn.Application.Tests;
 
@@ -211,6 +212,8 @@ public sealed class SubscriptionServiceSyncTests
         }
         public void UpdateMode(string mode) => _state.Mode = mode;
         public void UpdateDns(string mode, string dohServer, string dohPath, string dohSni, string detour) { }
+        public void UpdateTunSettings(TunSettings settings) { }
+        public void UpdateProxySettings(ProxyConnectionSettings settings) { }
         public void UpdateRuleSets(IReadOnlyCollection<UserRuleSetModel> ruleSets) { }
         public void UpdateTunApps(IReadOnlyCollection<string> paths) { }
     }

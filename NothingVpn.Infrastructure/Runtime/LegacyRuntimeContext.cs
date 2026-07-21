@@ -1,7 +1,7 @@
-using NothingVpn.Application.Ports;
-using NothingVpn.Tray.Internal.Diagnostics;
-using NothingVpn.Tray.Internal.SingBox;
-using NothingVpn.Tray.Internal.Store;
+﻿using NothingVpn.Application.Ports;
+using NothingVpn.Infrastructure.Diagnostics;
+using NothingVpn.Infrastructure.SingBox;
+using NothingVpn.Infrastructure.Store;
 
 namespace NothingVpn.Infrastructure.Runtime;
 
@@ -11,8 +11,9 @@ internal sealed class LegacyRuntimeContext
     internal InMemoryLogStore LogStore { get; }
     internal SingBoxRunner Runner { get; }
 
-    public LegacyRuntimeContext(IAppPathsPort appPathsPort)
+    public LegacyRuntimeContext(IAppPathsPort appPathsPort, InMemoryLogStore logStore)
     {
+        ArgumentNullException.ThrowIfNull(logStore);
         var model = appPathsPort.Get();
         Paths = new AppPaths(
             model.BaseDir,
@@ -23,8 +24,7 @@ internal sealed class LegacyRuntimeContext
             model.SubscriptionsJsonPath,
             model.StateJsonPath);
 
-        LogStore = new InMemoryLogStore(maxBytes: 1_000_000);
-        Runner = new SingBoxRunner(Paths, "sing-box.exe", LogStore);
+        LogStore = logStore;
+        Runner = new SingBoxRunner("sing-box.exe", LogStore);
     }
 }
-

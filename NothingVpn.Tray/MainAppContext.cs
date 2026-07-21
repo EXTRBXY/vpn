@@ -1,8 +1,9 @@
-using System.Drawing;
+﻿using System.Drawing;
 using NothingVpn.Application.Services;
 using NothingVpn.Infrastructure.Composition;
+using NothingVpn.Infrastructure.Diagnostics;
+using NothingVpn.Infrastructure.Store;
 using NothingVpn.Tray.Internal.Diagnostics;
-using NothingVpn.Tray.Internal.Store;
 using NothingVpn.Tray.Internal.Windows;
 using NothingVpn.Tray.Internal.UI;
 
@@ -31,11 +32,10 @@ internal sealed class MainAppContext : ApplicationContext
         Directory.CreateDirectory(paths.BaseDir);
         Directory.CreateDirectory(paths.ConfigsDir);
         Directory.CreateDirectory(paths.RuleSetsDir);
-        // No logs folder: logs are kept in-memory and exported on demand.
 
-        var logStore = new InMemoryLogStore(maxBytes: 1_000_000);
-        _appLogger = new AppLogger(logStore);
         var services = ApplicationServicesFactory.CreateDefault();
+        var logStore = services.SharedLogStore;
+        _appLogger = new AppLogger(logStore);
         _subscriptionService = services.SubscriptionService;
 
         var extracted = Icon.ExtractAssociatedIcon(System.Windows.Forms.Application.ExecutablePath);
@@ -52,7 +52,6 @@ internal sealed class MainAppContext : ApplicationContext
             logStore,
             requestExit: Exit,
             vpnConnectionStateChanged: SetTrayConnectionState);
-        _appLogger.Info("app/context", "MainAppContext инициализирован.");
 
         var menu = new ContextMenuStrip();
         menu.Font = new Font("Segoe UI", 9f, FontStyle.Regular, GraphicsUnit.Point);
@@ -226,10 +225,7 @@ internal sealed class MainAppContext : ApplicationContext
     {
         try
         {
-            if (_mainForm.InvokeRequired)
-                _mainForm.Invoke(() => _mainForm.Shutdown());
-            else
-                _mainForm.Shutdown();
+            _mainForm.Shutdown();
         }
         catch
         {

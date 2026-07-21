@@ -1,4 +1,4 @@
-using NothingVpn.Tray.Internal.Security;
+using NothingVpn.Infrastructure.Diagnostics;
 
 namespace NothingVpn.Tray.Internal.Diagnostics;
 
@@ -26,12 +26,11 @@ internal sealed class AppLogger
     private void Write(int level, string source, string message)
     {
         if (string.IsNullOrWhiteSpace(message)) return;
-        var safeMessage = LogRedactor.Redact(message);
         var safeSource = string.IsNullOrWhiteSpace(source) ? "app" : source.Trim();
         _store.AppendStructured(
             level: level,
             source: safeSource,
-            message: safeMessage,
+            message: message,
             raw: message,
             timestampUtc: DateTimeOffset.UtcNow);
     }

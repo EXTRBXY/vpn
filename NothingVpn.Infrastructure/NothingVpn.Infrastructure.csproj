@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
+    <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,10 +15,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="NothingVpn.Application.Tests" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Compile Include="..\NothingVpn.Tray\Internal\**\*.cs" Link="Legacy\%(RecursiveDir)%(Filename)%(Extension)" />
+    <InternalsVisibleTo Include="NothingVpn.Tray" />
   </ItemGroup>
 
 </Project>
