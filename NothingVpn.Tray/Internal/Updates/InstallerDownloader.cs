@@ -1,3 +1,5 @@
+using NothingVpn.Domain.Updates;
+
 namespace NothingVpn.Tray.Internal.Updates;
 
 internal readonly record struct InstallerDownloadProgress(long BytesReceived, long? TotalBytes);
@@ -21,6 +23,8 @@ internal static class InstallerDownloader
     {
         try
         {
+            InstallerDownloadUrlValidator.EnsureValid(downloadUrl, UpdateChannelOptions.InstallerAssetName);
+
             using var handler = new HttpClientHandler();
             using var client = new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(10) };
             client.DefaultRequestHeaders.UserAgent.ParseAdd("NothingVpn-InstallerDownload/1");
@@ -30,6 +34,22 @@ internal static class InstallerDownloader
                 .ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
                 return new Result(false, $"HTTP {(int)response.StatusCode}");
+
+            if (response.RequestMessage?.RequestUri is { } finalUri)
+            {
+                try
+                {
+                    // After CDN redirect the path may be opaque; still require https + allowlisted host.
+                    InstallerDownloadUrlValidator.EnsureValid(
+                        finalUri.AbsoluteUri,
+                        UpdateChannelOptions.InstallerAssetName,
+                        requireAssetFileName: false);
+                }
+                catch (ArgumentException ex)
+                {
+                    return new Result(false, ex.Message);
+                }
+            }
 
             long? totalBytes = null;
             if (response.Content.Headers.ContentLength is { } len && len >= 0)
@@ -78,6 +98,10 @@ internal static class InstallerDownloader
             }
 
             return new Result(true, null);
+        }
+        catch (ArgumentException ex)
+        {
+            return new Result(false, ex.Message);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

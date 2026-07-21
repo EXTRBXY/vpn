@@ -8,12 +8,10 @@ namespace NothingVpn.Tray.Internal.SingBox;
 
 internal sealed class SingBoxRunner : IDisposable
 {
-    private readonly AppPaths _paths;
     private readonly string _singBoxExePathHint;
-    private readonly Func<bool> _debugLogs;
-    private readonly Func<string?> _trustedSha256;
     private readonly InMemoryLogStore _logStore;
     private Process? _process;
+    private string? _lastConfigPath;
     private readonly object _gate = new();
 
     public event EventHandler? ProcessExited;
@@ -32,15 +30,11 @@ internal sealed class SingBoxRunner : IDisposable
     public SingBoxRunner(
         AppPaths paths,
         string singBoxExePath,
-        InMemoryLogStore logStore,
-        Func<bool>? debugLogs = null,
-        Func<string?>? trustedSha256 = null)
+        InMemoryLogStore logStore)
     {
-        _paths = paths;
+        _ = paths;
         _singBoxExePathHint = singBoxExePath;
         _logStore = logStore;
-        _debugLogs = debugLogs ?? (() => false);
-        _trustedSha256 = trustedSha256 ?? (() => null);
     }
 
     public void Start(string configPath)
@@ -56,17 +50,10 @@ internal sealed class SingBoxRunner : IDisposable
                     "sing-box.exe not found. Put it next to the app or into a ./bin folder near it.",
                     _singBoxExePathHint);
 
-            var trusted = _trustedSha256();
-            if (!string.IsNullOrWhiteSpace(trusted))
-            {
-                var actual = FileHash.Sha256Hex(exePath);
-                if (!string.Equals(actual, trusted, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidOperationException($"sing-box.exe hash mismatch.\nTrusted: {trusted}\nActual:   {actual}");
-            }
-
             // Logs are kept in-memory to minimize disk IO and avoid a logs folder.
             // Users can export logs on demand from the UI.
             _logStore.Clear();
+            _lastConfigPath = configPath;
 
             var psi = new ProcessStartInfo
             {
@@ -89,9 +76,30 @@ internal sealed class SingBoxRunner : IDisposable
 
             _process = p;
 
-            // Async log pumping
-            _ = Task.Run(() => PumpAsync(p.StandardOutput, "sing-box/stdout", redact: !_debugLogs(), _logStore));
-            _ = Task.Run(() => PumpAsync(p.StandardError, "sing-box/stderr", redact: !_debugLogs(), _logStore));
+            // Always redact secrets; DebugLogs only affects verbosity elsewhere.
+            _ = Task.Run(() => PumpAsync(p.StandardOutput, "sing-box/stdout", _logStore));
+            _ = Task.Run(() => PumpAsync(p.StandardError, "sing-box/stderr", _logStore));
+        }
+    }
+
+    public void TryDeleteLastConfig()
+    {
+        string? path;
+        lock (_gate)
+        {
+            path = _lastConfigPath;
+            _lastConfigPath = null;
+        }
+
+        if (string.IsNullOrWhiteSpace(path)) return;
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch
+        {
+            // best-effort; do not fail disconnect
         }
     }
 
@@ -120,7 +128,7 @@ internal sealed class SingBoxRunner : IDisposable
         }
     }
 
-    private static async Task PumpAsync(StreamReader reader, string source, bool redact, InMemoryLogStore store)
+    private static async Task PumpAsync(StreamReader reader, string source, InMemoryLogStore store)
     {
         try
         {
@@ -129,7 +137,7 @@ internal sealed class SingBoxRunner : IDisposable
                 var line = await reader.ReadLineAsync();
                 if (line is null) break;
                 var clean = StripAnsi(line);
-                var outLine = redact ? LogRedactor.Redact(clean) : clean;
+                var outLine = LogRedactor.Redact(clean);
                 var (lvl, lvlText) = DetectLevel(outLine);
                 (lvl, lvlText, outLine) = NormalizeSeverity(lvl, lvlText, outLine);
                 outLine = StripLevelPrefix(outLine);
@@ -137,7 +145,7 @@ internal sealed class SingBoxRunner : IDisposable
                     level: lvl,
                     source: source,
                     message: outLine,
-                    raw: line,
+                    raw: outLine,
                     timestampUtc: DateTimeOffset.UtcNow);
             }
         }

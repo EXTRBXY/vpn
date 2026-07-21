@@ -13,6 +13,18 @@ public static class DnsPolicy
         settings.DohSni = (settings.DohSni ?? string.Empty).Trim();
     }
 
+    public static void Validate(DnsSettings settings)
+    {
+        Normalize(settings);
+        if (settings.Mode != "doh")
+            return;
+
+        if (string.IsNullOrWhiteSpace(settings.DohServer))
+            throw new InvalidOperationException("DoH IP не задан.");
+        if (string.IsNullOrWhiteSpace(settings.DohSni))
+            throw new InvalidOperationException("DoH SNI не задан.");
+    }
+
     public static int StateToPresetIndex(DnsSettings settings)
     {
         var server = (settings.DohServer ?? string.Empty).Trim();
@@ -72,4 +84,3 @@ public static class DnsPolicy
         return normalized.Length == 0 ? "/dns-query" : normalized;
     }
 }
-

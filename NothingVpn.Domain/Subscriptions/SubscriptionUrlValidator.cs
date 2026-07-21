@@ -10,7 +10,7 @@ public static class SubscriptionUrlValidator
         if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri))
             throw new ArgumentException("Некорректный URL подписки.", nameof(url));
 
-        if (uri.Scheme is not ("http" or "https"))
-            throw new ArgumentException("URL подписки должен использовать http или https.", nameof(url));
+        if (!string.Equals(uri.Scheme, "https", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("URL подписки должен использовать https.", nameof(url));
     }
 }

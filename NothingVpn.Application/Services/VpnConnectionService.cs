@@ -15,6 +15,7 @@ public sealed class VpnConnectionService : IVpnConnectionService
     private readonly IElevationPort _elevationPort;
     private readonly IAppPathsPort _appPathsPort;
     private readonly IPathPolicyPort _pathPolicy;
+    private readonly object _cleanupGate = new();
 
     public VpnConnectionService(
         IProfileStorePort profileStore,
@@ -34,7 +35,7 @@ public sealed class VpnConnectionService : IVpnConnectionService
         _elevationPort = elevationPort;
         _appPathsPort = appPathsPort;
         _pathPolicy = pathPolicy;
-        _singBoxPort.ProcessExited += (_, _) => ConnectionStateChanged?.Invoke(this, false);
+        _singBoxPort.ProcessExited += (_, _) => OnProcessExited();
     }
 
     public event EventHandler<bool>? ConnectionStateChanged;
@@ -103,20 +104,13 @@ public sealed class VpnConnectionService : IVpnConnectionService
 
     public Task DisconnectAsync(CancellationToken cancellationToken = default)
     {
-        var state = _stateStore.Load();
         try
         {
             _singBoxPort.Stop();
         }
         finally
         {
-            if (state.ProxyWasEnabledByUs)
-            {
-                _proxyPort.Restore(state.PreviousProxySettings);
-                state.ProxyWasEnabledByUs = false;
-                state.PreviousProxySettings = null;
-                _stateStore.Save(state);
-            }
+            CleanupAfterStop();
         }
 
         ConnectionStateChanged?.Invoke(this, false);
@@ -134,6 +128,29 @@ public sealed class VpnConnectionService : IVpnConnectionService
         };
     }
 
+    private void OnProcessExited()
+    {
+        CleanupAfterStop();
+        ConnectionStateChanged?.Invoke(this, false);
+    }
+
+    private void CleanupAfterStop()
+    {
+        lock (_cleanupGate)
+        {
+            _singBoxPort.TryDeleteLastConfig();
+
+            var state = _stateStore.Load();
+            if (!state.ProxyWasEnabledByUs)
+                return;
+
+            _proxyPort.Restore(state.PreviousProxySettings);
+            state.ProxyWasEnabledByUs = false;
+            state.PreviousProxySettings = null;
+            _stateStore.Save(state);
+        }
+    }
+
     private static void ValidateRuleSets(AppStateModel state, string ruleSetsDir)
     {
         var entries = state.UserRuleSets.Select(x => new UserRuleSetEntry
@@ -147,4 +164,3 @@ public sealed class VpnConnectionService : IVpnConnectionService
         RuleSetPolicyValidator.ValidateEnabled(entries, ruleSetsDir);
     }
 }
-

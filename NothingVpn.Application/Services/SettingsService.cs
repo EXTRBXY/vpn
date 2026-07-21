@@ -38,6 +38,7 @@ public sealed class SettingsService(IStateStorePort stateStore, IPathPolicyPort 
             Detour = detour
         };
         DnsPolicy.Normalize(dns);
+        DnsPolicy.Validate(dns);
         state.DnsMode = dns.Mode;
         state.DohServer = dns.DohServer;
         state.DohPath = dns.DohPath;

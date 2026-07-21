@@ -23,15 +23,8 @@ internal sealed class LegacyRuntimeContext
             model.SubscriptionsJsonPath,
             model.StateJsonPath);
 
-        var stateStore = new JsonStateStore(Paths.StateJsonPath);
-        AppState? stateSnapshot = null;
         LogStore = new InMemoryLogStore(maxBytes: 1_000_000);
-        Runner = new SingBoxRunner(
-            Paths,
-            "sing-box.exe",
-            LogStore,
-            debugLogs: () => (stateSnapshot ??= stateStore.Load()).DebugLogs,
-            trustedSha256: () => (stateSnapshot ??= stateStore.Load()).TrustedSingBoxSha256);
+        Runner = new SingBoxRunner(Paths, "sing-box.exe", LogStore);
     }
 }
 

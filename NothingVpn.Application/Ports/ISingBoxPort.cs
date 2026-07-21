@@ -9,5 +9,5 @@ public interface ISingBoxPort
     string WriteConfig(VpnProfile profile, AppStateModel state);
     void Start(string configPath);
     void Stop();
+    void TryDeleteLastConfig();
 }
-

@@ -15,7 +15,12 @@ internal sealed class GitHubReleasesClient : IDisposable
 
     public GitHubReleasesClient(string userAgent)
     {
-        _http = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
+        var handler = new HttpClientHandler
+        {
+            Proxy = null,
+            UseProxy = false
+        };
+        _http = new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(2) };
         _http.DefaultRequestHeaders.UserAgent.ParseAdd(userAgent);
         _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
     }

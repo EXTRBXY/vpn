@@ -52,8 +52,6 @@ internal sealed class MainForm : Form
     private readonly System.Windows.Forms.Timer _logTimer;
     private readonly CheckBox _debugLogs;
     private readonly ComboBox _modeCombo;
-    private readonly Button _trustSingBoxBtn;
-    private readonly Label _singBoxHashLabel;
     private readonly Label _statusValue;
     private readonly Label _adminValue;
     private readonly Label _modeValue;
@@ -81,12 +79,14 @@ internal sealed class MainForm : Form
     private BindingList<UserRuleSetModel> _builtinRuleSetsBinding = new();
     private BindingList<UserRuleSetModel> _userRuleSetsBinding = new();
 
+    private readonly ComboBox _dnsModeCombo;
     private readonly ComboBox _dnsPresetCombo;
     private readonly ComboBox _dnsDetourCombo;
     private readonly TextBox _dohServerBox;
     private readonly TextBox _dohPathBox;
     private readonly TextBox _dohSniBox;
     private readonly Label _dnsNotice;
+    private readonly Label _dnsSplitHint;
     private readonly System.Windows.Forms.Timer _dnsDebounceTimer;
     private bool _dnsUiReady;
 
@@ -135,9 +135,9 @@ internal sealed class MainForm : Form
 
         Icon = Icon.ExtractAssociatedIcon(System.Windows.Forms.Application.ExecutablePath) ?? SystemIcons.Application;
         Text = "Nothing VPN (прокси)";
-        Width = 640;
-        Height = 600;
-        MinimumSize = new Size(520, 520);
+        Width = 680;
+        Height = 820;
+        MinimumSize = new Size(560, 640);
         StartPosition = FormStartPosition.CenterScreen;
         DoubleBuffered = true;
         SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
@@ -146,15 +146,12 @@ internal sealed class MainForm : Form
         _tabs = new TabControl { Dock = DockStyle.Fill };
         var tabMain = new TabPage("Основное");
         _tabLogs = new TabPage("Логи");
-        var tabAdvanced = new TabPage("Дополнительно");
         _tabs.TabPages.Add(tabMain);
         _tabs.TabPages.Add(_tabLogs);
-        _tabs.TabPages.Add(tabAdvanced);
         Controls.Add(_tabs);
 
         // Main tab: no SplitContainer -> no forced empty space
         tabMain.AutoScroll = true;
-        tabAdvanced.AutoScroll = true;
 
         var layout = new TableLayoutPanel
         {
@@ -222,9 +219,6 @@ internal sealed class MainForm : Form
         layout.Controls.Add(_port, 1, 2);
         layout.Controls.Add(new Label { Text = "", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 3);
         layout.Controls.Add(new Label { Text = "", AutoSize = true, Anchor = AnchorStyles.Left }, 1, 3);
-        // (Trust moved to Advanced tab)
-        _trustSingBoxBtn = new Button { Text = "Доверять sing-box.exe", Anchor = AnchorStyles.Left };
-        _singBoxHashLabel = new Label { Text = "", AutoSize = true, Anchor = AnchorStyles.Left };
 
         var mainStack = new TableLayoutPanel
         {
@@ -232,9 +226,12 @@ internal sealed class MainForm : Form
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 1,
-            RowCount = 3,
+            RowCount = 6,
             Padding = new Padding(UiMetrics.Space12, UiMetrics.Space12, UiMetrics.Space12, UiMetrics.Space8)
         };
+        mainStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        mainStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        mainStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         mainStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         mainStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         mainStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -274,11 +271,11 @@ internal sealed class MainForm : Form
             RowCount = 3
         };
         tunAppsRoot.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        tunAppsRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 128));
+        tunAppsRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 220));
         tunAppsRoot.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         tunAppsRoot.Controls.Add(new Label
         {
-            Text = "Исполняемые файлы, чей трафик идёт через VPN (полный путь .exe). Дочерние процессы нужно добавлять отдельно.\n\nПримечание: доменные rule-set (direct/block) применяются до правила выбора процессов.",
+            Text = "Полные пути .exe через VPN. Дочерние процессы — отдельно.",
             AutoSize = true,
             MaximumSize = new Size(560, 0)
         }, 0, 0);
@@ -364,7 +361,6 @@ internal sealed class MainForm : Form
         mainStack.Controls.Add(statusGroup, 0, 0);
         mainStack.Controls.Add(connectionGroup, 0, 1);
         mainStack.Controls.Add(_tunAppsGroup, 0, 2);
-        tabMain.Controls.Add(mainStack);
 
         // Logs tab
         var logsRoot = new TableLayoutPanel
@@ -411,28 +407,7 @@ internal sealed class MainForm : Form
         };
         logsRoot.Controls.Add(_logBox, 0, 1);
 
-        // Advanced tab
-        var advLayout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            ColumnCount = 2,
-            RowCount = 3,
-            Padding = new Padding(UiMetrics.Space12),
-        };
-        advLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180));
-        advLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        advLayout.Controls.Add(new Label { Text = "Проверка sing-box.exe", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
-        advLayout.Controls.Add(new Label
-        {
-            Text = "Если задан «доверенный» SHA-256, приложение проверяет, что запускается именно нужный sing-box.exe.",
-            AutoSize = true,
-            MaximumSize = new Size(640, 0),
-            Anchor = AnchorStyles.Left
-        }, 1, 0);
-        advLayout.Controls.Add(_trustSingBoxBtn, 0, 1);
-        advLayout.Controls.Add(_singBoxHashLabel, 1, 1);
-
+        // Rule sets / DNS / updates on main tab
         var rsOuter = new Panel
         {
             Dock = DockStyle.Top,
@@ -443,7 +418,7 @@ internal sealed class MainForm : Form
 
         var builtinGroup = new GroupBox
         {
-            Text = "Встроенные списки (sing-geosite)",
+            Text = "Встроенные списки",
             Dock = DockStyle.Top,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
@@ -457,7 +432,7 @@ internal sealed class MainForm : Form
             ColumnCount = 1,
             RowCount = 2
         };
-        builtinLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 96));
+        builtinLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 180));
         builtinLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         _builtinRuleSetsGrid = CreateRuleSetsDataGridView(multiSelect: true);
@@ -494,7 +469,7 @@ internal sealed class MainForm : Form
             ColumnCount = 1,
             RowCount = 2
         };
-        userLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 96));
+        userLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 180));
         userLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         _userRuleSetsGrid = CreateRuleSetsDataGridView(multiSelect: false);
@@ -531,10 +506,15 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Top,
             AutoSize = true,
             ColumnCount = 2,
-            RowCount = 5
+            RowCount = 6
         };
         dnsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160));
         dnsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+        _dnsModeCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 160 };
+        _dnsModeCombo.Items.AddRange(new object[] { "system", "doh" });
+        dnsLayout.Controls.Add(new Label { Text = "Режим DNS", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
+        dnsLayout.Controls.Add(_dnsModeCombo, 1, 0);
 
         _dnsPresetCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Anchor = AnchorStyles.Left | AnchorStyles.Right };
         _dnsPresetCombo.Items.AddRange(new object[]
@@ -545,31 +525,35 @@ internal sealed class MainForm : Form
             "AdGuard (94.140.14.14, SNI dns.adguard.com)",
             "Пользовательский"
         });
-        dnsLayout.Controls.Add(new Label { Text = "Пресет DoH", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
-        dnsLayout.Controls.Add(_dnsPresetCombo, 1, 0);
+        dnsLayout.Controls.Add(new Label { Text = "Пресет DoH", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
+        dnsLayout.Controls.Add(_dnsPresetCombo, 1, 1);
 
         _dnsDetourCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
         _dnsDetourCombo.Items.AddRange(new object[] { "direct", "proxy" });
         var detourRow = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = false };
         detourRow.Controls.Add(_dnsDetourCombo);
-        detourRow.Controls.Add(new Label
-        {
-            Text = " (куда отправлять DoH-запросы)",
-            AutoSize = true,
-            Margin = new Padding(6, 6, 0, 0)
-        });
-        dnsLayout.Controls.Add(new Label { Text = "DNS detour", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
-        dnsLayout.Controls.Add(detourRow, 1, 1);
+        dnsLayout.Controls.Add(new Label { Text = "DNS detour", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
+        dnsLayout.Controls.Add(detourRow, 1, 2);
 
         _dohServerBox = new TextBox { Anchor = AnchorStyles.Left | AnchorStyles.Right };
         _dohPathBox = new TextBox { Anchor = AnchorStyles.Left | AnchorStyles.Right };
         _dohSniBox = new TextBox { Anchor = AnchorStyles.Left | AnchorStyles.Right };
-        dnsLayout.Controls.Add(new Label { Text = "DoH IP", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
-        dnsLayout.Controls.Add(_dohServerBox, 1, 2);
-        dnsLayout.Controls.Add(new Label { Text = "DoH path", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 3);
-        dnsLayout.Controls.Add(_dohPathBox, 1, 3);
-        dnsLayout.Controls.Add(new Label { Text = "DoH SNI", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 4);
-        dnsLayout.Controls.Add(_dohSniBox, 1, 4);
+        dnsLayout.Controls.Add(new Label { Text = "DoH IP", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 3);
+        dnsLayout.Controls.Add(_dohServerBox, 1, 3);
+        dnsLayout.Controls.Add(new Label { Text = "DoH path", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 4);
+        dnsLayout.Controls.Add(_dohPathBox, 1, 4);
+        dnsLayout.Controls.Add(new Label { Text = "DoH SNI", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 5);
+        dnsLayout.Controls.Add(_dohSniBox, 1, 5);
+
+        _dnsSplitHint = new Label
+        {
+            Text = "При DoH домены из direct-списков — system DNS.",
+            AutoSize = true,
+            ForeColor = UiTheme.TextMuted,
+            Dock = DockStyle.Top,
+            Padding = new Padding(2, 6, 2, 0),
+            MaximumSize = new Size(560, 0)
+        };
 
         _dnsNotice = new Label
         {
@@ -582,6 +566,7 @@ internal sealed class MainForm : Form
         };
 
         dnsGroup.Controls.Add(dnsLayout);
+        dnsGroup.Controls.Add(_dnsSplitHint);
         dnsGroup.Controls.Add(_dnsNotice);
 
         _updateBannerPanel = new Panel
@@ -639,11 +624,11 @@ internal sealed class MainForm : Form
         _updateManualCheckBtn.Click += async (_, _) => await OnManualCheckForUpdatesClickAsync();
         updateManualCheckPanel.Controls.Add(_updateManualCheckBtn);
 
-        tabAdvanced.Controls.Add(updateManualCheckPanel);
-        tabAdvanced.Controls.Add(rsOuter);
-        tabAdvanced.Controls.Add(dnsGroup);
-        tabAdvanced.Controls.Add(advLayout);
-        tabAdvanced.Controls.Add(_updateBannerPanel);
+        mainStack.Controls.Add(dnsGroup, 0, 3);
+        mainStack.Controls.Add(rsOuter, 0, 4);
+        mainStack.Controls.Add(_updateBannerPanel, 0, 5);
+        tabMain.Controls.Add(updateManualCheckPanel);
+        tabMain.Controls.Add(mainStack);
 
         _updateBannerInstallCachedBtn.Click += (_, _) => OnUpdateBannerInstallCachedClick();
         _updateBannerDownloadBtn.Click += async (_, _) => await OnUpdateBannerDownloadClickAsync();
@@ -679,10 +664,19 @@ internal sealed class MainForm : Form
         _modeCombo.SelectedIndexChanged += (_, _) =>
         {
             _state.Mode = ComboIndexToMode(_modeCombo.SelectedIndex);
+            if (!DnsDetourPolicy.AllowsProxyDetour(_state.Mode) &&
+                string.Equals(_state.DnsDetour, "proxy", StringComparison.OrdinalIgnoreCase))
+            {
+                _state.DnsDetour = "direct";
+                if (_dnsUiReady)
+                    SyncDnsUiFromState();
+            }
             SaveState();
             UpdateTitle();
             UpdateTunAppsPanelVisibility();
             UpdateButtons();
+            if (_dnsUiReady)
+                UpdateDnsDohControlsEnabled();
         };
         _tunAppsAddBtn.Click += (_, _) => AddTunAppExecutable();
         _tunAppsBrowseFileBtn.Click += (_, _) => AddTunAppFromOpenFileDialog();
@@ -694,7 +688,6 @@ internal sealed class MainForm : Form
             _state.SingBoxLogLevel = _state.DebugLogs ? "debug" : "warn";
             SaveState();
         };
-        _trustSingBoxBtn.Click += (_, _) => TrustCurrentSingBox();
         _copyLogsBtn.Click += (_, _) => CopyLogsToClipboard();
         _downloadLogsBtn.Click += (_, _) => DownloadLogs();
         _pingBtn.Click += async (_, _) => await PingAsync();
@@ -731,6 +724,11 @@ internal sealed class MainForm : Form
         _userRuleSetsGrid.CellValueChanged += (_, _) => SaveRuleSetsFromGrid();
         _userRuleSetsGrid.DataError += (_, _) => { };
 
+        _dnsModeCombo.SelectedIndexChanged += (_, _) =>
+        {
+            UpdateDnsDohControlsEnabled();
+            if (_dnsUiReady) RestartDnsDebounce();
+        };
         _dnsPresetCombo.SelectedIndexChanged += (_, _) =>
         {
             ApplyDnsPresetToBoxes();
@@ -910,7 +908,6 @@ internal sealed class MainForm : Form
         UpdateTunAppsPanelVisibility();
         _debugLogs.Checked = _state.DebugLogs;
         if (_logFilterCombo.SelectedIndex < 0) _logFilterCombo.SelectedIndex = 2; // INFO
-        UpdateSingBoxHashLabel();
         SyncDnsUiFromState();
         _dnsUiReady = true;
         UpdateTitle();
@@ -929,12 +926,38 @@ internal sealed class MainForm : Form
 
     private void SyncDnsUiFromState()
     {
+        var mode = (_state.DnsMode ?? "doh").Trim().ToLowerInvariant();
+        _dnsModeCombo.SelectedItem = mode == "system" ? "system" : "doh";
         _dohServerBox.Text = _state.DohServer ?? "";
         _dohPathBox.Text = _state.DohPath ?? "/dns-query";
         _dohSniBox.Text = _state.DohSni ?? "";
         var detour = (_state.DnsDetour ?? "direct").Trim().ToLowerInvariant();
         _dnsDetourCombo.SelectedItem = detour == "proxy" ? "proxy" : "direct";
         _dnsPresetCombo.SelectedIndex = DnsStateToPresetIndex(_state);
+        UpdateDnsDohControlsEnabled();
+    }
+
+    private void UpdateDnsDohControlsEnabled()
+    {
+        var doh = string.Equals(_dnsModeCombo.SelectedItem?.ToString(), "doh", StringComparison.OrdinalIgnoreCase);
+        var allowProxyDetour = DnsDetourPolicy.AllowsProxyDetour(_state.Mode);
+        _dnsPresetCombo.Enabled = doh;
+        _dnsDetourCombo.Enabled = doh && allowProxyDetour;
+        _dohServerBox.Enabled = doh;
+        _dohPathBox.Enabled = doh;
+        _dohSniBox.Enabled = doh;
+        _dnsSplitHint.Visible = doh;
+        if (!allowProxyDetour)
+        {
+            _dnsDetourCombo.SelectedItem = "direct";
+            _dnsSplitHint.Text = doh
+                ? "В TUN (приложения) DNS через proxy недоступен — DoH идёт напрямую."
+                : _dnsSplitHint.Text;
+        }
+        else if (doh)
+        {
+            _dnsSplitHint.Text = "При DoH домены из direct-списков — system DNS.";
+        }
     }
 
     private int DnsStateToPresetIndex(AppStateModel state)
@@ -995,10 +1018,27 @@ internal sealed class MainForm : Form
     {
         try
         {
+            var mode = (_dnsModeCombo.SelectedItem?.ToString() ?? "doh").Trim().ToLowerInvariant();
+            if (mode != "system" && mode != "doh")
+                mode = "doh";
+
+            var detour = (_dnsDetourCombo.SelectedItem?.ToString() ?? "direct").Trim().ToLowerInvariant();
+            if (detour != "direct" && detour != "proxy")
+                detour = "direct";
+            detour = DnsDetourPolicy.EffectiveDetour(_state.Mode, detour);
+
+            if (mode == "system")
+            {
+                _state.DnsMode = "system";
+                _state.DnsDetour = detour;
+                SaveState();
+                ShowDnsNotice("Сохранено. Нужно переподключение.");
+                return;
+            }
+
             var server = (_dohServerBox.Text ?? "").Trim();
             var path = (_dohPathBox.Text ?? "").Trim();
             var sni = (_dohSniBox.Text ?? "").Trim();
-            var detour = (_dnsDetourCombo.SelectedItem?.ToString() ?? "direct").Trim().ToLowerInvariant();
 
             if (string.IsNullOrWhiteSpace(server))
             {
@@ -1009,11 +1049,9 @@ internal sealed class MainForm : Form
                 path = "/dns-query";
             if (string.IsNullOrWhiteSpace(sni))
             {
-                if (showDialogs) throw new InvalidOperationException("DoH SNI не задан (нужен для TLS).");
+                if (showDialogs) throw new InvalidOperationException("DoH SNI не задан.");
                 return;
             }
-            if (detour != "direct" && detour != "proxy")
-                detour = "direct";
 
             _state.DnsMode = "doh";
             _state.DohServer = server;
@@ -1022,7 +1060,7 @@ internal sealed class MainForm : Form
             _state.DnsDetour = detour;
             SaveState();
 
-            ShowDnsNotice("DNS сохранён. Вступит в силу после переподключения.");
+            ShowDnsNotice("Сохранено. Нужно переподключение.");
         }
         catch (Exception ex)
         {
@@ -1059,7 +1097,7 @@ internal sealed class MainForm : Form
         var g = new BufferedDataGridView
         {
             Dock = DockStyle.Fill,
-            Height = 96,
+            Height = 180,
             AllowUserToAddRows = false,
             AllowUserToDeleteRows = false,
             AllowUserToResizeRows = false,
@@ -1676,42 +1714,6 @@ internal sealed class MainForm : Form
         Text = $"Nothing VPN ({modeLabel})";
     }
 
-    private void TrustCurrentSingBox()
-    {
-        try
-        {
-            // Same resolver logic as runner uses: simplest is to expect it next to app for now.
-            var baseDir = AppContext.BaseDirectory;
-            var exe = Path.Combine(baseDir, "sing-box.exe");
-            if (!File.Exists(exe))
-            {
-                MessageBox.Show(this,
-                    "sing-box.exe not found next to the app.\nPut it into the same folder as the EXE and try again.",
-                    "Trust failed",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-                return;
-            }
-
-            var sha = FileHash.Sha256Hex(exe);
-            _state.TrustedSingBoxSha256 = sha;
-            SaveState();
-            UpdateSingBoxHashLabel();
-            MessageBox.Show(this, $"Trusted SHA-256:\n{sha}", "Trusted", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, ex.Message, "Trust failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
-    }
-
-    private void UpdateSingBoxHashLabel()
-    {
-        _singBoxHashLabel.Text = string.IsNullOrWhiteSpace(_state.TrustedSingBoxSha256)
-            ? "hash: (not set)"
-            : $"hash: {_state.TrustedSingBoxSha256[..Math.Min(12, _state.TrustedSingBoxSha256.Length)]}…";
-    }
-
     private void UpdateButtons()
     {
         var running = _vpnConnectionService.GetStatus().IsRunning;
@@ -1743,7 +1745,7 @@ internal sealed class MainForm : Form
     private string BuildDnsStatusText()
     {
         var mode = (_state.DnsMode ?? "").Trim().ToLowerInvariant();
-        var detour = (_state.DnsDetour ?? "direct").Trim().ToLowerInvariant();
+        var detour = DnsDetourPolicy.EffectiveDetour(_state.Mode, _state.DnsDetour);
         var detourLabel = detour == "proxy" ? "через proxy" : "напрямую";
         if (mode == "doh")
         {
@@ -2127,6 +2129,9 @@ internal sealed class MainForm : Form
 
         try
         {
+            if (!UpdateChannelOptions.IsAcceptedInstallerFileName(installerPath))
+                throw new InvalidOperationException("Некорректный файл установщика.");
+
             InstallerLauncher.ScheduleAfterApplicationExits(installerPath);
         }
         catch (Exception ex)

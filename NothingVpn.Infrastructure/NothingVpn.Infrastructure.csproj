@@ -13,6 +13,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="NothingVpn.Application.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Include="..\NothingVpn.Tray\Internal\**\*.cs" Link="Legacy\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 

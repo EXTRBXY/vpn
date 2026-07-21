@@ -26,7 +26,13 @@ internal static class BuiltinGeositeRuleSets
             DisplayName: "Geosite: категория RU — реклама",
             FileName: "geosite-category-ru@ads.srs",
             RouteTag: "geosite-category-ru-ads",
-            DownloadUrl: "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ru%40ads.srs")
+            DownloadUrl: "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ru%40ads.srs"),
+        new BuiltinRuleSetDefinition(
+            BuiltinId: "sing-geoip:ru",
+            DisplayName: "GeoIP: RU",
+            FileName: "geoip-ru.srs",
+            RouteTag: "geoip-ru",
+            DownloadUrl: "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs")
     ];
 
     internal static BuiltinRuleSetDefinition? FindByBuiltinId(string? builtinId)

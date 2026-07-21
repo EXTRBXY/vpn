@@ -76,7 +76,6 @@ internal static class LegacyModelMapper
         DnsDetour = source.DnsDetour,
         DebugLogs = source.DebugLogs,
         SingBoxLogLevel = source.SingBoxLogLevel,
-        TrustedSingBoxSha256 = source.TrustedSingBoxSha256,
         UpdateDismissedModalForTag = source.UpdateDismissedModalForTag,
         LastRecordedAppSemver = source.LastRecordedAppSemver,
         UpdateLastCheckUtc = source.UpdateLastCheckUtc
@@ -105,7 +104,6 @@ internal static class LegacyModelMapper
         DnsDetour = source.DnsDetour,
         DebugLogs = source.DebugLogs,
         SingBoxLogLevel = source.SingBoxLogLevel,
-        TrustedSingBoxSha256 = source.TrustedSingBoxSha256,
         UpdateDismissedModalForTag = source.UpdateDismissedModalForTag,
         LastRecordedAppSemver = source.LastRecordedAppSemver,
         UpdateLastCheckUtc = source.UpdateLastCheckUtc

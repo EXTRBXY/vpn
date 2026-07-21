@@ -1,4 +1,6 @@
 using System.Text.Json;
+using NothingVpn.Domain.Models;
+using NothingVpn.Domain.Policies;
 using NothingVpn.Tray.Internal.Profile;
 using NothingVpn.Tray.Internal.Store;
 
@@ -38,13 +40,17 @@ internal static class SingBoxConfigGenerator
 
         outbound.Transport = BuildTransport(profile);
 
-        var useDohResolver = useTun && string.Equals(state.DnsMode, "doh", StringComparison.OrdinalIgnoreCase);
-        var hasEnabledUserRuleSets = (state.UserRuleSets ?? []).Any(x => x.Enabled);
+        var routing = EvaluateRoutingPolicy(state, useTun);
+        var useDohResolver = string.Equals(state.DnsMode, "doh", StringComparison.OrdinalIgnoreCase);
+        var dnsViaProxy = EffectiveDnsDetourIsProxy(state, mode);
+        // DoH через proxy не может резолвить Host VLESS сам через DoH — иначе цикл.
+        if (dnsViaProxy)
+            outbound.DomainResolver = "local";
 
         return new SingBoxConfig
         {
             Log = new SingBoxLog { Level = NormalizeLogLevel(state.SingBoxLogLevel) },
-            Dns = BuildDns(state, useTun, hasEnabledUserRuleSets),
+            Dns = BuildDns(state, useTun, routing, dnsViaProxy),
             Inbounds = inbounds,
             Outbounds = new List<SingBoxOutbound>
             {
@@ -52,11 +58,29 @@ internal static class SingBoxConfigGenerator
                 new SingBoxOutbound { Type = "direct", Tag = "direct" },
                 new SingBoxOutbound { Type = "block", Tag = "block" }
             },
-            Route = BuildRoute(paths, mode, state, useDohResolver)
+            Route = BuildRoute(paths, mode, state, useDohResolver, routing)
         };
     }
 
-    private static SingBoxRoute BuildRoute(AppPaths paths, string mode, AppState state, bool useDohResolver)
+    private static RuleSetRoutingDecision EvaluateRoutingPolicy(AppState state, bool useTun)
+    {
+        var entries = (state.UserRuleSets ?? new List<UserRuleSet>()).Select(rs => new UserRuleSetEntry
+        {
+            Tag = rs.Tag ?? "",
+            Name = rs.Name ?? "",
+            FileName = rs.FileName ?? "",
+            Enabled = rs.Enabled,
+            Action = rs.Action ?? "direct"
+        });
+        return RuleSetRoutingPolicy.Evaluate(entries, state.DnsMode, useTun);
+    }
+
+    private static SingBoxRoute BuildRoute(
+        AppPaths paths,
+        string mode,
+        AppState state,
+        bool useDohResolver,
+        RuleSetRoutingDecision routing)
     {
         var useTun = mode is "tun" or "tun_apps";
 
@@ -66,13 +90,23 @@ internal static class SingBoxConfigGenerator
 
         if (!useTun)
         {
+            List<SingBoxRouteRule>? proxyRules = null;
+            if (routing.RequiresSniff || userRules.Count != 0)
+            {
+                proxyRules = new List<SingBoxRouteRule>();
+                if (routing.RequiresSniff)
+                    proxyRules.Add(new SingBoxRouteRule { Action = "sniff" });
+                proxyRules.Add(new SingBoxRouteRule { Protocol = new List<string> { "stun" }, Action = "reject" });
+                proxyRules.AddRange(userRules);
+            }
+
             return new SingBoxRoute
             {
                 Final = "proxy",
                 AutoDetectInterface = false,
-                DefaultDomainResolver = null,
+                DefaultDomainResolver = useDohResolver ? "doh" : null,
                 RuleSet = userRuleSets.Count == 0 ? null : userRuleSets,
-                Rules = userRules.Count == 0 ? null : userRules
+                Rules = proxyRules
             };
         }
 
@@ -80,7 +114,9 @@ internal static class SingBoxConfigGenerator
         {
             var tunRules = new List<SingBoxRouteRule>
             {
-                new() { Port = new List<int> { 53 }, Action = "hijack-dns" }
+                new() { Action = "sniff" },
+                new() { Port = new List<int> { 53 }, Action = "hijack-dns" },
+                new() { Protocol = new List<string> { "stun" }, Action = "reject" }
             };
             tunRules.AddRange(userRules);
 
@@ -101,7 +137,9 @@ internal static class SingBoxConfigGenerator
 
         var rules = new List<SingBoxRouteRule>
         {
+            new() { Action = "sniff" },
             new() { Port = new List<int> { 53 }, Action = "hijack-dns" },
+            new() { Protocol = new List<string> { "stun" }, Action = "reject" },
             new()
             {
                 ProcessPath = procPaths,
@@ -110,7 +148,7 @@ internal static class SingBoxConfigGenerator
             }
         };
         if (userRules.Count != 0)
-            rules.InsertRange(1, userRules);
+            rules.InsertRange(3, userRules);
 
         return new SingBoxRoute
         {
@@ -207,6 +245,7 @@ internal static class SingBoxConfigGenerator
     private static SingBoxInbound BuildTunInbound(AppState state, VlessProfile profile)
     {
         var addr = NormalizeTunCidr(state.TunAddressCidr, profile.Id);
+        var inet6 = NormalizeTunInet6(profile.Id);
         var ifBase = string.IsNullOrWhiteSpace(state.TunInterfaceName) ? "NothingVpn" : state.TunInterfaceName.Trim();
         var ifName = $"{ifBase}-{profile.Id[..Math.Min(6, profile.Id.Length)]}";
         // 9000 MTU is often counterproductive on Windows TUN and can increase latency due to fragmentation/PMTU quirks.
@@ -220,12 +259,22 @@ internal static class SingBoxConfigGenerator
             Type = "tun",
             Tag = "tun-in",
             InterfaceName = ifName,
-            Address = new List<string> { addr },
+            Address = new List<string> { addr, inet6 },
             Mtu = mtu,
             AutoRoute = state.TunAutoRoute,
             StrictRoute = state.TunStrictRoute,
             Stack = stack
         };
+    }
+
+    private static string NormalizeTunInet6(string profileId)
+    {
+        var n = 0;
+        for (var i = 0; i < profileId.Length; i++)
+            n = unchecked(n * 31 + profileId[i]);
+        n = Math.Abs(n);
+        var hextet = (n % 0xFFFF).ToString("x4");
+        return $"fdfe:dcba:9876:{hextet}::1/126";
     }
 
     private static string NormalizeTunStack(string? stack)
@@ -261,36 +310,66 @@ internal static class SingBoxConfigGenerator
         return c;
     }
 
-    private static SingBoxDns? BuildDns(AppState state, bool useTun, bool hasEnabledUserRuleSets)
+    private static SingBoxDns? BuildDns(
+        AppState state,
+        bool useTun,
+        RuleSetRoutingDecision routing,
+        bool dnsViaProxy)
     {
         var mode = (state.DnsMode ?? "system").Trim().ToLowerInvariant();
+        var hasEnabledUserRuleSets = (state.UserRuleSets ?? []).Any(x => x.Enabled);
         if (!useTun && mode != "doh" && !hasEnabledUserRuleSets) return null;
 
         if (mode == "doh")
         {
             var server = string.IsNullOrWhiteSpace(state.DohServer) ? "1.1.1.1" : state.DohServer.Trim();
             var path = string.IsNullOrWhiteSpace(state.DohPath) ? "/dns-query" : state.DohPath.Trim();
-            var sni = string.IsNullOrWhiteSpace(state.DohSni) ? null : state.DohSni.Trim();
+            var sni = (state.DohSni ?? "").Trim();
+            if (sni.Length == 0)
+                throw new ArgumentException("DoH SNI is required.");
+
+            var servers = new List<SingBoxDnsServer>();
+            List<SingBoxDnsRule>? dnsRules = null;
+            var needLocal = routing.RequiresSplitDns || dnsViaProxy;
+
+            if (needLocal)
+            {
+                servers.Add(new SingBoxDnsServer
+                {
+                    Type = "local",
+                    Tag = "local",
+                    PreferGo = false
+                });
+            }
+
+            if (routing.RequiresSplitDns)
+            {
+                dnsRules = routing.DnsDirectRuleSetTags
+                    .Select(tag => new SingBoxDnsRule
+                    {
+                        RuleSet = new List<string> { tag },
+                        Server = "local"
+                    })
+                    .ToList();
+            }
+
+            servers.Add(new SingBoxDnsServer
+            {
+                Type = "https",
+                Tag = "doh",
+                Server = server,
+                ServerPort = 443,
+                Path = path,
+                Tls = new SingBoxDnsTls { Enabled = true, ServerName = sni },
+                Detour = dnsViaProxy ? "proxy" : null,
+            });
 
             return new SingBoxDns
             {
                 Final = "doh",
                 ReverseMapping = useTun,
-                Servers = new List<SingBoxDnsServer>
-                {
-                    new()
-                    {
-                        Type = "https",
-                        Tag = "doh",
-                        Server = server,
-                        ServerPort = 443,
-                        Path = path,
-                        Tls = sni is null ? null : new SingBoxDnsTls { Enabled = true, ServerName = sni },
-                        // Make DNS routing explicit to avoid bootstrap loops in some setups.
-                        Detour = useTun ? DohDetour(state) : null,
-                        // No detour => default dialer (direct) for bootstrap.
-                    }
-                }
+                Servers = servers,
+                Rules = dnsRules
             };
         }
 
@@ -323,11 +402,11 @@ internal static class SingBoxConfigGenerator
         };
     }
 
-    private static string? DohDetour(AppState state)
+    private static bool EffectiveDnsDetourIsProxy(AppState state, string connectionMode)
     {
         // sing-box: detour to direct is meaningless; omit detour for direct.
-        var d = (state.DnsDetour ?? "direct").Trim().ToLowerInvariant();
-        return d == "proxy" ? "proxy" : null;
+        // tun_apps: DNS через proxy запрещён политикой (см. DnsDetourPolicy).
+        return DnsDetourPolicy.EffectiveDetour(connectionMode, state.DnsDetour) == "proxy";
     }
 
     private static string NormalizeRuleSetFileName(string? fileName)
@@ -458,6 +537,9 @@ internal sealed class SingBoxOutbound
     public string? Uuid { get; set; }
     public string? Flow { get; set; }
 
+    /// <summary>Dial field: резолв Host outbound (нужен local при DoH detour=proxy).</summary>
+    public string? DomainResolver { get; set; }
+
     public SingBoxTls? Tls { get; set; }
     public SingBoxTransport? Transport { get; set; }
 }
@@ -513,6 +595,8 @@ internal sealed class SingBoxRouteRule
 
     public List<string>? RuleSet { get; set; }
 
+    public List<string>? Protocol { get; set; }
+
     public string Action { get; set; } = "route";
     public string? Outbound { get; set; }
 }
@@ -528,8 +612,15 @@ internal sealed class SingBoxRuleSet
 internal sealed class SingBoxDns
 {
     public List<SingBoxDnsServer> Servers { get; set; } = new();
+    public List<SingBoxDnsRule>? Rules { get; set; }
     public string? Final { get; set; }
     public bool? ReverseMapping { get; set; }
+}
+
+internal sealed class SingBoxDnsRule
+{
+    public List<string>? RuleSet { get; set; }
+    public string Server { get; set; } = "local";
 }
 
 internal sealed class SingBoxDnsServer

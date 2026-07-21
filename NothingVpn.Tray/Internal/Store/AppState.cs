@@ -60,9 +60,6 @@ internal sealed class AppState
     // sing-box log level: trace|debug|info|warn|error|fatal|panic
     public string SingBoxLogLevel { get; set; } = "warn";
 
-    // If set, we verify sing-box.exe SHA-256 matches before starting.
-    public string? TrustedSingBoxSha256 { get; set; }
-
     /// <summary>Тег релиза (например v1.2.3), для которого скрыто всплывающее предложение обновиться.</summary>
     public string? UpdateDismissedModalForTag { get; set; }
 

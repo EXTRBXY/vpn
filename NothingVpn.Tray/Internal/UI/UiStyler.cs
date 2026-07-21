@@ -7,6 +7,7 @@ internal static class UiStyler
         form.BackColor = UiTheme.IsHighContrast ? SystemColors.Control : UiTheme.SurfaceAlt;
         form.ForeColor = UiTheme.TextPrimary;
         form.Font = new Font("Segoe UI", 9f, FontStyle.Regular, GraphicsUnit.Point);
+        ParentScrollWheelRelay.Install(form);
         form.SuspendLayout();
         try
         {

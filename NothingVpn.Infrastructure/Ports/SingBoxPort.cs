@@ -33,5 +33,7 @@ public sealed class SingBoxPort : ISingBoxPort
     public void Start(string configPath) => _context.Runner.Start(configPath);
 
     public void Stop() => _context.Runner.Stop();
+
+    public void TryDeleteLastConfig() => _context.Runner.TryDeleteLastConfig();
 }
 

@@ -1,4 +1,6 @@
 using System.IO.Pipes;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 
 namespace NothingVpn.Tray.Internal.Windows;
@@ -75,13 +77,7 @@ internal sealed class SingleInstance : IDisposable
         {
             try
             {
-                await using var server = new NamedPipeServerStream(
-                    pipeName: _pipeName,
-                    direction: PipeDirection.In,
-                    maxNumberOfServerInstances: 1,
-                    transmissionMode: PipeTransmissionMode.Byte,
-                    options: PipeOptions.Asynchronous);
-
+                await using var server = CreateServerPipe();
                 await server.WaitForConnectionAsync(ct);
 
                 using var sr = new StreamReader(server, Encoding.UTF8, detectEncodingFromByteOrderMarks: false);
@@ -107,6 +103,27 @@ internal sealed class SingleInstance : IDisposable
         }
     }
 
+    private NamedPipeServerStream CreateServerPipe()
+    {
+        var security = new PipeSecurity();
+        var sid = WindowsIdentity.GetCurrent().User
+            ?? throw new InvalidOperationException("Cannot resolve current user SID for pipe ACL.");
+        security.AddAccessRule(new PipeAccessRule(
+            sid,
+            PipeAccessRights.ReadWrite | PipeAccessRights.CreateNewInstance,
+            AccessControlType.Allow));
+
+        return NamedPipeServerStreamAcl.Create(
+            _pipeName,
+            PipeDirection.In,
+            maxNumberOfServerInstances: 1,
+            PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous,
+            inBufferSize: 0,
+            outBufferSize: 0,
+            pipeSecurity: security);
+    }
+
     public void Dispose()
     {
         try { _cts.Cancel(); } catch { }
@@ -116,4 +133,3 @@ internal sealed class SingleInstance : IDisposable
         try { _mutex.Dispose(); } catch { }
     }
 }
-

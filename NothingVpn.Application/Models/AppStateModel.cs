@@ -23,7 +23,6 @@ public sealed class AppStateModel
     public string DnsDetour { get; set; } = "direct";
     public bool DebugLogs { get; set; }
     public string SingBoxLogLevel { get; set; } = "warn";
-    public string? TrustedSingBoxSha256 { get; set; }
     public string? UpdateDismissedModalForTag { get; set; }
     public string? LastRecordedAppSemver { get; set; }
     public DateTimeOffset? UpdateLastCheckUtc { get; set; }
