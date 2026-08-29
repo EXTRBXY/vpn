@@ -41,6 +41,7 @@ public static class ApplicationServicesFactory
         var ruleSetFileService = new RuleSetFileService(appPaths);
         var appUpdateService = new GitHubAppUpdateService();
         var installerUpdateService = new InstallerUpdateService();
+        var installerLaunchService = new InstallerLaunchService();
         var vpnService = new VpnConnectionService(
             profileStore,
             stateStore,
@@ -65,6 +66,7 @@ public static class ApplicationServicesFactory
             RuleSetFileService = ruleSetFileService,
             AppUpdateService = appUpdateService,
             InstallerUpdateService = installerUpdateService,
+            InstallerLaunchService = installerLaunchService,
             PathPolicy = pathPolicy,
             SharedLogStore = logStore
         };

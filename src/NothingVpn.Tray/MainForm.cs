@@ -32,6 +32,7 @@ internal sealed class MainForm : Form
     private readonly IRuleSetFileService _ruleSetFileService;
     private readonly IAppUpdateController _appUpdateController;
     private readonly IInstallerUpdateService _installerUpdateService;
+    private readonly IInstallerLaunchService _installerLaunchService;
     private readonly IConnectionController _connectionController;
     private readonly IConnectionDiagnosticController _connectionDiagnosticController;
     private readonly InMemoryLogStore _logStore;
@@ -132,6 +133,7 @@ internal sealed class MainForm : Form
         IRuleSetFileService ruleSetFileService,
         IAppUpdateController appUpdateController,
         IInstallerUpdateService installerUpdateService,
+        IInstallerLaunchService installerLaunchService,
         IConnectionController connectionController,
         IConnectionDiagnosticController connectionDiagnosticController,
         InMemoryLogStore logStore,
@@ -148,6 +150,7 @@ internal sealed class MainForm : Form
         _ruleSetFileService = ruleSetFileService;
         _appUpdateController = appUpdateController;
         _installerUpdateService = installerUpdateService;
+        _installerLaunchService = installerLaunchService;
         _connectionController = connectionController;
         _connectionDiagnosticController = connectionDiagnosticController;
         _logStore = logStore;
@@ -1965,11 +1968,8 @@ internal sealed class MainForm : Form
 
         try
         {
-            if (!UpdateChannelOptions.IsAcceptedInstallerFileName(installerPath))
-                throw new InvalidOperationException("Некорректный файл установщика.");
-
             DisconnectVpnSync();
-            InstallerLauncher.ScheduleAfterApplicationExits(installerPath);
+            _installerLaunchService.ScheduleAfterApplicationExits(installerPath);
         }
         catch (Exception ex)
         {

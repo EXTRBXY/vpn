@@ -6,9 +6,6 @@ namespace NothingVpn.Infrastructure.Updates;
 
 public sealed class InstallerUpdateService : IInstallerUpdateService
 {
-    private const string InstallerAssetName = "NothingVpnSetup.exe";
-    private const string CachePrefix = "NothingVpnSetup-";
-
     public string GetCachedInstallerPath(string version)
     {
         var normalized = SemanticVersionPolicy.Normalize(version);
@@ -16,7 +13,7 @@ public sealed class InstallerUpdateService : IInstallerUpdateService
             throw new ArgumentException("Некорректная версия обновления.", nameof(version));
         var directory = Path.Combine(Path.GetTempPath(), "NothingVpn");
         Directory.CreateDirectory(directory);
-        return Path.Combine(directory, $"{CachePrefix}{normalized}.exe");
+        return Path.Combine(directory, $"{InstallerFilePolicy.CachedFilePrefix}{normalized}.exe");
     }
 
     public bool IsCached(string version) => File.Exists(GetCachedInstallerPath(version));
@@ -28,7 +25,7 @@ public sealed class InstallerUpdateService : IInstallerUpdateService
             var directory = Path.Combine(Path.GetTempPath(), "NothingVpn");
             if (!Directory.Exists(directory))
                 return;
-            foreach (var path in Directory.EnumerateFiles(directory, $"{CachePrefix}*.exe", SearchOption.TopDirectoryOnly))
+            foreach (var path in Directory.EnumerateFiles(directory, $"{InstallerFilePolicy.CachedFilePrefix}*.exe", SearchOption.TopDirectoryOnly))
             {
                 try { File.Delete(path); }
                 catch { }
@@ -45,7 +42,7 @@ public sealed class InstallerUpdateService : IInstallerUpdateService
         var destination = GetCachedInstallerPath(release.Semver);
         try
         {
-            InstallerDownloadUrlValidator.EnsureValid(release.InstallerDownloadUrl, InstallerAssetName);
+            InstallerDownloadUrlValidator.EnsureValid(release.InstallerDownloadUrl, InstallerFilePolicy.ReleaseFileName);
             using var handler = new HttpClientHandler();
             using var client = new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(10) };
             client.DefaultRequestHeaders.UserAgent.ParseAdd("NothingVpn-InstallerDownload/1");
@@ -57,7 +54,7 @@ public sealed class InstallerUpdateService : IInstallerUpdateService
                 return new InstallerDownloadResult(false, $"HTTP {(int)response.StatusCode}");
 
             if (response.RequestMessage?.RequestUri is { } finalUri)
-                InstallerDownloadUrlValidator.EnsureValid(finalUri.AbsoluteUri, InstallerAssetName, requireAssetFileName: false);
+                InstallerDownloadUrlValidator.EnsureValid(finalUri.AbsoluteUri, InstallerFilePolicy.ReleaseFileName, requireAssetFileName: false);
 
             long? totalBytes = response.Content.Headers.ContentLength is { } length and >= 0 ? length : null;
             var directory = Path.GetDirectoryName(destination)!;
