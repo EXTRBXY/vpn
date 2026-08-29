@@ -68,6 +68,27 @@ public sealed class AppUpdateControllerTests
         Assert.Equal(1, settings.SaveCalls);
     }
 
+    [Theory]
+    [InlineData(null, "1.0.0", InstalledVersionTransition.FirstRun)]
+    [InlineData("1.0.0", "2.0.0", InstalledVersionTransition.Upgraded)]
+    [InlineData("2.0.0", "1.0.0", InstalledVersionTransition.Downgraded)]
+    [InlineData("1.0.0", "1.0.0", InstalledVersionTransition.Unchanged)]
+    public void RecordInstalledVersion_ClassifiesAndPersistsChanges(
+        string? previous,
+        string current,
+        InstalledVersionTransition expected)
+    {
+        var settings = new FakeSettingsService();
+        var state = new AppStateModel { LastRecordedAppSemver = previous };
+        var controller = new AppUpdateController(new FakeUpdateService(), settings);
+
+        var actual = controller.RecordInstalledVersion(state, current);
+
+        Assert.Equal(expected, actual);
+        Assert.Equal(current, state.LastRecordedAppSemver);
+        Assert.Equal(expected == InstalledVersionTransition.Unchanged ? 0 : 1, settings.SaveCalls);
+    }
+
     private static AppReleaseModel Release(string version) =>
         new($"v{version}", version, null, "https://github.com/example/setup.exe");
 

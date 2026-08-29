@@ -1199,75 +1199,6 @@ internal sealed class MainForm : Form
         }
     }
 
-    private void ValidateUserRuleSets()
-    {
-        var missing = new List<string>();
-        var bad = new List<string>();
-        var dupTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var seenTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var rs in _state.UserRuleSets ?? new List<UserRuleSetModel>())
-        {
-            if (!rs.Enabled) continue;
-            if (string.IsNullOrWhiteSpace(rs.FileName) || string.IsNullOrWhiteSpace(rs.Tag))
-            {
-                bad.Add(rs.Name?.Trim().Length > 0 ? rs.Name : "(без имени)");
-                continue;
-            }
-
-            var tag = rs.Tag.Trim();
-            if (!seenTags.Add(tag))
-                dupTags.Add(tag);
-
-            var action = (rs.Action ?? "").Trim().ToLowerInvariant();
-            if (action != "direct" && action != "block")
-            {
-                bad.Add(rs.Name?.Trim().Length > 0 ? rs.Name : rs.Tag);
-                continue;
-            }
-
-            var fileName = rs.FileName.Trim();
-            if (!IsSafeRuleSetFileName(fileName))
-            {
-                bad.Add(rs.Name?.Trim().Length > 0 ? rs.Name : rs.Tag);
-                continue;
-            }
-
-            if (!fileName.EndsWith(".srs", StringComparison.OrdinalIgnoreCase))
-            {
-                bad.Add(rs.Name?.Trim().Length > 0 ? rs.Name : rs.Tag);
-                continue;
-            }
-            if (!_ruleSetFileService.Exists(rs))
-            {
-                var line = $"{(string.IsNullOrWhiteSpace(rs.Name) ? rs.Tag : rs.Name)} → {rs.FileName}";
-                if (!string.IsNullOrWhiteSpace(rs.BuiltinId))
-                    line += " (скачайте встроенный список или отключите строку)";
-                missing.Add(line);
-            }
-        }
-
-        if (bad.Count != 0)
-            throw new InvalidOperationException("Некоторые rule-set записи повреждены (нет tag/filename). Удалите их и добавьте заново:\n- " + string.Join("\n- ", bad));
-
-        if (dupTags.Count != 0)
-            throw new InvalidOperationException("Найдены дублирующиеся rule-set tag (должны быть уникальными). Удалите дубликаты и добавьте заново:\n- " + string.Join("\n- ", dupTags.OrderBy(x => x)));
-
-        if (missing.Count != 0)
-            throw new InvalidOperationException("Не найдены файлы включённых rule-set (.srs). Проверьте, что файлы на месте или добавьте заново:\n- " + string.Join("\n- ", missing));
-    }
-
-    private static bool IsSafeRuleSetFileName(string fileName)
-    {
-        var raw = (fileName ?? "").Trim();
-        if (raw.Length == 0) return false;
-        if (Path.IsPathRooted(raw)) return false;
-        var safe = Path.GetFileName(raw);
-        if (!string.Equals(safe, raw, StringComparison.Ordinal)) return false;
-        if (safe.Contains("..", StringComparison.Ordinal)) return false;
-        return true;
-    }
-
     private void NotifyVpnConnectionState(bool connected)
     {
         try { _vpnConnectionStateChanged?.Invoke(connected); } catch { }
@@ -1546,42 +1477,26 @@ internal sealed class MainForm : Form
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(_state.LastRecordedAppSemver))
+            var versionTransition = _appUpdateController.RecordInstalledVersion(_state, currentSemver);
+            if (versionTransition == InstalledVersionTransition.Upgraded)
             {
-                _state.LastRecordedAppSemver = currentSemver;
-                SaveState();
-            }
-            else
-            {
-                var cmp = SemanticVersionPolicy.Compare(currentSemver, _state.LastRecordedAppSemver);
-                if (cmp > 0)
+                AppReleaseModel? rel = null;
+                try
                 {
-                    AppReleaseModel? rel = null;
-                    try
-                    {
-                        rel = await _appUpdateController.GetCurrentReleaseAsync(currentSemver, CancellationToken.None)
-                            .ConfigureAwait(false);
-                    }
-                    catch (Exception ex)
-                    {
-                        _appLogger.Warn("app/update", $"Загрузка описания релиза: {ex.Message}");
-                    }
-
-                    await UiInvokeAsync(() =>
-                    {
-                        if (IsDisposed) return;
-                        using var f = new ReleaseChangelogForm(currentSemver, rel?.Body ?? "", rel is null);
-                        f.ShowDialog(this);
-                    }).ConfigureAwait(false);
-
-                    _state.LastRecordedAppSemver = currentSemver;
-                    SaveState();
+                    rel = await _appUpdateController.GetCurrentReleaseAsync(currentSemver, CancellationToken.None)
+                        .ConfigureAwait(false);
                 }
-                else if (cmp < 0)
+                catch (Exception ex)
                 {
-                    _state.LastRecordedAppSemver = currentSemver;
-                    SaveState();
+                    _appLogger.Warn("app/update", $"Загрузка описания релиза: {ex.Message}");
                 }
+
+                await UiInvokeAsync(() =>
+                {
+                    if (IsDisposed) return;
+                    using var f = new ReleaseChangelogForm(currentSemver, rel?.Body ?? "", rel is null);
+                    f.ShowDialog(this);
+                }).ConfigureAwait(false);
             }
 
             await RefreshUpdateAvailabilityAsync(currentSemver, offerModal: true).ConfigureAwait(false);

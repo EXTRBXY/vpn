@@ -4,6 +4,7 @@ namespace NothingVpn.Presentation;
 
 public interface IAppUpdateController
 {
+    InstalledVersionTransition RecordInstalledVersion(AppStateModel state, string currentVersion);
     bool IsPeriodicCheckDue(AppStateModel state, DateTimeOffset utcNow);
     Task<AppUpdateCheckResult> CheckAsync(
         AppStateModel state,

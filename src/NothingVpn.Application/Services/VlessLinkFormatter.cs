@@ -28,7 +28,7 @@ public static class VlessLinkFormatter
 
         var q = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        // These keys are recognized by NothingVpn.Tray/Internal/Profile/VlessLinkParser.cs
+        // These keys are recognized by the profile parser port in Infrastructure.
         q["type"] = string.IsNullOrWhiteSpace(profile.Type) ? "tcp" : profile.Type.Trim();
         q["security"] = string.IsNullOrWhiteSpace(profile.Security) ? "tls" : profile.Security.Trim();
         q["encryption"] = string.IsNullOrWhiteSpace(profile.Encryption) ? "none" : profile.Encryption.Trim();

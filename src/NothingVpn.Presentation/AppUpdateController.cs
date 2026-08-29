@@ -16,6 +16,23 @@ public sealed class AppUpdateController : IAppUpdateController
         _settingsService = settingsService;
     }
 
+    public InstalledVersionTransition RecordInstalledVersion(AppStateModel state, string currentVersion)
+    {
+        var previousVersion = state.LastRecordedAppSemver;
+        if (string.Equals(previousVersion, currentVersion, StringComparison.OrdinalIgnoreCase))
+            return InstalledVersionTransition.Unchanged;
+
+        var transition = string.IsNullOrWhiteSpace(previousVersion)
+            ? InstalledVersionTransition.FirstRun
+            : SemanticVersionPolicy.Compare(currentVersion, previousVersion) > 0
+                ? InstalledVersionTransition.Upgraded
+                : InstalledVersionTransition.Downgraded;
+
+        state.LastRecordedAppSemver = currentVersion;
+        _settingsService.SaveState(state);
+        return transition;
+    }
+
     public bool IsPeriodicCheckDue(AppStateModel state, DateTimeOffset utcNow) =>
         state.UpdateLastCheckUtc is not { } last || utcNow - last >= PeriodicCheckInterval;
 
