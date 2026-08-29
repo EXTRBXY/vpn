@@ -55,15 +55,7 @@ internal sealed class MainForm : Form
     private readonly NumericUpDown _port;
     private readonly Button _pingBtn;
     private readonly ComboBox _modeCombo;
-    private readonly Label _statusValue;
-    private readonly Label _adminValue;
-    private readonly Label _modeValue;
-    private readonly Label _profileValue;
-    private readonly Label _portValue;
-    private readonly Label _dnsValue;
-    private readonly Label _ruleSetsValue;
-    private readonly Label _tunValue;
-    private readonly Label _proxyBypassValue;
+    private readonly ConnectionStatusPanelControl _statusPanel;
 
     private readonly Panel _tunAppsPanel;
     private readonly GroupBox _tunAppsGroup;
@@ -351,47 +343,7 @@ internal sealed class MainForm : Form
         _tunAppsPanel.Controls.Add(tunAppsRoot);
         _tunAppsGroup.Controls.Add(_tunAppsPanel);
 
-        var statusLayout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            ColumnCount = 2,
-            RowCount = 9,
-            Padding = new Padding(UiMetrics.Space12),
-        };
-        statusLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
-        statusLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-
-        _statusValue = new Label { AutoSize = true, Anchor = AnchorStyles.Left };
-        _adminValue = new Label { AutoSize = true, Anchor = AnchorStyles.Left };
-        _modeValue = new Label { AutoSize = true, Anchor = AnchorStyles.Left };
-        _profileValue = new Label { AutoSize = true, Anchor = AnchorStyles.Left };
-        _portValue = new Label { AutoSize = true, Anchor = AnchorStyles.Left };
-        _dnsValue = new Label { AutoSize = true, Anchor = AnchorStyles.Left };
-        _ruleSetsValue = new Label { AutoSize = true, Anchor = AnchorStyles.Left };
-        _tunValue = new Label { AutoSize = true, Anchor = AnchorStyles.Left };
-        _proxyBypassValue = new Label { AutoSize = true, Anchor = AnchorStyles.Left };
-
-        statusLayout.Controls.Add(new Label { Text = "Статус", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
-        statusLayout.Controls.Add(_statusValue, 1, 0);
-        statusLayout.Controls.Add(new Label { Text = "Права", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
-        statusLayout.Controls.Add(_adminValue, 1, 1);
-        statusLayout.Controls.Add(new Label { Text = "Режим", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
-        statusLayout.Controls.Add(_modeValue, 1, 2);
-        statusLayout.Controls.Add(new Label { Text = "Профиль", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 3);
-        statusLayout.Controls.Add(_profileValue, 1, 3);
-        statusLayout.Controls.Add(new Label { Text = "Порт", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 4);
-        statusLayout.Controls.Add(_portValue, 1, 4);
-        statusLayout.Controls.Add(new Label { Text = "DNS", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 5);
-        statusLayout.Controls.Add(_dnsValue, 1, 5);
-        statusLayout.Controls.Add(new Label { Text = "Rule-sets", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 6);
-        statusLayout.Controls.Add(_ruleSetsValue, 1, 6);
-        statusLayout.Controls.Add(new Label { Text = "TUN", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 7);
-        statusLayout.Controls.Add(_tunValue, 1, 7);
-        statusLayout.Controls.Add(new Label { Text = "Исключения прокси", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 8);
-        statusLayout.Controls.Add(_proxyBypassValue, 1, 8);
-        for (var i = 0; i < 9; i++)
-            statusLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        _statusPanel = new ConnectionStatusPanelControl();
 
         var statusGroup = new GroupBox
         {
@@ -400,7 +352,7 @@ internal sealed class MainForm : Form
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink
         };
-        statusGroup.Controls.Add(statusLayout);
+        statusGroup.Controls.Add(_statusPanel);
         mainStack.Controls.Add(statusGroup, 0, 0);
         mainStack.Controls.Add(connectionGroup, 0, 1);
         _connectionSettings.TunAppsHost.Controls.Add(_tunAppsGroup);
@@ -1455,15 +1407,7 @@ internal sealed class MainForm : Form
         _tunAppsBrowseFileBtn.Enabled = viewState.CanEditTunApps;
         _tunAppsRemoveBtn.Enabled = viewState.CanEditTunApps;
 
-        _statusValue.Text = viewState.StatusText;
-        _adminValue.Text = viewState.AdministratorText;
-        _modeValue.Text = viewState.ModeText;
-        _profileValue.Text = viewState.ProfileText;
-        _portValue.Text = viewState.PortText;
-        _dnsValue.Text = viewState.DnsText;
-        _ruleSetsValue.Text = viewState.RuleSetsText;
-        _tunValue.Text = viewState.TunText;
-        _proxyBypassValue.Text = viewState.ProxyBypassText;
+        _statusPanel.Apply(viewState);
         _connectionSettings.SetConnectionFieldsEnabled(viewState.CanEditConnection);
         UpdateDnsDetourControl();
     }
