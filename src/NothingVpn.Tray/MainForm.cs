@@ -14,7 +14,6 @@ using NothingVpn.Infrastructure.TunApps;
 using NothingVpn.Presentation;
 using NothingVpn.Tray.Internal.Diagnostics;
 using NothingVpn.Tray.Internal.Windows;
-using NothingVpn.Infrastructure.RuleSets;
 using NothingVpn.Tray.Internal.Updates;
 using NothingVpn.Tray.Internal.UI;
 
@@ -29,6 +28,7 @@ internal sealed class MainForm : Form
     private readonly IConnectionSettingsController _connectionSettingsController;
     private readonly ITunAppsController _tunAppsController;
     private readonly IRuleSetManagementController _ruleSetManagementController;
+    private readonly IRuleSetFileService _ruleSetFileService;
     private readonly IConnectionController _connectionController;
     private readonly IDiagnosticsService _diagnosticsService;
     private readonly InMemoryLogStore _logStore;
@@ -126,6 +126,7 @@ internal sealed class MainForm : Form
         IConnectionSettingsController connectionSettingsController,
         ITunAppsController tunAppsController,
         IRuleSetManagementController ruleSetManagementController,
+        IRuleSetFileService ruleSetFileService,
         IConnectionController connectionController,
         IDiagnosticsService diagnosticsService,
         InMemoryLogStore logStore,
@@ -139,6 +140,7 @@ internal sealed class MainForm : Form
         _connectionSettingsController = connectionSettingsController;
         _tunAppsController = tunAppsController;
         _ruleSetManagementController = ruleSetManagementController;
+        _ruleSetFileService = ruleSetFileService;
         _connectionController = connectionController;
         _diagnosticsService = diagnosticsService;
         _logStore = logStore;
@@ -1090,9 +1092,7 @@ internal sealed class MainForm : Form
 
     private bool RuleSetFileExists(UserRuleSetModel rs)
     {
-        var name = (rs.FileName ?? "").Trim();
-        if (name.Length == 0) return false;
-        return File.Exists(Path.Combine(_paths.RuleSetsDir, name));
+        return _ruleSetFileService.Exists(rs);
     }
 
     private void RefreshBuiltinGridRowStyles()
@@ -1156,27 +1156,8 @@ internal sealed class MainForm : Form
             };
             if (ofd.ShowDialog(this) != DialogResult.OK) return;
 
-            var src = ofd.FileName;
-            if (string.IsNullOrWhiteSpace(src) || !File.Exists(src))
-                throw new FileNotFoundException("Файл не найден.");
-            if (!src.EndsWith(".srs", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Поддерживаются только файлы .srs.");
-
-            Directory.CreateDirectory(_paths.RuleSetsDir);
-
-            var baseName = Path.GetFileNameWithoutExtension(src);
-            var fileName = Path.GetFileName(src);
-            var dest = Path.Combine(_paths.RuleSetsDir, fileName);
-            if (File.Exists(dest))
-            {
-                var suffix = Guid.NewGuid().ToString("N")[..8];
-                fileName = $"{baseName}-{suffix}.srs";
-                dest = Path.Combine(_paths.RuleSetsDir, fileName);
-            }
-
-            File.Copy(src, dest, overwrite: false);
-
-            _userRuleSetsBinding.Add(_ruleSetManagementController.CreateUserRuleSet(baseName, fileName));
+            var imported = _ruleSetFileService.Import(ofd.FileName);
+            _userRuleSetsBinding.Add(_ruleSetManagementController.CreateUserRuleSet(imported.Name, imported.FileName));
             SaveRuleSetsFromGrid();
         }
         catch (Exception ex)
@@ -1209,11 +1190,9 @@ internal sealed class MainForm : Form
 
             foreach (var rs in targets)
             {
-                var path = Path.Combine(_paths.RuleSetsDir, (rs.FileName ?? "").Trim());
                 try
                 {
-                    if (File.Exists(path))
-                        File.Delete(path);
+                    _ruleSetFileService.Delete(rs);
                 }
                 catch (Exception ex)
                 {
@@ -1319,14 +1298,9 @@ internal sealed class MainForm : Form
         if (RuleSetFileExists(rs))
             return true;
 
-        var def = BuiltinGeositeRuleSets.FindByBuiltinId(rs.BuiltinId);
-        if (def is null)
-            return false;
-
-        var dest = Path.Combine(_paths.RuleSetsDir, rs.FileName.Trim());
-        var result = await RuleSetRemoteDownloader.DownloadAsync(def.DownloadUrl, dest, ifNoneMatch: null, CancellationToken.None)
+        var result = await _ruleSetFileService.DownloadBuiltinAsync(rs, useConditionalRequest: false, CancellationToken.None)
             .ConfigureAwait(true);
-        if (!result.Ok)
+        if (!result.Success)
         {
             _appLogger.Warn("app/rulesets", $"Download builtin failed: {rs.BuiltinId}, {result.Error}");
             if (showErrorsOnFailure)
@@ -1351,13 +1325,13 @@ internal sealed class MainForm : Form
         return true;
     }
 
-    private static void OpenOtherRuleSetLists()
+    private void OpenOtherRuleSetLists()
     {
         try
         {
             Process.Start(new ProcessStartInfo
             {
-                FileName = BuiltinGeositeRuleSets.CatalogBrowserUrl,
+                FileName = _ruleSetFileService.CatalogUrl,
                 UseShellExecute = true
             });
         }
@@ -1407,11 +1381,7 @@ internal sealed class MainForm : Form
                 .ToList();
             if (targets.Count == 0) return;
 
-            var anyFile = targets.Any(x =>
-            {
-                var p = Path.Combine(_paths.RuleSetsDir, (x.FileName ?? "").Trim());
-                return File.Exists(p);
-            });
+            var anyFile = targets.Any(_ruleSetFileService.Exists);
             if (!anyFile)
             {
                 MessageBox.Show(this,
@@ -1429,23 +1399,18 @@ internal sealed class MainForm : Form
 
             foreach (var rs in targets)
             {
-                var def = BuiltinGeositeRuleSets.FindByBuiltinId(rs.BuiltinId);
-                if (def is null) continue;
-
-                var dest = Path.Combine(_paths.RuleSetsDir, rs.FileName.Trim());
-                if (!File.Exists(dest))
+                if (!_ruleSetFileService.Exists(rs))
                     continue;
 
                 var useConditional = !string.IsNullOrWhiteSpace(rs.RemoteEtag);
-                var result = await RuleSetRemoteDownloader.DownloadAsync(
-                    def.DownloadUrl,
-                    dest,
-                    ifNoneMatch: useConditional ? rs.RemoteEtag : null,
+                var result = await _ruleSetFileService.DownloadBuiltinAsync(
+                    rs,
+                    useConditional,
                     CancellationToken.None).ConfigureAwait(true);
 
-                if (!result.Ok)
+                if (!result.Success)
                 {
-                    failed.Add($"{def.DisplayName}: {result.Error}");
+                    failed.Add($"{rs.Name}: {result.Error}");
                     continue;
                 }
 
@@ -1739,13 +1704,12 @@ internal sealed class MainForm : Form
                 continue;
             }
 
-            var full = Path.Combine(_paths.RuleSetsDir, fileName);
             if (!fileName.EndsWith(".srs", StringComparison.OrdinalIgnoreCase))
             {
                 bad.Add(rs.Name?.Trim().Length > 0 ? rs.Name : rs.Tag);
                 continue;
             }
-            if (!File.Exists(full))
+            if (!_ruleSetFileService.Exists(rs))
             {
                 var line = $"{(string.IsNullOrWhiteSpace(rs.Name) ? rs.Tag : rs.Name)} → {rs.FileName}";
                 if (!string.IsNullOrWhiteSpace(rs.BuiltinId))
