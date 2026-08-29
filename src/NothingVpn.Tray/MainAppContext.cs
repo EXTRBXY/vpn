@@ -47,6 +47,7 @@ internal sealed class MainAppContext : ApplicationContext
         var connectionSettingsController = new ConnectionSettingsController(services.SettingsService);
         var tunAppsController = new TunAppsController(services.PathPolicy, services.SettingsService);
         var ruleSetManagementController = new RuleSetManagementController(services.SettingsService);
+        var connectionDiagnosticController = new ConnectionDiagnosticController(services.DiagnosticsService);
 
         var extracted = Icon.ExtractAssociatedIcon(System.Windows.Forms.Application.ExecutablePath);
         _trayBaseIcon = extracted is null ? (Icon)SystemIcons.Application.Clone() : (Icon)extracted.Clone();
@@ -61,7 +62,7 @@ internal sealed class MainAppContext : ApplicationContext
             ruleSetManagementController,
             services.RuleSetFileService,
             connectionController,
-            services.DiagnosticsService,
+            connectionDiagnosticController,
             logStore,
             requestExit: Exit,
             vpnConnectionStateChanged: SetTrayConnectionState);

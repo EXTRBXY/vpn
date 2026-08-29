@@ -30,7 +30,7 @@ internal sealed class MainForm : Form
     private readonly IRuleSetManagementController _ruleSetManagementController;
     private readonly IRuleSetFileService _ruleSetFileService;
     private readonly IConnectionController _connectionController;
-    private readonly IDiagnosticsService _diagnosticsService;
+    private readonly IConnectionDiagnosticController _connectionDiagnosticController;
     private readonly InMemoryLogStore _logStore;
     private readonly AppLogger _appLogger;
     private readonly System.Action _requestExit;
@@ -128,7 +128,7 @@ internal sealed class MainForm : Form
         IRuleSetManagementController ruleSetManagementController,
         IRuleSetFileService ruleSetFileService,
         IConnectionController connectionController,
-        IDiagnosticsService diagnosticsService,
+        IConnectionDiagnosticController connectionDiagnosticController,
         InMemoryLogStore logStore,
         System.Action? requestExit = null,
         System.Action<bool>? vpnConnectionStateChanged = null)
@@ -142,7 +142,7 @@ internal sealed class MainForm : Form
         _ruleSetManagementController = ruleSetManagementController;
         _ruleSetFileService = ruleSetFileService;
         _connectionController = connectionController;
-        _diagnosticsService = diagnosticsService;
+        _connectionDiagnosticController = connectionDiagnosticController;
         _logStore = logStore;
         _appLogger = new AppLogger(logStore);
         _requestExit = requestExit ?? (() => System.Windows.Forms.Application.Exit());
@@ -1520,63 +1520,13 @@ internal sealed class MainForm : Form
 
     private async Task PingAsync()
     {
-        if (!_connectionController.IsRunning)
-        {
-            MessageBox.Show(this, "Сначала нажмите «Старт».", "Пинг", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            return;
-        }
-
-        var isTun = ConnectionPolicy.IsTunMode(_state.Mode);
-        var isTunApps = string.Equals(_state.Mode, "tun_apps", StringComparison.OrdinalIgnoreCase);
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        try
-        {
-            if (!isTun)
-            {
-                var r = await _diagnosticsService.RunProxySmokeTestAsync(
-                    targetHost: "api.ipify.org",
-                    targetPort: 443,
-                    timeout: TimeSpan.FromSeconds(8));
-
-                sw.Stop();
-                if (!r.Success)
-                    throw new InvalidOperationException(r.Error ?? "Proxy test failed.");
-
-                MessageBox.Show(this, $"Прокси: OK\nВремя: {sw.ElapsedMilliseconds} мс", "Пинг", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            if (isTunApps)
-            {
-                // Трафик этого процесса обычно не в списке — ipify проверяет «direct», не VLESS.
-                var r = await _diagnosticsService.RunTunSmokeTestAsync(TimeSpan.FromSeconds(4));
-                sw.Stop();
-                if (!r.Success)
-                    throw new InvalidOperationException(r.Error ?? "TUN test failed.");
-
-                MessageBox.Show(this,
-                    $"Связность: OK\nВремя: {sw.ElapsedMilliseconds} мс\n\nВажно: в режиме «TUN (выбранные приложения)» тест идёт из процесса Nothing VPN (обычно напрямую, без VLESS). OK здесь не означает, что выбранные .exe ходят в интернет через туннель — проверяйте сами браузер/игру из списка.",
-                    "Пинг",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-                return;
-            }
-
-            // TUN (весь трафик): проверка выхода в интернет через туннель.
-            var r2 = await _diagnosticsService.RunTunSmokeTestAsync(TimeSpan.FromSeconds(4));
-            sw.Stop();
-            if (!r2.Success)
-                throw new InvalidOperationException(r2.Error ?? "TUN test failed.");
-
-            MessageBox.Show(this, $"TUN: OK\nВремя: {sw.ElapsedMilliseconds} мс", "Пинг", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        }
-        catch (Exception ex)
-        {
-            sw.Stop();
-            var mode = isTun ? "TUN" : "Прокси";
-            _appLogger.Warn("app/smoke", $"{mode} smoke test: FAIL, {sw.ElapsedMilliseconds} ms, reason: {ex.Message}");
-            MessageBox.Show(this, $"{mode}: FAIL\n{ex.Message}\nВремя: {sw.ElapsedMilliseconds} мс", "Пинг", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
+        var result = await _connectionDiagnosticController.RunAsync(_state.Mode, _connectionController.IsRunning);
+        if (!string.IsNullOrWhiteSpace(result.LogMessage))
+            _appLogger.Warn("app/smoke", result.LogMessage);
+        var icon = result.Status == ConnectionDiagnosticStatus.Failure
+            ? MessageBoxIcon.Warning
+            : MessageBoxIcon.Information;
+        MessageBox.Show(this, result.Message, "Пинг", MessageBoxButtons.OK, icon);
     }
 
     private void UpdateTitle()
