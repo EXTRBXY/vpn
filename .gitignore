@@ -8,6 +8,7 @@ obj/
 *.sln.docstates
 
 ## Build outputs / publishes
+artifacts/
 **/bin/Release/**/publish/
 **/bin/Debug/**/publish/
 **/bin/Release/**/win-*/publish/

@@ -20,7 +20,7 @@ env:
   # Версия sing-box из https://github.com/SagerNet/sing-box/releases (имя архива sing-box-VERSION-windows-amd64.zip)
   SING_BOX_VERSION: '1.13.12'
   WINTUN_VERSION: '0.14.1'
-  PUBLISH_REL: NothingVpn.Tray\bin\Release\net8.0-windows\win-x64\publish
+  RUNTIME_ASSETS_REL: artifacts\runtime
 
 jobs:
   build-installer:
@@ -50,26 +50,6 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      # Версию брать из $env:APP_VERSION: значения из GITHUB_ENV недоступны в ${{ env.* }}.
-      - name: Publish NothingVpn.Tray
-        shell: pwsh
-        working-directory: ${{ github.workspace }}
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:APP_VERSION)) { throw "APP_VERSION is empty" }
-          dotnet publish NothingVpn.Tray\NothingVpn.Tray.csproj -c Release `
-            -p:Version=$env:APP_VERSION -p:InformationalVersion=$env:APP_VERSION
-
-      - name: Проверить версию в NothingVpn.Tray.exe
-        shell: pwsh
-        run: |
-          $exe = Join-Path $env:GITHUB_WORKSPACE ($env:PUBLISH_REL + '\NothingVpn.Tray.exe')
-          if (-not (Test-Path -LiteralPath $exe)) { throw "Missing: $exe" }
-          $pv = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion
-          Write-Host "ProductVersion=$pv (ожидание: $($env:APP_VERSION))"
-          if ($pv -notlike "$($env:APP_VERSION)*") {
-            throw "Версия в PE не совпадает с APP_VERSION: '$pv' vs '$($env:APP_VERSION)'"
-          }
-
       - name: Скачать sing-box (windows-amd64)
         shell: pwsh
         working-directory: ${{ github.workspace }}
@@ -83,8 +63,9 @@ jobs:
           Expand-Archive -Path $name -DestinationPath $dest -Force
           $exe = Get-ChildItem -Path $dest -Recurse -Filter sing-box.exe | Select-Object -First 1
           if (-not $exe) { throw "sing-box.exe not found in archive" }
-          $pub = Join-Path $env:GITHUB_WORKSPACE $env:PUBLISH_REL
-          Copy-Item -LiteralPath $exe.FullName -Destination (Join-Path $pub "sing-box.exe") -Force
+          $assets = Join-Path $env:GITHUB_WORKSPACE $env:RUNTIME_ASSETS_REL
+          New-Item -ItemType Directory -Path $assets -Force | Out-Null
+          Copy-Item -LiteralPath $exe.FullName -Destination (Join-Path $assets "sing-box.exe") -Force
 
       - name: Скачать Wintun (wintun.dll)
         shell: pwsh
@@ -99,26 +80,32 @@ jobs:
           Expand-Archive -Path $zip -DestinationPath $dest -Force
           $dll = Get-ChildItem -Path $dest -Recurse -Filter wintun.dll | Where-Object { $_.FullName -match 'amd64' } | Select-Object -First 1
           if (-not $dll) { throw "wintun.dll (amd64) not found" }
-          $pub = Join-Path $env:GITHUB_WORKSPACE $env:PUBLISH_REL
-          Copy-Item -LiteralPath $dll.FullName -Destination (Join-Path $pub "wintun.dll") -Force
+          $assets = Join-Path $env:GITHUB_WORKSPACE $env:RUNTIME_ASSETS_REL
+          New-Item -ItemType Directory -Path $assets -Force | Out-Null
+          Copy-Item -LiteralPath $dll.FullName -Destination (Join-Path $assets "wintun.dll") -Force
 
       - name: Установить Inno Setup
         run: choco install innosetup -y --no-progress
 
-      - name: Собрать установщик (ISCC)
+      - name: Тесты, publish и установщик
         shell: pwsh
         working-directory: ${{ github.workspace }}
         run: |
-          $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path -LiteralPath $iscc)) { throw "ISCC not found at $iscc" }
+          if ([string]::IsNullOrWhiteSpace($env:APP_VERSION)) { throw "APP_VERSION is empty" }
           $repoUrl = "https://github.com/${{ github.repository }}"
-          & $iscc `
-            "/DMyAppVersion=$env:APP_VERSION" `
-            "/DMyAppURL=$repoUrl" `
-            "installer\NothingVpn.iss"
-          $out = Join-Path $env:GITHUB_WORKSPACE "installer\Output\NothingVpnSetup.exe"
-          if (-not (Test-Path -LiteralPath $out)) { throw "Expected output missing: $out" }
-          "INSTALLER_PATH=$out" >> $env:GITHUB_ENV
+          .\build\Build.ps1 -Target Test
+          .\build\Build.ps1 -Target Publish `
+            -Version $env:APP_VERSION `
+            -RuntimeAssetsDirectory $env:RUNTIME_ASSETS_REL
+          .\build\Build.ps1 -Target Installer `
+            -Version $env:APP_VERSION `
+            -RepositoryUrl $repoUrl
+          $exe = Join-Path $env:GITHUB_WORKSPACE "artifacts\publish\win-x64\NothingVpn.Tray.exe"
+          $pv = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion
+          if ($pv -notlike "$($env:APP_VERSION)*") {
+            throw "Версия в PE не совпадает с APP_VERSION: '$pv' vs '$($env:APP_VERSION)'"
+          }
+          "INSTALLER_PATH=$(Join-Path $env:GITHUB_WORKSPACE 'artifacts\installer\NothingVpnSetup.exe')" >> $env:GITHUB_ENV
 
       - name: Загрузить артефакт (workflow_dispatch)
         if: github.event_name == 'workflow_dispatch'

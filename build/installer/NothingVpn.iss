@@ -1,6 +1,6 @@
 ; Inno Setup script for NothingVpn.Tray
 ; Build prerequisites:
-; 1) dotnet publish "NothingVpn.Tray\\NothingVpn.Tray.csproj" -c Release -r win-x64
+; Use build\Build.ps1 -Target Installer. Paths are injected by the build script.
 ; 2) Put sing-box.exe into the publish folder next to NothingVpn.Tray.exe
 ; 3) Compile this .iss with Inno Setup (ISCC.exe)
 
@@ -10,8 +10,18 @@
 #define MyAppMutex "Global\NothingVpn.Tray"
 #define MyAppPublisher "NothingVpn"
 ; URL и версию при CI переопределяют: ISCC /DMyAppURL=... /DMyAppVersion=...
-#define MyAppURL "https://github.com/"
-#define MyAppVersion "0.5.9"
+#ifndef MyAppURL
+  #define MyAppURL "https://github.com/"
+#endif
+#ifndef MyAppVersion
+  #define MyAppVersion "0.5.9"
+#endif
+#ifndef PublishDir
+  #define PublishDir "..\..\artifacts\publish\win-x64"
+#endif
+#ifndef InstallerOutputDir
+  #define InstallerOutputDir "..\..\artifacts\installer"
+#endif
 [Setup]
 AppId={{A2D610D2-2A69-4D7A-9B06-6C0B4E5F5C87}
 AppName={#MyAppName}
@@ -23,12 +33,12 @@ AppUpdatesURL={#MyAppURL}
 DefaultDirName={localappdata}\Programs\NothingVpn
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
-OutputDir=Output
+OutputDir={#InstallerOutputDir}
 OutputBaseFilename=NothingVpnSetup
 Compression=lzma2
 SolidCompression=yes
-ArchitecturesAllowed=x64
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 UninstallDisplayIcon={app}\{#MyAppExeName}
 CloseApplications=yes
@@ -44,10 +54,10 @@ Name: "autorun"; Description: "Запускать при входе в сист�
 
 [Files]
 ; Publish output folder (single-file self-contained exe + optional pdb)
-Source: "..\\NothingVpn.Tray\\bin\\Release\\net8.0-windows\\win-x64\\publish\\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\\NothingVpn.Tray\\bin\\Release\\net8.0-windows\\win-x64\\publish\\sing-box.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\\NothingVpn.Tray\\bin\\Release\\net8.0-windows\\win-x64\\publish\\wintun.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "..\\NothingVpn.Tray\\bin\\Release\\net8.0-windows\\win-x64\\publish\\*.pdb"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#PublishDir}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PublishDir}\sing-box.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PublishDir}\wintun.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#PublishDir}\*.pdb"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

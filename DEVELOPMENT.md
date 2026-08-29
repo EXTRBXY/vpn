@@ -1,63 +1,94 @@
 # Development
 
-Этот документ — для разработчиков.
+## Структура репозитория
 
-## Быстрая сборка (publish)
+```text
+src/          исходный код приложения
+tests/        автоматические тесты
+build/        единая локальная и CI-сборка, Inno Setup
+artifacts/    результаты сборки (не добавляются в Git)
+```
 
-Из корня репозитория:
+Проекты также сгруппированы в одноимённые папки внутри `NothingVpn.sln`.
+
+## Единая сборка
+
+### Быстрая ручная проверка
+
+Для обычной проверки приложения не требуется запускать автоматические тесты:
+
+1. Запустите `build-app.cmd` двойным кликом. Скрипт создаст опубликованную self-contained сборку без установщика и откроет её каталог.
+2. Запустите и проверьте `artifacts\publish\win-x64\NothingVpn.Tray.exe`.
+3. После проверки запустите `build-installer.cmd`. Он упакует в Inno Setup именно существующую опубликованную сборку, не пересобирая её.
+4. Проверьте `artifacts\installer\NothingVpnSetup.exe`.
+
+`build-installer.cmd` намеренно завершается ошибкой, если опубликованная сборка ещё не создана или в ней нет `sing-box.exe`.
+
+Все локальные и CI-сценарии запускаются через `build/Build.ps1` из корня репозитория:
 
 ```powershell
-.\publish.ps1
+.\build\Build.ps1 -Target Clean
+.\build\Build.ps1 -Target Build
+.\build\Build.ps1 -Target Test
+.\build\Build.ps1 -Target Publish
+.\build\Build.ps1 -Target Installer   # упаковать существующий publish
+.\build\Build.ps1 -Target All
 ```
 
-или:
+Цели `Build`, `Test` и `Publish` самостоятельно выполняют необходимый restore. `Installer` только упаковывает уже проверенный publish. `All` очищает артефакты и выполняет полный цикл, включая тесты.
 
-```bat
-publish.cmd
+Старые `publish.ps1` и `publish.cmd` оставлены как совместимые оболочки для `-Target Publish`.
+
+## Результаты
+
+```text
+artifacts/publish/win-x64/             опубликованное приложение
+artifacts/test-results/                TRX-результаты тестов
+artifacts/installer/NothingVpnSetup.exe
 ```
 
-Оба скрипта делают:
+Промежуточные `bin` и `obj` остаются стандартными каталогами MSBuild, но готовые результаты больше не извлекаются из них.
+
+## Runtime-зависимости
+
+Для установленного приложения рядом с `NothingVpn.Tray.exe` необходим `sing-box.exe`; для TUN также нужен `wintun.dll`.
+
+Локальный `Publish` ищет их в `%LOCALAPPDATA%\Programs\NothingVpn`. Можно явно передать каталог:
 
 ```powershell
-dotnet publish NothingVpn.Tray\NothingVpn.Tray.csproj -c Release -r win-x64
+.\build\Build.ps1 -Target Publish -RuntimeAssetsDirectory C:\path\to\runtime-assets
 ```
 
-Результат: `NothingVpn.Tray\bin\Release\net8.0-windows\win-x64\publish\`.
+`Installer` требует `sing-box.exe` и предупреждает при отсутствии `wintun.dll`.
 
-## Сборка установщика (Inno Setup) локально
+## Сборка установщика
 
-1. Соберите publish (см. выше).
-2. Убедитесь, что в `publish` рядом с `NothingVpn.Tray.exe` лежат:
-   - `sing-box.exe`
-   - при необходимости `wintun.dll`
-3. Соберите `installer\NothingVpn.iss` через Inno Setup (`ISCC.exe`).
+Сначала соберите и проверьте опубликованную сборку приложения, затем установите Inno Setup 6 и выполните:
 
-Готовый установщик появится в `installer\Output\NothingVpnSetup.exe`.
-
-## Релизы на GitHub
-
-В репозитории настроен workflow `Release` (`.github/workflows/release.yml`):
-
-- **push тега `v*`** (например `v0.1.0`) → собирает `NothingVpnSetup.exe` и прикрепляет к GitHub Release.
-- **ручной запуск** (*Actions → Release → Run workflow*) → собирает установщик и кладёт в артефакты прогона (без релиза).
-
-### Как выпустить версию
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
+```powershell
+.\build\Build.ps1 -Target Installer -Version 0.5.9
 ```
 
-Версия установщика в CI берётся из имени тега (без префикса `v`).
+При нестандартном расположении компилятора:
 
-Тот же номер передаётся в `dotnet publish` как `-p:Version` / `-p:InformationalVersion`, чтобы версия в свойствах `NothingVpn.Tray.exe` совпадала с тегом и с полем `AppVersion` в Inno Setup. Базовая версия в [NothingVpn.Tray.csproj](NothingVpn.Tray/NothingVpn.Tray.csproj) используется для локальных сборок без тега.
+```powershell
+.\build\Build.ps1 -Target Installer `
+  -Version 0.5.9 `
+  -InnoCompilerPath C:\Tools\InnoSetup\ISCC.exe
+```
 
-### Обновления в клиенте (GitHub Releases)
+Конфигурация находится в `build/installer/NothingVpn.iss`. Пути publish/output передаются ей build-скриптом и не привязаны к `bin` проекта.
 
-Клиент запрашивает [GitHub Releases API](https://docs.github.com/en/rest/releases/releases) для репозитория, заданного константами `GitHubOwner` / `GitHubRepo` в `NothingVpn.Tray/Internal/Updates/UpdateChannelOptions.cs`. При форке смените их на свой `owner/repo`. В каждом релизе должен быть ассет с именем `NothingVpnSetup.exe` (как в workflow `Release`).
+## GitHub Actions и релизы
 
-### Обновить версии зависимостей в CI
+- `CI` вызывает `build/Build.ps1 -Target Test` на push в `main` и в pull request.
+- `Release` скачивает зафиксированные версии sing-box/Wintun и вызывает тот же build-скрипт.
+- Push тега `v*` создаёт GitHub Release с `NothingVpnSetup.exe`.
+- Ручной запуск workflow сохраняет установщик как artifact.
 
-- **sing-box**: в `.github/workflows/release.yml` переменная `SING_BOX_VERSION` (скачивается архив `sing-box-$ver-windows-amd64.zip`).
-- **Wintun**: там же `WINTUN_VERSION` (скачивается `https://www.wintun.net/builds/wintun-$ver.zip`).
+Версия тега передаётся одновременно в `dotnet publish` и Inno Setup:
 
+```powershell
+git tag v0.5.9
+git push origin v0.5.9
+```

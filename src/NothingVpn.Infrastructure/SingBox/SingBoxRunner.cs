@@ -63,25 +63,80 @@ internal sealed class SingBoxRunner : IDisposable
             WorkingDirectory = Path.GetDirectoryName(exePath)!
         };
 
-        using var p = Process.Start(psi)
-            ?? throw new InvalidOperationException("Failed to start sing-box check.");
+        var (exitCode, stdout, stderr) = RunProcessAsync(psi, ProcessStopTimeout)
+            .GetAwaiter()
+            .GetResult();
 
-        var stdout = p.StandardOutput.ReadToEnd();
-        var stderr = p.StandardError.ReadToEnd();
-        if (!p.WaitForExit((int)ProcessStopTimeout.TotalMilliseconds))
-        {
-            try { p.Kill(entireProcessTree: true); } catch { }
-            throw new TimeoutException("sing-box check timed out.");
-        }
-
-        if (p.ExitCode == 0)
+        if (exitCode == 0)
             return;
 
         var detail = ExtractCheckFailure(stdout, stderr);
         throw new InvalidOperationException(
             string.IsNullOrWhiteSpace(detail)
-                ? $"sing-box check failed (exit {p.ExitCode})."
+                ? $"sing-box check failed (exit {exitCode})."
                 : $"sing-box check failed: {detail}");
+    }
+
+    internal static async Task<(int ExitCode, string Stdout, string Stderr)> RunProcessAsync(
+        ProcessStartInfo startInfo,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
+    {
+        using var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Failed to start process.");
+
+        var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
+
+        using var timeoutCts = new CancellationTokenSource(timeout);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            timeoutCts.Token);
+
+        try
+        {
+            await process.WaitForExitAsync(linkedCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            TryKillProcessTree(process);
+            await ObserveProcessExitAsync(process).ConfigureAwait(false);
+            await ObserveOutputAsync(stdoutTask, stderrTask).ConfigureAwait(false);
+            throw new TimeoutException("sing-box check timed out.");
+        }
+        catch
+        {
+            TryKillProcessTree(process);
+            await ObserveProcessExitAsync(process).ConfigureAwait(false);
+            await ObserveOutputAsync(stdoutTask, stderrTask).ConfigureAwait(false);
+            throw;
+        }
+
+        var stdout = await stdoutTask.ConfigureAwait(false);
+        var stderr = await stderrTask.ConfigureAwait(false);
+        return (process.ExitCode, stdout, stderr);
+    }
+
+    private static void TryKillProcessTree(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+        }
+        catch { }
+    }
+
+    private static async Task ObserveProcessExitAsync(Process process)
+    {
+        try { await process.WaitForExitAsync().ConfigureAwait(false); }
+        catch { }
+    }
+
+    private static async Task ObserveOutputAsync(params Task<string>[] outputTasks)
+    {
+        try { await Task.WhenAll(outputTasks).ConfigureAwait(false); }
+        catch { }
     }
 
     public void Start(string configPath)

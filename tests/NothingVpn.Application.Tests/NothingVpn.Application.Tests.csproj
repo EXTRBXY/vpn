@@ -23,9 +23,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\NothingVpn.Application\NothingVpn.Application.csproj" />
-    <ProjectReference Include="..\NothingVpn.Domain\NothingVpn.Domain.csproj" />
-    <ProjectReference Include="..\NothingVpn.Infrastructure\NothingVpn.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\NothingVpn.Application\NothingVpn.Application.csproj" />
+    <ProjectReference Include="..\..\src\NothingVpn.Domain\NothingVpn.Domain.csproj" />
+    <ProjectReference Include="..\..\src\NothingVpn.Infrastructure\NothingVpn.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

@@ -15,4 +15,4 @@
 
 ## Для разработчиков
 
-Сборка, релизы и CI — в [DEVELOPMENT.md](DEVELOPMENT.md).
+Сборка, тесты, упаковка, релизы и структура репозитория — в [DEVELOPMENT.md](DEVELOPMENT.md).
