@@ -1,6 +1,5 @@
 ﻿using System.ComponentModel;
 using System.Diagnostics;
-using NothingVpn.Application.Mappers;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Services;
 using NothingVpn.Domain.Models;
@@ -27,6 +26,7 @@ internal sealed class MainForm : Form
     private readonly IProfileService _profileService;
     private readonly ISubscriptionService _subscriptionService;
     private readonly IConnectionScreenController _connectionScreenController;
+    private readonly IConnectionSettingsController _connectionSettingsController;
     private readonly IConnectionController _connectionController;
     private readonly IDiagnosticsService _diagnosticsService;
     private readonly InMemoryLogStore _logStore;
@@ -121,6 +121,7 @@ internal sealed class MainForm : Form
         IProfileService profileService,
         ISubscriptionService subscriptionService,
         IConnectionScreenController connectionScreenController,
+        IConnectionSettingsController connectionSettingsController,
         IConnectionController connectionController,
         IDiagnosticsService diagnosticsService,
         InMemoryLogStore logStore,
@@ -131,6 +132,7 @@ internal sealed class MainForm : Form
         _profileService = profileService;
         _subscriptionService = subscriptionService;
         _connectionScreenController = connectionScreenController;
+        _connectionSettingsController = connectionSettingsController;
         _connectionController = connectionController;
         _diagnosticsService = diagnosticsService;
         _logStore = logStore;
@@ -953,62 +955,31 @@ internal sealed class MainForm : Form
     {
         try
         {
-            var proxy = new ProxyConnectionSettings
-            {
-                ProxyOverride = _proxyOverrideBox.Text
-            };
-            ProxyConnectionPolicy.Validate(proxy);
-            ConnectionSettingsMapper.ApplyProxySettings(_state, proxy);
-
-            var tun = new TunSettings
-            {
-                InterfaceName = _tunInterfaceNameBox.Text,
-                AddressCidr = _tunAddressCidrModeCombo.SelectedIndex == 0
-                    ? "auto"
-                    : (_tunAddressCidrBox.Text ?? "").Trim(),
-                Mtu = (int)_tunMtu.Value,
-                Stack = TunSettingsPolicy.ComboIndexToStack(_tunStackCombo.SelectedIndex),
-                AutoRoute = _tunAutoRoute.Checked,
-                StrictRoute = _tunStrictRoute.Checked
-            };
-            TunSettingsPolicy.Validate(tun);
-            ConnectionSettingsMapper.ApplyTunSettings(_state, tun);
-
             var dnsMode = _dnsModeCombo.SelectedIndex == 0 ? "system" : "doh";
             var detour = DnsPolicy.ComboIndexToDetour(_dnsDetourCombo.SelectedIndex);
-            detour = DnsDetourPolicy.EffectiveDetour(_state.Mode, detour);
-
-            var dns = ConnectionSettingsMapper.ToDnsSettings(_state);
-            dns.Mode = dnsMode;
-            dns.Detour = detour;
-
-            if (dnsMode == "doh")
-            {
-                var server = (_dohServerBox.Text ?? "").Trim();
-                var path = (_dohPathBox.Text ?? "").Trim();
-                var sni = (_dohSniBox.Text ?? "").Trim();
-
-                if (string.IsNullOrWhiteSpace(server))
+            var draft = new ConnectionSettingsDraft(
+                new ProxyConnectionSettings { ProxyOverride = _proxyOverrideBox.Text },
+                new TunSettings
                 {
-                    if (showDialogs) throw new InvalidOperationException("DoH IP не задан.");
-                    return;
-                }
-                if (string.IsNullOrWhiteSpace(path))
-                    path = "/dns-query";
-                if (string.IsNullOrWhiteSpace(sni))
+                    InterfaceName = _tunInterfaceNameBox.Text,
+                    AddressCidr = _tunAddressCidrModeCombo.SelectedIndex == 0
+                        ? "auto"
+                        : (_tunAddressCidrBox.Text ?? "").Trim(),
+                    Mtu = (int)_tunMtu.Value,
+                    Stack = TunSettingsPolicy.ComboIndexToStack(_tunStackCombo.SelectedIndex),
+                    AutoRoute = _tunAutoRoute.Checked,
+                    StrictRoute = _tunStrictRoute.Checked
+                },
+                new DnsSettings
                 {
-                    if (showDialogs) throw new InvalidOperationException("DoH SNI не задан (нужен для TLS).");
-                    return;
-                }
+                    Mode = dnsMode,
+                    DohServer = _dohServerBox.Text,
+                    DohPath = _dohPathBox.Text,
+                    DohSni = _dohSniBox.Text,
+                    Detour = detour
+                });
 
-                dns.DohServer = server;
-                dns.DohPath = path;
-                dns.DohSni = sni;
-            }
-
-            DnsPolicy.Normalize(dns);
-            ConnectionSettingsMapper.ApplyDnsSettings(_state, dns);
-            SaveState();
+            _connectionSettingsController.Save(_state, draft);
 
             ShowDnsNotice("Настройки соединения сохранены. Вступят в силу после переподключения.");
         }
