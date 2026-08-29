@@ -51,14 +51,7 @@ internal sealed class MainForm : Form
     private readonly ConnectionControlPanelControl _connectionPanel;
     private readonly ConnectionStatusPanelControl _statusPanel;
 
-    private readonly Panel _tunAppsPanel;
-    private readonly GroupBox _tunAppsGroup;
-    private readonly ListView _tunAppsList;
-    private readonly ImageList _tunAppIcons;
-    private readonly TunAppIconCache _tunAppIconCache = new();
-    private readonly Button _tunAppsAddBtn;
-    private readonly Button _tunAppsBrowseFileBtn;
-    private readonly Button _tunAppsRemoveBtn;
+    private readonly TunAppsPanelControl _tunAppsPanel;
 
     private readonly DataGridView _builtinRuleSetsGrid;
     private readonly DataGridView _userRuleSetsGrid;
@@ -209,68 +202,7 @@ internal sealed class MainForm : Form
         };
         connectionGroup.Controls.Add(_connectionPanel);
 
-        _tunAppsPanel = new Panel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Padding = new Padding(UiMetrics.Space12, 0, UiMetrics.Space12, UiMetrics.Space12),
-            Visible = false
-        };
-        _tunAppsGroup = new GroupBox
-        {
-            Text = "TUN приложения",
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Margin = new Padding(0, 0, 0, UiMetrics.Space8),
-            Visible = false
-        };
-        var tunAppsRoot = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            ColumnCount = 1,
-            RowCount = 3
-        };
-        tunAppsRoot.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        tunAppsRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 220));
-        tunAppsRoot.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        tunAppsRoot.Controls.Add(new Label
-        {
-            Text = "Полные пути .exe через VPN. Дочерние процессы — отдельно.",
-            AutoSize = true,
-            MaximumSize = new Size(560, 0)
-        }, 0, 0);
-        _tunAppIcons = TunAppIconCache.CreateImageList();
-        _tunAppsList = new BufferedListView
-        {
-            Dock = DockStyle.Fill,
-            View = View.Details,
-            FullRowSelect = true,
-            HideSelection = false,
-            HeaderStyle = ColumnHeaderStyle.Nonclickable,
-            SmallImageList = _tunAppIcons
-        };
-        _tunAppsList.Columns.Add("Приложение", 160);
-        _tunAppsList.Columns.Add("Путь", 360);
-        tunAppsRoot.Controls.Add(_tunAppsList, 0, 1);
-        var tunAppsBtns = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false
-        };
-        _tunAppsAddBtn = new Button { Text = "Добавить", AutoSize = true };
-        _tunAppsBrowseFileBtn = new Button { Text = "Указать в проводнике", AutoSize = true };
-        _tunAppsRemoveBtn = new Button { Text = "Удалить", AutoSize = true };
-        tunAppsBtns.Controls.Add(_tunAppsAddBtn);
-        tunAppsBtns.Controls.Add(_tunAppsBrowseFileBtn);
-        tunAppsBtns.Controls.Add(_tunAppsRemoveBtn);
-        tunAppsRoot.Controls.Add(tunAppsBtns, 0, 2);
-        _tunAppsPanel.Controls.Add(tunAppsRoot);
-        _tunAppsGroup.Controls.Add(_tunAppsPanel);
+        _tunAppsPanel = new TunAppsPanelControl();
 
         _statusPanel = new ConnectionStatusPanelControl();
 
@@ -284,8 +216,7 @@ internal sealed class MainForm : Form
         statusGroup.Controls.Add(_statusPanel);
         mainStack.Controls.Add(statusGroup, 0, 0);
         mainStack.Controls.Add(connectionGroup, 0, 1);
-        _connectionSettings.TunAppsHost.Controls.Add(_tunAppsGroup);
-        _tunAppsGroup.Dock = DockStyle.Top;
+        _connectionSettings.TunAppsHost.Controls.Add(_tunAppsPanel);
 
         _logPanel = new LogPanelControl(_logStore, _appLogger);
         tabLogs.Controls.Add(_logPanel);
@@ -483,9 +414,9 @@ internal sealed class MainForm : Form
             if (_dnsUiReady)
                 UpdateDnsDetourControl();
         };
-        _tunAppsAddBtn.Click += (_, _) => AddTunAppExecutable();
-        _tunAppsBrowseFileBtn.Click += (_, _) => AddTunAppFromOpenFileDialog();
-        _tunAppsRemoveBtn.Click += (_, _) => RemoveSelectedTunApp();
+        _tunAppsPanel.AddRequested += (_, _) => AddTunAppExecutable();
+        _tunAppsPanel.BrowseRequested += (_, _) => AddTunAppFromOpenFileDialog();
+        _tunAppsPanel.RemoveRequested += (_, _) => RemoveSelectedTunApp();
         _logPanel.DebugLogsChanged += (_, _) =>
         {
             if (_loadingData) return;
@@ -1322,10 +1253,7 @@ internal sealed class MainForm : Form
     {
         var viewState = CreateConnectionViewState();
         _connectionPanel.ApplyAvailability(viewState.CanStart, viewState.CanStop, viewState.CanEditConnection);
-        _tunAppsList.Enabled = viewState.CanEditTunApps;
-        _tunAppsAddBtn.Enabled = viewState.CanEditTunApps;
-        _tunAppsBrowseFileBtn.Enabled = viewState.CanEditTunApps;
-        _tunAppsRemoveBtn.Enabled = viewState.CanEditTunApps;
+        _tunAppsPanel.SetEditingEnabled(viewState.CanEditTunApps);
 
         _statusPanel.Apply(viewState);
         _connectionSettings.SetConnectionFieldsEnabled(viewState.CanEditConnection);
@@ -1529,10 +1457,7 @@ internal sealed class MainForm : Form
         _connectionSettings.UpdateVisibility(_state.Mode);
 
         var tunAppsVisible = string.Equals(_state.Mode, ConnectionPolicy.TunAppsMode, StringComparison.OrdinalIgnoreCase);
-        if (_tunAppsGroup.Visible != tunAppsVisible)
-            _tunAppsGroup.Visible = tunAppsVisible;
-        if (_tunAppsPanel.Visible != tunAppsVisible)
-            _tunAppsPanel.Visible = tunAppsVisible;
+        _tunAppsPanel.SetModeVisible(tunAppsVisible);
     }
 
     private void SyncTunAppsListFromState()
@@ -1542,37 +1467,12 @@ internal sealed class MainForm : Form
 
     private IEnumerable<string> EnumerateTunAppPaths()
     {
-        foreach (ListViewItem item in _tunAppsList.Items)
-        {
-            if (item.Tag is string s && s.Length > 0)
-                yield return s;
-        }
-    }
-
-    private void AddTunAppListItem(string path)
-    {
-        if (!_tunAppsController.TryNormalize(path, out var norm))
-            return;
-
-        var item = new ListViewItem(Path.GetFileNameWithoutExtension(norm)) { Tag = norm };
-        item.SubItems.Add(norm);
-        item.ImageIndex = _tunAppIconCache.GetImageIndex(_tunAppIcons, norm);
-        _tunAppsList.Items.Add(item);
+        return _tunAppsPanel.Paths;
     }
 
     private void SetTunAppListItems(IEnumerable<string> paths)
     {
-        _tunAppsList.BeginUpdate();
-        try
-        {
-            _tunAppsList.Items.Clear();
-            foreach (var p in _tunAppsController.Normalize(paths))
-                AddTunAppListItem(p);
-        }
-        finally
-        {
-            _tunAppsList.EndUpdate();
-        }
+        _tunAppsPanel.SetPaths(_tunAppsController.Normalize(paths));
     }
 
     private void AddTunAppExecutable()
@@ -1612,9 +1512,7 @@ internal sealed class MainForm : Form
 
     private void RemoveSelectedTunApp()
     {
-        if (_tunAppsList.SelectedItems.Count == 0)
-            return;
-        if (_tunAppsList.SelectedItems[0].Tag is not string removedPath)
+        if (_tunAppsPanel.SelectedPath is not string removedPath)
             return;
         var paths = _tunAppsController.RemoveAndSave(_state, EnumerateTunAppPaths(), removedPath);
         SetTunAppListItems(paths);
