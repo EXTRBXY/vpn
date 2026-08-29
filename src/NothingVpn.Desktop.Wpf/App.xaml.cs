@@ -19,7 +19,17 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(System.Windows.StartupEventArgs e)
     {
         base.OnStartup(e);
-        _singleInstance = SingleInstance.TryCreatePrimary(AppId, out var alreadyRunning);
+        var takeover = e.Args.Any(x => string.Equals(x, "--takeover", StringComparison.OrdinalIgnoreCase));
+        bool alreadyRunning;
+        if (takeover)
+        {
+            _singleInstance = WaitForPrimaryTakeover();
+            alreadyRunning = false;
+        }
+        else
+        {
+            _singleInstance = SingleInstance.TryCreatePrimary(AppId, out alreadyRunning);
+        }
         if (alreadyRunning)
         {
             SingleInstance.ForwardToPrimary(AppId, e.Args);
@@ -41,8 +51,12 @@ public partial class App : System.Windows.Application
             var screenController = new ConnectionScreenController(
                 services.ProfileService,
                 services.SettingsService);
+            var profileController = new ProfileManagementController(
+                services.ProfileService,
+                services.SettingsService.GetState().ActiveProfileId);
+            var profileViewModel = new ProfileViewModel(profileController);
 
-            _viewModel = new MainViewModel(screenController, connectionController, RequestExit);
+            _viewModel = new MainViewModel(screenController, connectionController, profileViewModel, RequestExit);
             _viewModel.ConnectionStateChanged += (_, connected) => UpdateTrayState(connected);
             _window = new MainWindow(_viewModel);
             MainWindow = _window;
@@ -61,6 +75,19 @@ public partial class App : System.Windows.Application
                 System.Windows.MessageBoxImage.Error);
             RequestExit();
         }
+    }
+
+    private static SingleInstance? WaitForPrimaryTakeover()
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(20);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var instance = SingleInstance.TryCreatePrimary(AppId, out var alreadyRunning);
+            if (!alreadyRunning && instance is not null)
+                return instance;
+            Thread.Sleep(200);
+        }
+        return null;
     }
 
     private void CreateTrayIcon()

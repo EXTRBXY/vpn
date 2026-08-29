@@ -20,9 +20,10 @@
                         </Border>
                         <TextBlock Text="Nothing VPN" Margin="10,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold" />
                     </StackPanel>
-                    <Border Background="#EDF2FF" CornerRadius="10" Padding="12,10">
-                        <TextBlock Text="Главная" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" />
-                    </Border>
+                    <Button Content="Главная" Command="{Binding ShowHomeCommand}" HorizontalContentAlignment="Left"
+                            Background="#EDF2FF" Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6" />
+                    <Button Content="Профили" Command="{Binding ShowProfilesCommand}" HorizontalContentAlignment="Left"
+                            Background="Transparent" Foreground="{StaticResource TextBrush}" />
                 </StackPanel>
                 <StackPanel DockPanel.Dock="Bottom" VerticalAlignment="Bottom">
                     <TextBlock Text="Работает в системном трее" Foreground="{StaticResource MutedBrush}"
@@ -33,7 +34,7 @@
             </DockPanel>
         </Border>
 
-        <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
+        <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" Visibility="{Binding HomeVisibility}">
             <StackPanel>
                 <TextBlock Text="Подключение" FontSize="28" FontWeight="SemiBold" />
                 <TextBlock Text="Выберите профиль и режим работы" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,24" />
@@ -104,5 +105,8 @@
                 </Border>
             </StackPanel>
         </ScrollViewer>
+        <local:ProfilesView xmlns:local="clr-namespace:NothingVpn.Desktop.Wpf" Grid.Column="2"
+                            DataContext="{Binding ProfileManager}"
+                            Visibility="{Binding DataContext.ProfilesVisibility, RelativeSource={RelativeSource AncestorType=Window}}" />
     </Grid>
 </Window>

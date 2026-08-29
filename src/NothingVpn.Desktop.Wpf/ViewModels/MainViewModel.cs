@@ -22,15 +22,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private ModeOption? _selectedMode;
     private ConnectionViewState? _viewState;
     private string? _errorMessage;
+    private bool _showProfiles;
 
     public MainViewModel(
         IConnectionScreenController screenController,
         IConnectionController connectionController,
+        ProfileViewModel profileManager,
         Action requestExit)
     {
         _screenController = screenController;
         _connectionController = connectionController;
         _requestExit = requestExit;
+        ProfileManager = profileManager;
         Modes =
         [
             new ModeOption("proxy", "Прокси"),
@@ -40,6 +43,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _toggleCommand = new AsyncRelayCommand(ToggleConnectionAsync, () => CanStart || CanStop);
         ToggleConnectionCommand = _toggleCommand;
         ExitCommand = new RelayCommand(_requestExit);
+        ShowHomeCommand = new RelayCommand(() => ShowProfiles = false);
+        ShowProfilesCommand = new RelayCommand(() => ShowProfiles = true);
+        ProfileManager.ProfilesChanged += (_, preferredId) => ReloadProfiles(preferredId);
         _connectionController.ConnectionStateChanged += OnConnectionStateChanged;
         Load();
     }
@@ -51,6 +57,23 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public IReadOnlyList<ModeOption> Modes { get; }
     public ICommand ToggleConnectionCommand { get; }
     public ICommand ExitCommand { get; }
+    public ICommand ShowHomeCommand { get; }
+    public ICommand ShowProfilesCommand { get; }
+    public ProfileViewModel ProfileManager { get; }
+    public bool ShowProfiles
+    {
+        get => _showProfiles;
+        set
+        {
+            if (_showProfiles == value) return;
+            _showProfiles = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HomeVisibility));
+            OnPropertyChanged(nameof(ProfilesVisibility));
+        }
+    }
+    public Visibility HomeVisibility => ShowProfiles ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility ProfilesVisibility => ShowProfiles ? Visibility.Visible : Visibility.Collapsed;
 
     public VpnProfile? SelectedProfile
     {
@@ -120,6 +143,23 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _selectedMode = Modes.FirstOrDefault(x => string.Equals(x.Id, _state.Mode, StringComparison.OrdinalIgnoreCase)) ?? Modes[0];
         OnPropertyChanged(nameof(SelectedProfile));
         OnPropertyChanged(nameof(SelectedMode));
+        RefreshViewState();
+    }
+
+    private void ReloadProfiles(string? preferredId)
+    {
+        var snapshot = _screenController.Load();
+        _state = snapshot.State;
+        if (!string.IsNullOrWhiteSpace(preferredId))
+        {
+            _screenController.SelectProfile(_state, preferredId);
+            snapshot = _screenController.Load();
+            _state = snapshot.State;
+        }
+        Profiles.Clear();
+        foreach (var profile in snapshot.Profiles) Profiles.Add(profile);
+        _selectedProfile = snapshot.SelectedProfile;
+        OnPropertyChanged(nameof(SelectedProfile));
         RefreshViewState();
     }
 
