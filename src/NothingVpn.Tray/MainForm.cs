@@ -26,7 +26,7 @@ internal sealed class MainForm : Form
     private readonly AppPaths _paths;
     private readonly IProfileService _profileService;
     private readonly ISubscriptionService _subscriptionService;
-    private readonly ISettingsService _settingsService;
+    private readonly IConnectionScreenController _connectionScreenController;
     private readonly IConnectionController _connectionController;
     private readonly IDiagnosticsService _diagnosticsService;
     private readonly InMemoryLogStore _logStore;
@@ -114,12 +114,13 @@ internal sealed class MainForm : Form
     private int _lastLogVersion = -1;
     private int _lastLogMinLevel = -1;
     private bool _connectionUiUpdateQueued;
+    private bool _loadingData;
 
     public MainForm(
         AppPaths paths,
         IProfileService profileService,
         ISubscriptionService subscriptionService,
-        ISettingsService settingsService,
+        IConnectionScreenController connectionScreenController,
         IConnectionController connectionController,
         IDiagnosticsService diagnosticsService,
         InMemoryLogStore logStore,
@@ -129,7 +130,7 @@ internal sealed class MainForm : Form
         _paths = paths;
         _profileService = profileService;
         _subscriptionService = subscriptionService;
-        _settingsService = settingsService;
+        _connectionScreenController = connectionScreenController;
         _connectionController = connectionController;
         _diagnosticsService = diagnosticsService;
         _logStore = logStore;
@@ -603,20 +604,22 @@ internal sealed class MainForm : Form
         _stopBtn.Click += (_, _) => _ = StopAsync();
         _profilesCombo.SelectedIndexChanged += (_, _) =>
         {
+            if (_loadingData) return;
             if (_profilesCombo.SelectedItem is VpnProfile p)
             {
-                _state.ActiveProfileId = p.Id;
-                SaveState();
+                _connectionScreenController.SelectProfile(_state, p.Id);
                 UpdateButtons();
             }
         };
         _port.ValueChanged += (_, _) =>
         {
+            if (_loadingData) return;
             _state.LocalMixedPort = (int)_port.Value;
             SaveState();
         };
         _modeCombo.SelectedIndexChanged += (_, _) =>
         {
+            if (_loadingData) return;
             _state.Mode = ComboIndexToMode(_modeCombo.SelectedIndex);
             if (!DnsDetourPolicy.AllowsProxyDetour(_state.Mode) &&
                 string.Equals(_state.DnsDetour, "proxy", StringComparison.OrdinalIgnoreCase))
@@ -637,6 +640,7 @@ internal sealed class MainForm : Form
         _tunAppsRemoveBtn.Click += (_, _) => RemoveSelectedTunApp();
         _debugLogs.CheckedChanged += (_, _) =>
         {
+            if (_loadingData) return;
             _state.DebugLogs = _debugLogs.Checked;
             // Keep sing-box logging minimal by default.
             _state.SingBoxLogLevel = _state.DebugLogs ? "debug" : "warn";
@@ -845,32 +849,30 @@ internal sealed class MainForm : Form
 
     private void LoadData()
     {
-        _profiles = _profileService.GetProfiles();
-        _state = _settingsService.GetState();
+        _loadingData = true;
+        try
+        {
+            LoadDataCore();
+        }
+        finally
+        {
+            _loadingData = false;
+        }
+    }
+
+    private void LoadDataCore()
+    {
+        var snapshot = _connectionScreenController.Load();
+        _profiles = snapshot.Profiles;
+        _state = snapshot.State;
 
         _profilesCombo.DataSource = _profiles.ToList();
         _profilesCombo.DisplayMember = nameof(VpnProfile.Name);
 
-        var active = _profiles.FirstOrDefault(p => p.Id == _state.ActiveProfileId) ?? _profiles.FirstOrDefault();
-        if (active is not null)
-        {
-            _profilesCombo.SelectedItem = active;
-            _state.ActiveProfileId = active.Id;
-            SaveState();
-        }
-        else if (!string.IsNullOrWhiteSpace(_state.ActiveProfileId))
-        {
-            _state.ActiveProfileId = string.Empty;
-            SaveState();
-        }
+        if (snapshot.SelectedProfile is not null)
+            _profilesCombo.SelectedItem = snapshot.SelectedProfile;
 
         _port.Value = Math.Clamp(_state.LocalMixedPort, 1, 65535);
-        if (_state.TunAppProcessPaths is null)
-            _state.TunAppProcessPaths = new List<string>();
-        if (_state.UserRuleSets is null)
-            _state.UserRuleSets = new List<UserRuleSetModel>();
-        if (string.IsNullOrWhiteSpace(_state.DnsDetour))
-            _state.DnsDetour = "direct";
         _modeCombo.SelectedIndex = ModeToComboIndex(_state.Mode);
         SyncTunAppsListFromState();
         SyncRuleSetsGridFromState();
@@ -885,11 +887,13 @@ internal sealed class MainForm : Form
 
     private void SaveState()
     {
-        _settingsService.SaveState(_state);
+        if (_loadingData) return;
+        _connectionScreenController.Save(_state);
     }
 
     private void RestartConnectionSettingsDebounce()
     {
+        if (_loadingData) return;
         _dnsDebounceTimer.Stop();
         _dnsDebounceTimer.Start();
     }
@@ -1098,6 +1102,7 @@ internal sealed class MainForm : Form
 
     private void SaveRuleSetsFromGrid()
     {
+        if (_loadingData) return;
         try
         {
             if (_state.UserRuleSets is null) _state.UserRuleSets = new List<UserRuleSetModel>();
