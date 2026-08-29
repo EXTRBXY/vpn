@@ -65,8 +65,11 @@ public partial class App : System.Windows.Application
             var subscriptionViewModel = new SubscriptionViewModel(subscriptionController);
             _subscriptionViewModel = subscriptionViewModel;
             var profileViewModel = new ProfileViewModel(profileController, subscriptionViewModel);
+            var settingsViewModel = new SettingsViewModel(
+                new ConnectionSettingsController(services.SettingsService),
+                services.SettingsService.GetState());
 
-            _viewModel = new MainViewModel(screenController, connectionController, profileViewModel, RequestExit);
+            _viewModel = new MainViewModel(screenController, connectionController, profileViewModel, settingsViewModel, RequestExit);
             _viewModel.ConnectionStateChanged += (_, connected) => UpdateTrayState(connected);
             _window = new MainWindow(_viewModel);
             MainWindow = _window;

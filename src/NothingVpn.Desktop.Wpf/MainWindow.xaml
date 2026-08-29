@@ -24,6 +24,8 @@
                             Background="#EDF2FF" Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6" />
                     <Button Content="Профили" Command="{Binding ShowProfilesCommand}" HorizontalContentAlignment="Left"
                             Background="Transparent" Foreground="{StaticResource TextBrush}" />
+                    <Button Content="Настройки" Command="{Binding ShowSettingsCommand}" HorizontalContentAlignment="Left"
+                            Background="Transparent" Foreground="{StaticResource TextBrush}" Margin="0,6,0,0" />
                 </StackPanel>
                 <StackPanel DockPanel.Dock="Bottom" VerticalAlignment="Bottom">
                     <TextBlock Text="Работает в системном трее" Foreground="{StaticResource MutedBrush}"
@@ -108,5 +110,8 @@
         <local:ProfilesView xmlns:local="clr-namespace:NothingVpn.Desktop.Wpf" Grid.Column="2"
                             DataContext="{Binding ProfileManager}"
                             Visibility="{Binding DataContext.ProfilesVisibility, RelativeSource={RelativeSource AncestorType=Window}}" />
+        <local:SettingsView xmlns:local="clr-namespace:NothingVpn.Desktop.Wpf" Grid.Column="2"
+                            DataContext="{Binding Settings}"
+                            Visibility="{Binding DataContext.SettingsVisibility, RelativeSource={RelativeSource AncestorType=Window}}" />
     </Grid>
 </Window>

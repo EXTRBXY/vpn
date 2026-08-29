@@ -23,17 +23,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private ConnectionViewState? _viewState;
     private string? _errorMessage;
     private bool _showProfiles;
+    private bool _showSettings;
 
     public MainViewModel(
         IConnectionScreenController screenController,
         IConnectionController connectionController,
         ProfileViewModel profileManager,
+        SettingsViewModel settings,
         Action requestExit)
     {
         _screenController = screenController;
         _connectionController = connectionController;
         _requestExit = requestExit;
         ProfileManager = profileManager;
+        Settings = settings;
         Modes =
         [
             new ModeOption("proxy", "Прокси"),
@@ -45,6 +48,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ExitCommand = new RelayCommand(_requestExit);
         ShowHomeCommand = new RelayCommand(() => ShowProfiles = false);
         ShowProfilesCommand = new RelayCommand(() => ShowProfiles = true);
+        ShowSettingsCommand = new RelayCommand(() => { _showProfiles = false; _showSettings = true; RaisePage(); });
         ProfileManager.ProfilesChanged += (_, preferredId) => ReloadProfiles(preferredId);
         _connectionController.ConnectionStateChanged += OnConnectionStateChanged;
         Load();
@@ -59,7 +63,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICommand ExitCommand { get; }
     public ICommand ShowHomeCommand { get; }
     public ICommand ShowProfilesCommand { get; }
+    public ICommand ShowSettingsCommand { get; }
     public ProfileViewModel ProfileManager { get; }
+    public SettingsViewModel Settings { get; }
     public bool ShowProfiles
     {
         get => _showProfiles;
@@ -67,13 +73,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             if (_showProfiles == value) return;
             _showProfiles = value;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(HomeVisibility));
-            OnPropertyChanged(nameof(ProfilesVisibility));
+            _showSettings = false;
+            RaisePage();
         }
     }
-    public Visibility HomeVisibility => ShowProfiles ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility HomeVisibility => ShowProfiles || _showSettings ? Visibility.Collapsed : Visibility.Visible;
     public Visibility ProfilesVisibility => ShowProfiles ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility SettingsVisibility => _showSettings ? Visibility.Visible : Visibility.Collapsed;
+    private void RaisePage() { OnPropertyChanged(nameof(ShowProfiles)); OnPropertyChanged(nameof(HomeVisibility)); OnPropertyChanged(nameof(ProfilesVisibility)); OnPropertyChanged(nameof(SettingsVisibility)); }
 
     public VpnProfile? SelectedProfile
     {
