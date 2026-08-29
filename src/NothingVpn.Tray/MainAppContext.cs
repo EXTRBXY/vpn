@@ -45,6 +45,7 @@ internal sealed class MainAppContext : ApplicationContext
             services.ProfileService,
             services.SettingsService);
         var connectionSettingsController = new ConnectionSettingsController(services.SettingsService);
+        var tunAppsController = new TunAppsController(services.PathPolicy, services.SettingsService);
 
         var extracted = Icon.ExtractAssociatedIcon(System.Windows.Forms.Application.ExecutablePath);
         _trayBaseIcon = extracted is null ? (Icon)SystemIcons.Application.Clone() : (Icon)extracted.Clone();
@@ -55,6 +56,7 @@ internal sealed class MainAppContext : ApplicationContext
             services.SubscriptionService,
             connectionScreenController,
             connectionSettingsController,
+            tunAppsController,
             connectionController,
             services.DiagnosticsService,
             logStore,

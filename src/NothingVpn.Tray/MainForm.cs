@@ -27,6 +27,7 @@ internal sealed class MainForm : Form
     private readonly ISubscriptionService _subscriptionService;
     private readonly IConnectionScreenController _connectionScreenController;
     private readonly IConnectionSettingsController _connectionSettingsController;
+    private readonly ITunAppsController _tunAppsController;
     private readonly IConnectionController _connectionController;
     private readonly IDiagnosticsService _diagnosticsService;
     private readonly InMemoryLogStore _logStore;
@@ -122,6 +123,7 @@ internal sealed class MainForm : Form
         ISubscriptionService subscriptionService,
         IConnectionScreenController connectionScreenController,
         IConnectionSettingsController connectionSettingsController,
+        ITunAppsController tunAppsController,
         IConnectionController connectionController,
         IDiagnosticsService diagnosticsService,
         InMemoryLogStore logStore,
@@ -133,6 +135,7 @@ internal sealed class MainForm : Form
         _subscriptionService = subscriptionService;
         _connectionScreenController = connectionScreenController;
         _connectionSettingsController = connectionSettingsController;
+        _tunAppsController = tunAppsController;
         _connectionController = connectionController;
         _diagnosticsService = diagnosticsService;
         _logStore = logStore;
@@ -1912,12 +1915,6 @@ internal sealed class MainForm : Form
         SetTunAppListItems(_state.TunAppProcessPaths ?? new List<string>());
     }
 
-    private void PersistTunAppsFromList()
-    {
-        _state.TunAppProcessPaths = TunAppPathPolicy.NormalizeDistinctPaths(EnumerateTunAppPaths());
-        SaveState();
-    }
-
     private IEnumerable<string> EnumerateTunAppPaths()
     {
         foreach (ListViewItem item in _tunAppsList.Items)
@@ -1929,7 +1926,7 @@ internal sealed class MainForm : Form
 
     private void AddTunAppListItem(string path)
     {
-        if (!TunAppPathPolicy.TryNormalizeExePath(path, out var norm))
+        if (!_tunAppsController.TryNormalize(path, out var norm))
             return;
 
         var item = new ListViewItem(Path.GetFileNameWithoutExtension(norm)) { Tag = norm };
@@ -1944,7 +1941,7 @@ internal sealed class MainForm : Form
         try
         {
             _tunAppsList.Items.Clear();
-            foreach (var p in TunAppPathPolicy.NormalizeDistinctPaths(paths))
+            foreach (var p in _tunAppsController.Normalize(paths))
                 AddTunAppListItem(p);
         }
         finally
@@ -1959,13 +1956,12 @@ internal sealed class MainForm : Form
         if (dialog.ShowDialog(this) != DialogResult.OK)
             return;
 
-        var merged = _tunAppsSelectionService.MergeWithExisting(
+        var merged = _tunAppsController.AddAndSave(
+            _state,
             EnumerateTunAppPaths(),
             dialog.SelectedPaths);
 
         SetTunAppListItems(merged);
-
-        PersistTunAppsFromList();
     }
 
     private void AddTunAppFromOpenFileDialog()
@@ -1979,24 +1975,24 @@ internal sealed class MainForm : Form
         if (ofd.ShowDialog(this) != DialogResult.OK)
             return;
 
-        if (!TunAppPathPolicy.TryNormalizeExePath(ofd.FileName, out var path))
+        if (!_tunAppsController.TryNormalize(ofd.FileName, out var path))
         {
             MessageBox.Show(this, "Укажите существующий файл .exe с полным путём.", "Файл", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
-        var dup = EnumerateTunAppPaths().Any(x => string.Equals(x, path, StringComparison.OrdinalIgnoreCase));
-        if (!dup)
-            AddTunAppListItem(path);
-        PersistTunAppsFromList();
+        var paths = _tunAppsController.AddAndSave(_state, EnumerateTunAppPaths(), new[] { path });
+        SetTunAppListItems(paths);
     }
 
     private void RemoveSelectedTunApp()
     {
         if (_tunAppsList.SelectedItems.Count == 0)
             return;
-        _tunAppsList.SelectedItems[0].Remove();
-        PersistTunAppsFromList();
+        if (_tunAppsList.SelectedItems[0].Tag is not string removedPath)
+            return;
+        var paths = _tunAppsController.RemoveAndSave(_state, EnumerateTunAppPaths(), removedPath);
+        SetTunAppListItems(paths);
     }
 
     #region Обновления (GitHub Releases)

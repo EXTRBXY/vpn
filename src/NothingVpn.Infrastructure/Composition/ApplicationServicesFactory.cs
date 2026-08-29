@@ -57,6 +57,7 @@ public static class ApplicationServicesFactory
             DiagnosticsService = diagnosticsService,
             AppLifecycleService = appLifecycleService,
             StorageHealthService = storageHealthService,
+            PathPolicy = pathPolicy,
             SharedLogStore = logStore
         };
     }

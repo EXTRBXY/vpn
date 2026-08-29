@@ -35,16 +35,6 @@ internal sealed class TunAppsSelectionService
         return NormalizeCandidates(raw, existing);
     }
 
-    public IReadOnlyList<string> MergeWithExisting(
-        IEnumerable<string>? existingPaths,
-        IEnumerable<string>? pickedPaths)
-    {
-        var merged = new List<string>();
-        merged.AddRange(TunAppPathPolicy.NormalizeDistinctPaths(existingPaths));
-        merged.AddRange(TunAppPathPolicy.NormalizeDistinctPaths(pickedPaths));
-        return TunAppPathPolicy.NormalizeDistinctPaths(merged);
-    }
-
     private static IReadOnlyList<AppCandidate> NormalizeCandidates(
         IEnumerable<AppCandidate> candidates,
         HashSet<string> existingPaths)
