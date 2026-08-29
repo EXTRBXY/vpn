@@ -12,6 +12,7 @@ using NothingVpn.Infrastructure.Store;
 using NothingVpn.Infrastructure.WinInet;
 using NothingVpn.Infrastructure.Diagnostics;
 using NothingVpn.Infrastructure.TunApps;
+using NothingVpn.Presentation;
 using NothingVpn.Tray.Internal.Diagnostics;
 using NothingVpn.Tray.Internal.Windows;
 using NothingVpn.Infrastructure.RuleSets;
@@ -1650,100 +1651,40 @@ internal sealed class MainForm : Form
 
     private void UpdateTitle()
     {
-        var modeLabel = _state.Mode.ToLowerInvariant() switch
-        {
-            "tun" => "TUN",
-            "tun_apps" => "TUN (приложения)",
-            _ => "прокси"
-        };
-        Text = $"Nothing VPN ({modeLabel})";
+        Text = CreateConnectionViewState().WindowTitle;
     }
 
     private void UpdateButtons()
     {
-        var running = _vpnConnectionService.GetStatus().IsRunning;
-        _startBtn.Enabled = !running && _profilesCombo.SelectedItem is VpnProfile;
-        _stopBtn.Enabled = running;
-        _profilesBtn.Enabled = !running;
-        _port.Enabled = !running;
-        _modeCombo.Enabled = !running;
-        var editTunApps = !running && string.Equals(_state.Mode, "tun_apps", StringComparison.OrdinalIgnoreCase);
-        _tunAppsList.Enabled = editTunApps;
-        _tunAppsAddBtn.Enabled = editTunApps;
-        _tunAppsBrowseFileBtn.Enabled = editTunApps;
-        _tunAppsRemoveBtn.Enabled = editTunApps;
+        var viewState = CreateConnectionViewState();
+        _startBtn.Enabled = viewState.CanStart;
+        _stopBtn.Enabled = viewState.CanStop;
+        _profilesBtn.Enabled = viewState.CanEditConnection;
+        _port.Enabled = viewState.CanEditConnection;
+        _modeCombo.Enabled = viewState.CanEditConnection;
+        _tunAppsList.Enabled = viewState.CanEditTunApps;
+        _tunAppsAddBtn.Enabled = viewState.CanEditTunApps;
+        _tunAppsBrowseFileBtn.Enabled = viewState.CanEditTunApps;
+        _tunAppsRemoveBtn.Enabled = viewState.CanEditTunApps;
 
-        _statusValue.Text = running ? "Запущено" : "Остановлено";
-        _adminValue.Text = _appLifecycleService.IsAdministrator() ? "Администратор" : "Обычный пользователь";
-        _modeValue.Text = _state.Mode.ToLowerInvariant() switch
-        {
-            "tun" => "TUN (весь трафик)",
-            "tun_apps" => "TUN (выбранные приложения)",
-            _ => "Прокси"
-        };
-        _profileValue.Text = _profilesCombo.SelectedItem is VpnProfile p ? p.Name : "(не выбран)";
-        _portValue.Text = _state.LocalMixedPort.ToString();
-        _dnsValue.Text = BuildDnsStatusText();
-        _ruleSetsValue.Text = BuildRuleSetsStatusText();
-        _tunValue.Text = BuildTunStatusText();
-        _proxyBypassValue.Text = BuildProxyBypassStatusText();
-        _connectionSettings.SetConnectionFieldsEnabled(!running);
+        _statusValue.Text = viewState.StatusText;
+        _adminValue.Text = viewState.AdministratorText;
+        _modeValue.Text = viewState.ModeText;
+        _profileValue.Text = viewState.ProfileText;
+        _portValue.Text = viewState.PortText;
+        _dnsValue.Text = viewState.DnsText;
+        _ruleSetsValue.Text = viewState.RuleSetsText;
+        _tunValue.Text = viewState.TunText;
+        _proxyBypassValue.Text = viewState.ProxyBypassText;
+        _connectionSettings.SetConnectionFieldsEnabled(viewState.CanEditConnection);
         UpdateDnsDetourControl();
     }
 
-    private string BuildDnsStatusText()
-    {
-        var mode = (_state.DnsMode ?? "").Trim().ToLowerInvariant();
-        var effectiveDetour = DnsDetourPolicy.EffectiveDetour(_state.Mode, _state.DnsDetour);
-        var detourLabel = DnsPolicy.DetourToDisplayLabel(effectiveDetour).ToLowerInvariant();
-        if (TunAppsPolicy.IsTunApps(_state.Mode))
-        {
-            return mode == "doh"
-                ? $"DoH (hijack), трафик приложений по списку, {detourLabel}"
-                : "Системный DNS (hijack), трафик приложений по списку";
-        }
-
-        if (mode == "doh")
-        {
-            var server = string.IsNullOrWhiteSpace(_state.DohServer) ? "(не задан)" : _state.DohServer.Trim();
-            var sni = string.IsNullOrWhiteSpace(_state.DohSni) ? "(без SNI)" : _state.DohSni.Trim();
-            return $"DoH: {server}, SNI: {sni}, {detourLabel}";
-        }
-
-        return $"Системный/по умолчанию, {detourLabel}";
-    }
-
-    private string BuildRuleSetsStatusText()
-    {
-        var all = _state.UserRuleSets ?? new List<UserRuleSetModel>();
-        var enabled = all.Count(x => x.Enabled);
-        var builtinEnabled = all.Count(x => x.Enabled && !string.IsNullOrWhiteSpace(x.BuiltinId));
-        var customEnabled = all.Count(x => x.Enabled && string.IsNullOrWhiteSpace(x.BuiltinId));
-        return $"{enabled} активных (встроенные: {builtinEnabled}, пользовательские: {customEnabled})";
-    }
-
-    private string BuildTunStatusText()
-    {
-        if (!ConnectionPolicy.IsTunMode(_state.Mode))
-            return "—";
-
-        var mtu = TunSettingsPolicy.NormalizeMtu(_state.TunMtu);
-        var stack = TunSettingsPolicy.StackToDisplayLabel(_state.TunStack);
-        var strict = _state.TunStrictRoute ? "вкл." : "выкл.";
-        return $"MTU {mtu}, стек {stack}, строгая маршрутизация {strict}";
-    }
-
-    private string BuildProxyBypassStatusText()
-    {
-        if (!string.Equals(_state.Mode, ConnectionPolicy.ProxyMode, StringComparison.OrdinalIgnoreCase))
-            return "—";
-
-        var value = (_state.ProxyOverride ?? "").Trim();
-        if (value.Length == 0)
-            return ProxyConnectionPolicy.DefaultProxyOverride;
-
-        return value.Length > 48 ? value[..48] + "…" : value;
-    }
+    private ConnectionViewState CreateConnectionViewState() => ConnectionViewStateFactory.Create(
+        _state,
+        _profilesCombo.SelectedItem as VpnProfile,
+        _vpnConnectionService.GetStatus().IsRunning,
+        _appLifecycleService.IsAdministrator());
 
     private void OpenProfilesDialog()
     {

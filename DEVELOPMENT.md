@@ -45,6 +45,7 @@ artifacts/    результаты сборки (не добавляются в 
 artifacts/publish/win-x64/             опубликованное приложение
 artifacts/test-results/                TRX-результаты тестов
 artifacts/installer/NothingVpnSetup.exe
+artifacts/installer/NothingVpnSetup.exe.sha256
 ```
 
 Промежуточные `bin` и `obj` остаются стандартными каталогами MSBuild, но готовые результаты больше не извлекаются из них.
@@ -83,6 +84,8 @@ artifacts/installer/NothingVpnSetup.exe
 
 - `CI` вызывает `build/Build.ps1 -Target Test` на push в `main` и в pull request.
 - `Release` скачивает зафиксированные версии sing-box/Wintun и вызывает тот же build-скрипт.
+- SHA-256 runtime-архивов проверяется до распаковки; GitHub Actions закреплены по commit SHA.
+- Вместе с установщиком создаётся и публикуется `NothingVpnSetup.exe.sha256`.
 - Push тега `v*` создаёт GitHub Release с `NothingVpnSetup.exe`.
 - Ручной запуск workflow сохраняет установщик как artifact.
 

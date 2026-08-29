@@ -154,7 +154,14 @@ function Invoke-Installer {
     if (-not (Test-Path -LiteralPath $installer)) {
         throw "Installer output not found: $installer"
     }
+    $checksumPath = $installer + '.sha256'
+    $checksum = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+    [System.IO.File]::WriteAllText(
+        $checksumPath,
+        "$checksum *$(Split-Path -Leaf $installer)`n",
+        [System.Text.UTF8Encoding]::new($false))
     Write-Host "Installer output: $installer"
+    Write-Host "Installer SHA-256: $checksum"
 }
 
 Set-Location $script:RepoRoot

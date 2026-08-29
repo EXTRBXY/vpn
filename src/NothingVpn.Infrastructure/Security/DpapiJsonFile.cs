@@ -74,12 +74,23 @@ internal static class DpapiJsonFile
             var value = Deserialize<T>(File.ReadAllBytes(backupPath), unprotect, out _)
                 ?? defaultFactory();
             RestorePrimaryFromBackup(path, backupPath);
+            StorageIssueRegistry.Report(
+                path,
+                recoveredFromBackup: true,
+                primaryError is null
+                    ? "Основной файл отсутствовал и был восстановлен из резервной копии."
+                    : $"Основной файл не удалось прочитать ({primaryError.GetType().Name}); восстановлена резервная копия.");
             if (primaryError is not null)
                 Trace.TraceWarning($"Restored DPAPI JSON file '{path}' from backup after: {primaryError.Message}");
             return value;
         }
         catch (Exception backupError)
         {
+            StorageIssueRegistry.Report(
+                path,
+                recoveredFromBackup: false,
+                $"Основной файл и резервную копию не удалось прочитать " +
+                $"({primaryError?.GetType().Name ?? "FileNotFound"}, {backupError.GetType().Name}).");
             Trace.TraceError(
                 $"Failed to read DPAPI JSON file '{path}' and its backup. " +
                 $"Primary: {primaryError}; Backup: {backupError}");

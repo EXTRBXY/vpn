@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\NothingVpn.Application\NothingVpn.Application.csproj" />
     <ProjectReference Include="..\NothingVpn.Infrastructure\NothingVpn.Infrastructure.csproj" />
+    <ProjectReference Include="..\NothingVpn.Presentation\NothingVpn.Presentation.csproj" />
   </ItemGroup>
 
 </Project>

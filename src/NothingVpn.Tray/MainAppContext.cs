@@ -75,6 +75,7 @@ internal sealed class MainAppContext : ApplicationContext
         _tray.DoubleClick += (_, _) => ShowMain();
 
         _mainForm.Show();
+        ShowStorageIssues(services.StorageHealthService, paths.BaseDir);
         _mainForm.ApplyStartup(startup);
 
         _subscriptionRefreshTimer = new System.Windows.Forms.Timer { Interval = 15 * 60 * 1000 };
@@ -134,6 +135,30 @@ internal sealed class MainAppContext : ApplicationContext
         _mainForm.Show();
         _mainForm.WindowState = FormWindowState.Normal;
         _mainForm.Activate();
+    }
+
+    private void ShowStorageIssues(IStorageHealthService storageHealthService, string dataDirectory)
+    {
+        var issues = storageHealthService.DrainIssues();
+        if (issues.Count == 0)
+            return;
+
+        foreach (var issue in issues)
+            _appLogger.Warn("app/storage", $"{issue.Message} Файл: {issue.Path}");
+
+        var unrecovered = issues.Where(x => !x.RecoveredFromBackup).ToList();
+        var message = unrecovered.Count == 0
+            ? "Обнаружено повреждение файла данных. Приложение автоматически восстановило резервную копию."
+            : "Не удалось прочитать один или несколько файлов данных и их резервные копии. " +
+              "Повреждённые файлы не перезаписаны; для соответствующих разделов временно используются пустые данные.";
+
+        message += $"\n\nКаталог данных:\n{dataDirectory}\n\nПодробности записаны в журнал приложения.";
+        MessageBox.Show(
+            _mainForm,
+            message,
+            "Проверка данных Nothing VPN",
+            MessageBoxButtons.OK,
+            unrecovered.Count == 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Error);
     }
 
     private void HideMain()

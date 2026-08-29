@@ -22,6 +22,7 @@ public static class ApplicationServicesFactory
         var logPort = new LogPort(runtime);
         var proxyPort = new ProxyPort();
         var elevationPort = new ElevationPort();
+        var storageHealthPort = new StorageHealthPort();
         var singBoxPort = new SingBoxPort(runtime);
 
         var profileService = new ProfileService(profileStore, parser);
@@ -34,6 +35,7 @@ public static class ApplicationServicesFactory
             settingsService);
         var diagnosticsService = new DiagnosticsService(diagnosticsPort, logPort, stateStore);
         var appLifecycleService = new AppLifecycleService(elevationPort);
+        var storageHealthService = new StorageHealthService(storageHealthPort);
         var vpnService = new VpnConnectionService(
             profileStore,
             stateStore,
@@ -54,6 +56,7 @@ public static class ApplicationServicesFactory
             VpnConnectionService = vpnService,
             DiagnosticsService = diagnosticsService,
             AppLifecycleService = appLifecycleService,
+            StorageHealthService = storageHealthService,
             SharedLogStore = logStore
         };
     }

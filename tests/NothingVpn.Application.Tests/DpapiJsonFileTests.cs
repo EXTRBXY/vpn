@@ -1,5 +1,6 @@
 using System.Text;
 using NothingVpn.Infrastructure.Security;
+using NothingVpn.Infrastructure.Ports;
 
 namespace NothingVpn.Application.Tests;
 
@@ -29,6 +30,8 @@ public sealed class DpapiJsonFileTests : IDisposable
     [Fact]
     public void Load_RestoresBackupWhenPrimaryFileIsCorrupted()
     {
+        var health = new StorageHealthPort();
+        health.DrainIssues();
         var path = GetPath();
         DpapiJsonFile.Save(path, new TestPayload { Value = "recover-me" }, Protect);
         DpapiJsonFile.Save(path, new TestPayload { Value = "new-value" }, Protect);
@@ -39,6 +42,28 @@ public sealed class DpapiJsonFileTests : IDisposable
 
         Assert.Equal("recover-me", recovered.Value);
         Assert.Equal("recover-me", recoveredAgain.Value);
+        var issue = Assert.Single(health.DrainIssues());
+        Assert.True(issue.RecoveredFromBackup);
+        Assert.Equal(Path.GetFullPath(path), issue.Path);
+    }
+
+    [Fact]
+    public void Load_ReportsUnrecoverableIssueWithoutOverwritingCorruptedFiles()
+    {
+        var health = new StorageHealthPort();
+        health.DrainIssues();
+        var path = GetPath();
+        Directory.CreateDirectory(_directory);
+        File.WriteAllBytes(path, [0x01, 0x02]);
+        File.WriteAllBytes(path + ".bak", [0x03, 0x04]);
+
+        var loaded = Load(path);
+
+        Assert.Equal(string.Empty, loaded.Value);
+        Assert.Equal(new byte[] { 0x01, 0x02 }, File.ReadAllBytes(path));
+        Assert.Equal(new byte[] { 0x03, 0x04 }, File.ReadAllBytes(path + ".bak"));
+        var issue = Assert.Single(health.DrainIssues());
+        Assert.False(issue.RecoveredFromBackup);
     }
 
     [Fact]

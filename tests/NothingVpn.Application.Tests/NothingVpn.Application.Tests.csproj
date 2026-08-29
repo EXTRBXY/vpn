@@ -26,6 +26,7 @@
     <ProjectReference Include="..\..\src\NothingVpn.Application\NothingVpn.Application.csproj" />
     <ProjectReference Include="..\..\src\NothingVpn.Domain\NothingVpn.Domain.csproj" />
     <ProjectReference Include="..\..\src\NothingVpn.Infrastructure\NothingVpn.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\NothingVpn.Presentation\NothingVpn.Presentation.csproj" />
   </ItemGroup>
 
 </Project>
