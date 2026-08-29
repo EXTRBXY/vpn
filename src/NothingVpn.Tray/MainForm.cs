@@ -221,90 +221,14 @@ internal sealed class MainForm : Form
         _logPanel = new LogPanelControl(_logStore, _appLogger);
         tabLogs.Controls.Add(_logPanel);
 
-        // Rule sets / DNS / updates on main tab
-        var rsOuter = new Panel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Padding = new Padding(0)
-        };
-
-        var builtinGroup = new GroupBox
-        {
-            Text = "Встроенные списки",
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Padding = new Padding(UiMetrics.Space12),
-            Margin = new Padding(0, 0, 0, UiMetrics.Space8)
-        };
-        var builtinLayout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            ColumnCount = 1,
-            RowCount = 2
-        };
-        builtinLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 180));
-        builtinLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-
-        _builtinRuleSetsGrid = CreateRuleSetsDataGridView(multiSelect: true);
-        builtinLayout.Controls.Add(_builtinRuleSetsGrid, 0, 0);
-
-        var builtinBtns = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = true
-        };
-        _builtinRuleSetsFetchOrRemoveBtn = new Button { Text = "Скачать", AutoSize = true, Enabled = false };
-        _builtinRuleSetsCheckUpdatesBtn = new Button { Text = "Проверить обновления…", AutoSize = true };
-        _builtinRuleSetsOtherListsBtn = new Button { Text = "Другие списки", AutoSize = true };
-        builtinBtns.Controls.Add(_builtinRuleSetsFetchOrRemoveBtn);
-        builtinBtns.Controls.Add(_builtinRuleSetsCheckUpdatesBtn);
-        builtinBtns.Controls.Add(_builtinRuleSetsOtherListsBtn);
-        builtinLayout.Controls.Add(builtinBtns, 0, 1);
-        builtinGroup.Controls.Add(builtinLayout);
-
-        var userGroup = new GroupBox
-        {
-            Text = "Пользовательские списки (.srs)",
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Padding = new Padding(UiMetrics.Space12)
-        };
-        var userLayout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            ColumnCount = 1,
-            RowCount = 2
-        };
-        userLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 180));
-        userLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-
-        _userRuleSetsGrid = CreateRuleSetsDataGridView(multiSelect: false);
-        userLayout.Controls.Add(_userRuleSetsGrid, 0, 0);
-
-        var userBtns = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false
-        };
-        _userRuleSetsAddBtn = new Button { Text = "Добавить .srs…", AutoSize = true };
-        _userRuleSetsRemoveBtn = new Button { Text = "Удалить", AutoSize = true };
-        userBtns.Controls.Add(_userRuleSetsAddBtn);
-        userBtns.Controls.Add(_userRuleSetsRemoveBtn);
-        userLayout.Controls.Add(userBtns, 0, 1);
-        userGroup.Controls.Add(userLayout);
-
-        rsOuter.Controls.Add(userGroup);
-        rsOuter.Controls.Add(builtinGroup);
+        var ruleSetsPanel = new RuleSetsPanelControl();
+        _builtinRuleSetsGrid = ruleSetsPanel.BuiltinGrid;
+        _userRuleSetsGrid = ruleSetsPanel.UserGrid;
+        _builtinRuleSetsFetchOrRemoveBtn = ruleSetsPanel.FetchOrRemoveButton;
+        _builtinRuleSetsCheckUpdatesBtn = ruleSetsPanel.CheckUpdatesButton;
+        _builtinRuleSetsOtherListsBtn = ruleSetsPanel.OtherListsButton;
+        _userRuleSetsAddBtn = ruleSetsPanel.AddUserButton;
+        _userRuleSetsRemoveBtn = ruleSetsPanel.RemoveUserButton;
 
         _updateBannerPanel = new Panel
         {
@@ -362,7 +286,7 @@ internal sealed class MainForm : Form
         updateManualCheckPanel.Controls.Add(_updateManualCheckBtn);
 
         mainStack.Controls.Add(connectionSettingsRoot, 0, 2);
-        mainStack.Controls.Add(rsOuter, 0, 3);
+        mainStack.Controls.Add(ruleSetsPanel, 0, 3);
         mainStack.Controls.Add(_updateBannerPanel, 0, 4);
         tabMain.Controls.Add(updateManualCheckPanel);
         tabMain.Controls.Add(mainStack);
@@ -779,51 +703,6 @@ internal sealed class MainForm : Form
         {
             // ignore
         }
-    }
-
-    private static DataGridView CreateRuleSetsDataGridView(bool multiSelect)
-    {
-        var g = new BufferedDataGridView
-        {
-            Dock = DockStyle.Fill,
-            Height = 180,
-            AllowUserToAddRows = false,
-            AllowUserToDeleteRows = false,
-            AllowUserToResizeRows = false,
-            MultiSelect = multiSelect,
-            SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-            RowHeadersVisible = false,
-            AutoGenerateColumns = false
-        };
-        g.Columns.Add(new DataGridViewCheckBoxColumn
-        {
-            HeaderText = "Вкл",
-            DataPropertyName = nameof(UserRuleSetModel.Enabled),
-            Width = 44
-        });
-        g.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            HeaderText = "Имя",
-            DataPropertyName = nameof(UserRuleSetModel.Name),
-            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
-            MinimumWidth = 120
-        });
-        g.Columns.Add(new DataGridViewComboBoxColumn
-        {
-            HeaderText = "Действие",
-            DataPropertyName = nameof(UserRuleSetModel.Action),
-            Width = 90,
-            FlatStyle = FlatStyle.Flat,
-            DataSource = new[] { "direct", "block" }
-        });
-        g.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            HeaderText = "Файл",
-            DataPropertyName = nameof(UserRuleSetModel.FileName),
-            Width = 200,
-            ReadOnly = true
-        });
-        return g;
     }
 
     private void SyncRuleSetsGridFromState()
