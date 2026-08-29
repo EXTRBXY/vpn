@@ -31,6 +31,7 @@ internal sealed class MainForm : Form
     private readonly IRuleSetManagementController _ruleSetManagementController;
     private readonly IRuleSetFileService _ruleSetFileService;
     private readonly IAppUpdateController _appUpdateController;
+    private readonly IInstallerUpdateService _installerUpdateService;
     private readonly IConnectionController _connectionController;
     private readonly IConnectionDiagnosticController _connectionDiagnosticController;
     private readonly InMemoryLogStore _logStore;
@@ -130,6 +131,7 @@ internal sealed class MainForm : Form
         IRuleSetManagementController ruleSetManagementController,
         IRuleSetFileService ruleSetFileService,
         IAppUpdateController appUpdateController,
+        IInstallerUpdateService installerUpdateService,
         IConnectionController connectionController,
         IConnectionDiagnosticController connectionDiagnosticController,
         InMemoryLogStore logStore,
@@ -145,6 +147,7 @@ internal sealed class MainForm : Form
         _ruleSetManagementController = ruleSetManagementController;
         _ruleSetFileService = ruleSetFileService;
         _appUpdateController = appUpdateController;
+        _installerUpdateService = installerUpdateService;
         _connectionController = connectionController;
         _connectionDiagnosticController = connectionDiagnosticController;
         _logStore = logStore;
@@ -1916,8 +1919,7 @@ internal sealed class MainForm : Form
             return;
         }
 
-        var path = TempInstallerCleanup.GetInstallerTempPath(sem);
-        var exists = File.Exists(path);
+        var exists = _installerUpdateService.IsCached(sem);
         _updateBannerInstallCachedBtn.Visible = exists;
         _updateBannerDownloadBtn.Visible = !exists;
         _updateBannerDownloadBtn.Text = AppUpdateUserMessages.ButtonDownloadInstall;
@@ -1927,8 +1929,8 @@ internal sealed class MainForm : Form
     {
         if (_updatePendingRelease is null)
             return;
-        var path = TempInstallerCleanup.GetInstallerTempPath(_updatePendingRelease.Semver);
-        if (!File.Exists(path))
+        var path = _installerUpdateService.GetCachedInstallerPath(_updatePendingRelease.Semver);
+        if (!_installerUpdateService.IsCached(_updatePendingRelease.Semver))
         {
             SyncUpdateBannerCachedInstallerUi();
             return;
@@ -2007,32 +2009,31 @@ internal sealed class MainForm : Form
         return tcs.Task;
     }
 
-    private Task<InstallerDownloader.Result> RunInstallerDownloadModalAsync(AppReleaseModel release, string destPath)
+    private Task<InstallerDownloadResult> RunInstallerDownloadModalAsync(AppReleaseModel release)
     {
         if (IsDisposed || !IsHandleCreated)
-            return Task.FromResult(new InstallerDownloader.Result(false, AppUpdateUserMessages.ModalUnavailable));
+            return Task.FromResult(new InstallerDownloadResult(false, AppUpdateUserMessages.ModalUnavailable));
 
-        var tcs = new TaskCompletionSource<InstallerDownloader.Result>();
+        var tcs = new TaskCompletionSource<InstallerDownloadResult>();
         void Run()
         {
             try
             {
                 if (IsDisposed)
                 {
-                    tcs.TrySetResult(new InstallerDownloader.Result(false, AppUpdateUserMessages.ModalWindowClosed));
+                    tcs.TrySetResult(new InstallerDownloadResult(false, AppUpdateUserMessages.ModalWindowClosed));
                     return;
                 }
 
                 var r = InstallerDownloadProgressForm.RunModal(
                     this,
-                    release.InstallerDownloadUrl,
-                    destPath,
-                    release.Semver);
+                    _installerUpdateService,
+                    release);
                 tcs.TrySetResult(r);
             }
             catch (Exception ex)
             {
-                tcs.TrySetResult(new InstallerDownloader.Result(false, ex.Message));
+                tcs.TrySetResult(new InstallerDownloadResult(false, ex.Message));
             }
         }
 
@@ -2048,7 +2049,7 @@ internal sealed class MainForm : Form
     {
         try
         {
-            TempInstallerCleanup.DeleteOldInstallersInTemp();
+            _installerUpdateService.CleanupOldInstallers();
 
             if (!AppVersionInfo.TryGetCurrentSemver(out var currentSemver))
             {
@@ -2244,14 +2245,13 @@ internal sealed class MainForm : Form
                 _updateBannerInstallCachedBtn.Enabled = false;
             }).ConfigureAwait(false);
 
-            var path = TempInstallerCleanup.GetInstallerTempPath(release.Semver);
-            var result = await RunInstallerDownloadModalAsync(release, path).ConfigureAwait(false);
+            var result = await RunInstallerDownloadModalAsync(release).ConfigureAwait(false);
 
             await UiInvokeAsync(() =>
             {
                 _updateBannerDownloadBtn.Enabled = true;
                 _updateBannerInstallCachedBtn.Enabled = true;
-                if (!result.Ok)
+                if (!result.Success)
                 {
                     MessageBox.Show(
                         this,
@@ -2263,7 +2263,7 @@ internal sealed class MainForm : Form
                 }
 
                 SyncUpdateBannerCachedInstallerUi();
-                OfferInstallDownloadedThenExit(path);
+                OfferInstallDownloadedThenExit(result.InstallerPath!);
             }).ConfigureAwait(false);
         }
         finally

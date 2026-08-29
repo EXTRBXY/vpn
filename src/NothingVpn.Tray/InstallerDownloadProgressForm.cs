@@ -1,24 +1,25 @@
-using NothingVpn.Tray.Internal.Updates;
+using NothingVpn.Application.Models;
+using NothingVpn.Application.Services;
 using NothingVpn.Tray.Internal.UI;
 
 namespace NothingVpn.Tray;
 
 internal sealed class InstallerDownloadProgressForm : Form
 {
-    private readonly string _downloadUrl;
-    private readonly string _destPath;
+    private readonly IInstallerUpdateService _installerUpdateService;
+    private readonly AppReleaseModel _release;
     private readonly CancellationTokenSource _cts = new();
     private readonly ProgressBar _progressBar;
     private readonly Label _statusLabel;
     private readonly Button _cancelButton;
-    private InstallerDownloader.Result _result = new(false, "Прервано.");
+    private InstallerDownloadResult _result = new(false, "Прервано.");
     private bool _downloadFinished;
     private long _lastUiProgressTickMs;
 
-    private InstallerDownloadProgressForm(string downloadUrl, string destPath, string versionLabel)
+    private InstallerDownloadProgressForm(IInstallerUpdateService installerUpdateService, AppReleaseModel release)
     {
-        _downloadUrl = downloadUrl;
-        _destPath = destPath;
+        _installerUpdateService = installerUpdateService;
+        _release = release;
 
         Text = "Скачивание обновления";
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -50,7 +51,7 @@ internal sealed class InstallerDownloadProgressForm : Form
 
         var title = new Label
         {
-            Text = $"Загрузка обновления Nothing VPN {versionLabel}",
+            Text = $"Загрузка обновления Nothing VPN {release.Semver}",
             AutoSize = true,
             MaximumSize = new Size(460, 0),
             TextAlign = ContentAlignment.TopLeft,
@@ -102,11 +103,11 @@ internal sealed class InstallerDownloadProgressForm : Form
         Shown += OnShown;
     }
 
-    public InstallerDownloader.Result DownloadResult => _result;
+    public InstallerDownloadResult DownloadResult => _result;
 
-    public static InstallerDownloader.Result RunModal(IWin32Window owner, string downloadUrl, string destPath, string versionLabel)
+    public static InstallerDownloadResult RunModal(IWin32Window owner, IInstallerUpdateService installerUpdateService, AppReleaseModel release)
     {
-        using var form = new InstallerDownloadProgressForm(downloadUrl, destPath, versionLabel);
+        using var form = new InstallerDownloadProgressForm(installerUpdateService, release);
         form.ShowDialog(owner);
         return form.DownloadResult;
     }
@@ -122,23 +123,23 @@ internal sealed class InstallerDownloadProgressForm : Form
     private async void OnShown(object? sender, EventArgs e)
     {
         Shown -= OnShown;
-        var progress = new Progress<InstallerDownloadProgress>(ApplyProgress);
+        var progress = new Progress<InstallerDownloadProgressModel>(ApplyProgress);
         try
         {
-            _result = await InstallerDownloader
-                .DownloadAsync(_downloadUrl, _destPath, _cts.Token, progress)
+            _result = await _installerUpdateService
+                .DownloadAsync(_release, progress, _cts.Token)
                 .ConfigureAwait(true);
         }
         catch (Exception ex)
         {
-            _result = new InstallerDownloader.Result(false, ex.Message);
+            _result = new InstallerDownloadResult(false, ex.Message);
         }
 
         _downloadFinished = true;
         Close();
     }
 
-    private void ApplyProgress(InstallerDownloadProgress p)
+    private void ApplyProgress(InstallerDownloadProgressModel p)
     {
         if (!IsHandleCreated || IsDisposed)
             return;

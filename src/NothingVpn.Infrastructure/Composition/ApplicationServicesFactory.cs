@@ -40,6 +40,7 @@ public static class ApplicationServicesFactory
         var storageHealthService = new StorageHealthService(storageHealthPort);
         var ruleSetFileService = new RuleSetFileService(appPaths);
         var appUpdateService = new GitHubAppUpdateService();
+        var installerUpdateService = new InstallerUpdateService();
         var vpnService = new VpnConnectionService(
             profileStore,
             stateStore,
@@ -63,6 +64,7 @@ public static class ApplicationServicesFactory
             StorageHealthService = storageHealthService,
             RuleSetFileService = ruleSetFileService,
             AppUpdateService = appUpdateService,
+            InstallerUpdateService = installerUpdateService,
             PathPolicy = pathPolicy,
             SharedLogStore = logStore
         };
