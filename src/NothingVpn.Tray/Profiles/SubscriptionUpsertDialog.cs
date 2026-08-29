@@ -1,14 +1,14 @@
 using System.Drawing;
 using System.Windows.Forms;
 using NothingVpn.Application.Models;
-using NothingVpn.Application.Services;
+using NothingVpn.Presentation;
 using NothingVpn.Tray.Internal.UI;
 
 namespace NothingVpn.Tray;
 
 internal sealed class SubscriptionUpsertDialog : Form
 {
-    private readonly ISubscriptionService _subscriptionService;
+    private readonly ISubscriptionManagementController _controller;
     private readonly SubscriptionModel? _existing;
 
     private readonly TextBox _nameBox;
@@ -19,9 +19,9 @@ internal sealed class SubscriptionUpsertDialog : Form
 
     public string ResultSubscriptionId { get; private set; } = string.Empty;
 
-    public SubscriptionUpsertDialog(ISubscriptionService subscriptionService, SubscriptionModel? existing = null)
+    public SubscriptionUpsertDialog(ISubscriptionManagementController controller, SubscriptionModel? existing = null)
     {
-        _subscriptionService = subscriptionService;
+        _controller = controller;
         _existing = existing;
 
         Text = existing is null ? "Добавить подписку" : "Изменить подписку";
@@ -89,7 +89,7 @@ internal sealed class SubscriptionUpsertDialog : Form
     {
         try
         {
-            var saved = _subscriptionService.AddOrUpdate(
+            var saved = _controller.Save(
                 _existing?.Id,
                 _nameBox.Text ?? "",
                 _urlBox.Text ?? "",

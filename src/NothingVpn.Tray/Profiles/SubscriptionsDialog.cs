@@ -1,14 +1,14 @@
 using System.Drawing;
 using System.Windows.Forms;
 using NothingVpn.Application.Models;
-using NothingVpn.Application.Services;
+using NothingVpn.Presentation;
 using NothingVpn.Tray.Internal.UI;
 
 namespace NothingVpn.Tray;
 
 internal sealed class SubscriptionsDialog : Form
 {
-    private readonly ISubscriptionService _subscriptionService;
+    private readonly ISubscriptionManagementController _controller;
 
     private readonly ListView _list;
     private readonly Button _addBtn;
@@ -22,9 +22,9 @@ internal sealed class SubscriptionsDialog : Form
     private SubscriptionModel? Selected =>
         _list.SelectedItems.Count == 1 ? _list.SelectedItems[0].Tag as SubscriptionModel : null;
 
-    public SubscriptionsDialog(ISubscriptionService subscriptionService)
+    public SubscriptionsDialog(ISubscriptionManagementController controller)
     {
-        _subscriptionService = subscriptionService;
+        _controller = controller;
 
         Text = "Подписки";
         Icon = Icon.ExtractAssociatedIcon(System.Windows.Forms.Application.ExecutablePath) ?? SystemIcons.Application;
@@ -107,7 +107,7 @@ internal sealed class SubscriptionsDialog : Form
 
     private void Reload()
     {
-        _subscriptions = _subscriptionService.GetSubscriptions();
+        _subscriptions = _controller.Load();
         var selectedId = Selected?.Id;
         _list.BeginUpdate();
         try
@@ -155,7 +155,7 @@ internal sealed class SubscriptionsDialog : Form
 
     private void BeginAdd()
     {
-        using var dlg = new SubscriptionUpsertDialog(_subscriptionService);
+        using var dlg = new SubscriptionUpsertDialog(_controller);
         if (dlg.ShowDialog(this) != DialogResult.OK)
             return;
 
@@ -169,7 +169,7 @@ internal sealed class SubscriptionsDialog : Form
         if (selected is null)
             return;
 
-        using var dlg = new SubscriptionUpsertDialog(_subscriptionService, selected);
+        using var dlg = new SubscriptionUpsertDialog(_controller, selected);
         if (dlg.ShowDialog(this) != DialogResult.OK)
             return;
 
@@ -192,7 +192,7 @@ internal sealed class SubscriptionsDialog : Form
         if (confirm != DialogResult.Yes)
             return;
 
-        _subscriptionService.Delete(selected.Id);
+        _controller.Delete(selected.Id);
         Reload();
     }
 
@@ -209,10 +209,10 @@ internal sealed class SubscriptionsDialog : Form
         SetBusy(true);
         try
         {
-            foreach (var sub in _subscriptions)
-                await RefreshByIdAsync(sub.Id, reload: false);
-
+            var results = await _controller.RefreshAllAsync(_subscriptions.Select(s => s.Id));
             Reload();
+            foreach (var result in results)
+                ShowRefreshResult(result);
         }
         finally
         {
@@ -225,7 +225,7 @@ internal sealed class SubscriptionsDialog : Form
         SetBusy(true);
         try
         {
-            var result = await _subscriptionService.RefreshAsync(subscriptionId);
+            var result = await _controller.RefreshAsync(subscriptionId);
             if (reload)
                 Reload();
 

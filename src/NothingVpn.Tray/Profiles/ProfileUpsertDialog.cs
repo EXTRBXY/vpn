@@ -2,13 +2,14 @@ using System.Drawing;
 using System.Windows.Forms;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Services;
+using NothingVpn.Presentation;
 using NothingVpn.Tray.Internal.UI;
 
 namespace NothingVpn.Tray;
 
 internal sealed class ProfileUpsertDialog : Form
 {
-    private readonly IProfileService _profileService;
+    private readonly IProfileManagementController _controller;
     private readonly VpnProfile? _existingProfile;
 
     private readonly TextBox _nameBox;
@@ -21,19 +22,19 @@ internal sealed class ProfileUpsertDialog : Form
 
     public string ResultProfileId { get; private set; } = string.Empty;
 
-    public ProfileUpsertDialog(IProfileService profileService)
-        : this(profileService, existingProfile: null, isEdit: false)
+    public ProfileUpsertDialog(IProfileManagementController controller)
+        : this(controller, existingProfile: null, isEdit: false)
     {
     }
 
-    public ProfileUpsertDialog(IProfileService profileService, VpnProfile existingProfile)
-        : this(profileService, existingProfile, isEdit: true)
+    public ProfileUpsertDialog(IProfileManagementController controller, VpnProfile existingProfile)
+        : this(controller, existingProfile, isEdit: true)
     {
     }
 
-    private ProfileUpsertDialog(IProfileService profileService, VpnProfile? existingProfile, bool isEdit)
+    private ProfileUpsertDialog(IProfileManagementController controller, VpnProfile? existingProfile, bool isEdit)
     {
-        _profileService = profileService;
+        _controller = controller;
         _existingProfile = existingProfile;
 
         Text = isEdit ? "Изменить профиль" : "Добавить профиль";
@@ -146,7 +147,7 @@ internal sealed class ProfileUpsertDialog : Form
         if (string.IsNullOrWhiteSpace(clipboardText))
             return;
 
-        if (_profileService.TryParseVlessLink(clipboardText, out var parsed))
+        if (_controller.TryParse(clipboardText, out var parsed))
         {
             _nameBox.Text = parsed.Name ?? "";
             _linkBox.Text = clipboardText;
@@ -175,7 +176,7 @@ internal sealed class ProfileUpsertDialog : Form
             if (link.Length == 0)
                 throw new InvalidOperationException("VLESS ссылка не задана.");
 
-            if (!_profileService.TryParseVlessLink(link, out var parsed))
+            if (!_controller.TryParse(link, out _))
                 throw new InvalidOperationException("Ссылка не распознана как vless:// (или содержит неподдерживаемые параметры).");
 
             var rawName = (_nameBox.Text ?? "").Trim();
@@ -183,20 +184,15 @@ internal sealed class ProfileUpsertDialog : Form
 
             if (_existingProfile is null)
             {
-                var saved = _profileService.UpsertFromVlessLink(link, nameOverride);
+                var saved = _controller.Add(link, nameOverride);
                 ResultProfileId = saved.Id;
                 DialogResult = DialogResult.OK;
                 Close();
                 return;
             }
 
-            var oldId = _existingProfile.Id;
-            var updated = _profileService.UpsertFromVlessLink(link, nameOverride);
+            var updated = _controller.Edit(_existingProfile.Id, link, nameOverride);
             ResultProfileId = updated.Id;
-
-            // Replace semantics: if stable profile id changed, delete the old one.
-            if (!string.Equals(ResultProfileId, oldId, StringComparison.OrdinalIgnoreCase))
-                _profileService.DeleteProfile(oldId);
 
             DialogResult = DialogResult.OK;
             Close();

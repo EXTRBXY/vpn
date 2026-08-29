@@ -2,16 +2,15 @@ using System.Drawing;
 using System.Windows.Forms;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Services;
+using NothingVpn.Presentation;
 using NothingVpn.Tray.Internal.UI;
 
 namespace NothingVpn.Tray;
 
 internal sealed class ProfilesDialog : Form
 {
-    private readonly IProfileService _profileService;
-    private readonly ISubscriptionService? _subscriptionService;
-    private readonly string? _initialActiveProfileId;
-    private string? _effectiveActiveProfileId;
+    private readonly IProfileManagementController _controller;
+    private readonly ISubscriptionManagementController? _subscriptionController;
 
     public string? ResultActiveProfileId { get; private set; }
 
@@ -38,10 +37,8 @@ internal sealed class ProfilesDialog : Form
         ISubscriptionService? subscriptionService,
         string? initialActiveProfileId)
     {
-        _profileService = profileService;
-        _subscriptionService = subscriptionService;
-        _initialActiveProfileId = NormalizeId(initialActiveProfileId);
-        _effectiveActiveProfileId = _initialActiveProfileId;
+        _controller = new ProfileManagementController(profileService, initialActiveProfileId);
+        _subscriptionController = subscriptionService is null ? null : new SubscriptionManagementController(subscriptionService);
 
         Text = "Профили";
         Icon = Icon.ExtractAssociatedIcon(System.Windows.Forms.Application.ExecutablePath) ?? SystemIcons.Application;
@@ -107,7 +104,7 @@ internal sealed class ProfilesDialog : Form
         _addBtn = new Button { Text = "Добавить", AutoSize = true };
         _addBtn.Click += (_, _) => BeginAdd();
 
-        _subscriptionsBtn = new Button { Text = "Подписки…", AutoSize = true, Enabled = _subscriptionService is not null };
+        _subscriptionsBtn = new Button { Text = "Подписки…", AutoSize = true, Enabled = _subscriptionController is not null };
         _subscriptionsBtn.Click += (_, _) => OpenSubscriptions();
 
         footer.Controls.Add(_editBtn);
@@ -122,18 +119,17 @@ internal sealed class ProfilesDialog : Form
         Shown += (_, _) => ReloadProfiles();
     }
 
-    private static string? NormalizeId(string? id)
-    {
-        if (string.IsNullOrWhiteSpace(id))
-            return null;
-        return id.Trim();
-    }
-
     private void ReloadProfiles()
     {
-        _profiles = _profileService.GetProfiles();
+        var snapshot = _controller.Load();
+        _profiles = snapshot.Profiles;
+        ResultActiveProfileId = snapshot.ChangedActiveProfileId;
 
         var selectedId = SelectedProfile?.Id;
+        var preferredId = _profiles.Any(p =>
+            string.Equals(p.Id, selectedId, StringComparison.OrdinalIgnoreCase))
+            ? selectedId
+            : snapshot.ActiveProfileId;
         _profilesList.BeginUpdate();
         try
         {
@@ -147,7 +143,7 @@ internal sealed class ProfilesDialog : Form
                 _profilesList.Items.Add(item);
             }
 
-            SelectProfileById(selectedId ?? _effectiveActiveProfileId);
+            SelectProfileById(preferredId);
         }
         finally
         {
@@ -185,22 +181,20 @@ internal sealed class ProfilesDialog : Form
 
     private void BeginAdd()
     {
-        using var dlg = new ProfileUpsertDialog(_profileService);
+        using var dlg = new ProfileUpsertDialog(_controller);
         if (dlg.ShowDialog(this) != DialogResult.OK)
             return;
 
         ReloadProfiles();
-        if (string.IsNullOrWhiteSpace(_effectiveActiveProfileId))
-            SetActive(dlg.ResultProfileId);
         SelectProfileById(dlg.ResultProfileId);
     }
 
     private void OpenSubscriptions()
     {
-        if (_subscriptionService is null)
+        if (_subscriptionController is null)
             return;
 
-        using var dlg = new SubscriptionsDialog(_subscriptionService);
+        using var dlg = new SubscriptionsDialog(_subscriptionController);
         dlg.ShowDialog(this);
         ReloadProfiles();
     }
@@ -222,18 +216,13 @@ internal sealed class ProfilesDialog : Form
             return;
         }
 
-        using var dlg = new ProfileUpsertDialog(_profileService, selected);
+        using var dlg = new ProfileUpsertDialog(_controller, selected);
         if (dlg.ShowDialog(this) != DialogResult.OK)
             return;
 
-        var oldId = selected.Id;
         var newId = dlg.ResultProfileId;
 
         ReloadProfiles();
-
-        // If user edited the active profile, switch the active id.
-        if (string.Equals(NormalizeId(oldId), NormalizeId(_effectiveActiveProfileId), StringComparison.OrdinalIgnoreCase))
-            SetActive(newId);
 
         SelectProfileById(newId);
     }
@@ -256,33 +245,8 @@ internal sealed class ProfilesDialog : Form
         if (confirm != DialogResult.Yes)
             return;
 
-        _profileService.DeleteProfile(deletedId);
+        _controller.Delete(deletedId);
         ReloadProfiles();
-
-        if (string.Equals(NormalizeId(deletedId), NormalizeId(_effectiveActiveProfileId), StringComparison.OrdinalIgnoreCase))
-        {
-            // Keep UX predictable: activate first available profile.
-            var first = _profiles.FirstOrDefault();
-            SetActive(first?.Id);
-            if (first is not null)
-                SelectProfileById(first.Id);
-        }
-    }
-
-    private void SetActive(string? newActiveId)
-    {
-        var normalized = NormalizeId(newActiveId);
-        var initialNormalized = NormalizeId(_initialActiveProfileId);
-
-        if (string.Equals(normalized, initialNormalized, StringComparison.OrdinalIgnoreCase))
-        {
-            _effectiveActiveProfileId = normalized;
-            ResultActiveProfileId = null;
-            return;
-        }
-
-        _effectiveActiveProfileId = normalized;
-        ResultActiveProfileId = normalized ?? string.Empty;
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)
