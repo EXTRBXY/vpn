@@ -27,9 +27,8 @@ internal sealed class MainForm : Form
     private readonly IProfileService _profileService;
     private readonly ISubscriptionService _subscriptionService;
     private readonly ISettingsService _settingsService;
-    private readonly IVpnConnectionService _vpnConnectionService;
+    private readonly IConnectionController _connectionController;
     private readonly IDiagnosticsService _diagnosticsService;
-    private readonly IAppLifecycleService _appLifecycleService;
     private readonly InMemoryLogStore _logStore;
     private readonly AppLogger _appLogger;
     private readonly System.Action _requestExit;
@@ -121,9 +120,8 @@ internal sealed class MainForm : Form
         IProfileService profileService,
         ISubscriptionService subscriptionService,
         ISettingsService settingsService,
-        IVpnConnectionService vpnConnectionService,
+        IConnectionController connectionController,
         IDiagnosticsService diagnosticsService,
-        IAppLifecycleService appLifecycleService,
         InMemoryLogStore logStore,
         System.Action? requestExit = null,
         System.Action<bool>? vpnConnectionStateChanged = null)
@@ -132,9 +130,8 @@ internal sealed class MainForm : Form
         _profileService = profileService;
         _subscriptionService = subscriptionService;
         _settingsService = settingsService;
-        _vpnConnectionService = vpnConnectionService;
+        _connectionController = connectionController;
         _diagnosticsService = diagnosticsService;
-        _appLifecycleService = appLifecycleService;
         _logStore = logStore;
         _appLogger = new AppLogger(logStore);
         _requestExit = requestExit ?? (() => System.Windows.Forms.Application.Exit());
@@ -705,7 +702,7 @@ internal sealed class MainForm : Form
         _tunAutoRoute.CheckedChanged += (_, _) => { if (_dnsUiReady) RestartConnectionSettingsDebounce(); };
         _tunStrictRoute.CheckedChanged += (_, _) => { if (_dnsUiReady) RestartConnectionSettingsDebounce(); };
 
-        _vpnConnectionService.ConnectionStateChanged += (_, connected) =>
+        _connectionController.ConnectionStateChanged += (_, connected) =>
         {
             try
             {
@@ -791,7 +788,7 @@ internal sealed class MainForm : Form
     {
         void Go()
         {
-            if (_vpnConnectionService.GetStatus().IsRunning) return;
+            if (_connectionController.IsRunning) return;
             _ = StartAsync();
         }
 
@@ -805,7 +802,7 @@ internal sealed class MainForm : Form
     {
         void Go()
         {
-            if (!_vpnConnectionService.GetStatus().IsRunning) return;
+            if (!_connectionController.IsRunning) return;
             _ = StopAsync();
         }
 
@@ -831,7 +828,7 @@ internal sealed class MainForm : Form
 
     private void DisconnectVpnSync()
     {
-        _vpnConnectionService.DisconnectAsync().ConfigureAwait(false).GetAwaiter().GetResult();
+        _connectionController.StopAsync().ConfigureAwait(false).GetAwaiter().GetResult();
     }
 
     public void ReloadProfilesFromSubscriptions()
@@ -907,7 +904,7 @@ internal sealed class MainForm : Form
         }
 
         var isDoh = _dnsModeCombo.SelectedIndex == 1;
-        _dnsDetourCombo.Enabled = isDoh && allowProxyDetour && !_vpnConnectionService.GetStatus().IsRunning;
+        _dnsDetourCombo.Enabled = isDoh && allowProxyDetour && !_connectionController.IsRunning;
         if (TunAppsPolicy.IsTunApps(_state.Mode))
         {
             _connectionSettings.DnsNotice.Text =
@@ -1590,7 +1587,7 @@ internal sealed class MainForm : Form
 
     private async Task PingAsync()
     {
-        if (!_vpnConnectionService.GetStatus().IsRunning)
+        if (!_connectionController.IsRunning)
         {
             MessageBox.Show(this, "Сначала нажмите «Старт».", "Пинг", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
@@ -1683,8 +1680,8 @@ internal sealed class MainForm : Form
     private ConnectionViewState CreateConnectionViewState() => ConnectionViewStateFactory.Create(
         _state,
         _profilesCombo.SelectedItem as VpnProfile,
-        _vpnConnectionService.GetStatus().IsRunning,
-        _appLifecycleService.IsAdministrator());
+        _connectionController.IsRunning,
+        _connectionController.IsAdministrator);
 
     private void OpenProfilesDialog()
     {
@@ -1715,24 +1712,24 @@ internal sealed class MainForm : Form
         try
         {
             UpdateButtons();
-            var result = await _vpnConnectionService.ConnectAsync(new ConnectRequest { ProfileId = p.Id });
-            if (result.RequiresElevation)
+            var result = await _connectionController.StartAsync(p.Id, _state.Mode);
+            if (result.ExitCurrentProcess)
             {
-                var ok = _appLifecycleService.RestartElevated(result.ElevationArgs ?? _appLifecycleService.BuildTakeoverArgs(_state.Mode, p.Id));
-                if (!ok)
-                    throw new InvalidOperationException("TUN requires Administrator privileges (UAC was cancelled).");
                 BeginInvoke(_requestExit);
                 return;
             }
 
-            _logTimer.Start();
-            NotifyVpnConnectionState(true);
+            if (result.Connected)
+            {
+                _logTimer.Start();
+                NotifyVpnConnectionState(true);
+            }
         }
         catch (Exception ex)
         {
             _appLogger.Error("app/runtime", ex, "Запуск VPN завершился ошибкой.");
             MessageBox.Show(this, ex.Message, "Start failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            await StopAsync();
+            ApplyStoppedUi();
         }
         finally
         {
@@ -1821,7 +1818,7 @@ internal sealed class MainForm : Form
         _startBtn.Enabled = false;
         try
         {
-            await _vpnConnectionService.DisconnectAsync().ConfigureAwait(false);
+            await _connectionController.StopAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -1836,8 +1833,7 @@ internal sealed class MainForm : Form
         }
         finally
         {
-            _logTimer.Stop();
-            NotifyVpnConnectionState(false);
+            ApplyStoppedUi();
             if (!IsDisposed && IsHandleCreated)
             {
                 void UiFinish()
@@ -1852,6 +1848,12 @@ internal sealed class MainForm : Form
                     UiFinish();
             }
         }
+    }
+
+    private void ApplyStoppedUi()
+    {
+        _logTimer.Stop();
+        NotifyVpnConnectionState(false);
     }
 
     // Logs are in-memory; export via "Скачать…" on the Logs tab.

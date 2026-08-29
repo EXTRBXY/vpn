@@ -6,6 +6,7 @@ using NothingVpn.Infrastructure.Store;
 using NothingVpn.Tray.Internal.Diagnostics;
 using NothingVpn.Tray.Internal.Windows;
 using NothingVpn.Tray.Internal.UI;
+using NothingVpn.Presentation;
 
 namespace NothingVpn.Tray;
 
@@ -37,6 +38,9 @@ internal sealed class MainAppContext : ApplicationContext
         var logStore = services.SharedLogStore;
         _appLogger = new AppLogger(logStore);
         _subscriptionService = services.SubscriptionService;
+        var connectionController = new ConnectionController(
+            services.VpnConnectionService,
+            services.AppLifecycleService);
 
         var extracted = Icon.ExtractAssociatedIcon(System.Windows.Forms.Application.ExecutablePath);
         _trayBaseIcon = extracted is null ? (Icon)SystemIcons.Application.Clone() : (Icon)extracted.Clone();
@@ -46,9 +50,8 @@ internal sealed class MainAppContext : ApplicationContext
             services.ProfileService,
             services.SubscriptionService,
             services.SettingsService,
-            services.VpnConnectionService,
+            connectionController,
             services.DiagnosticsService,
-            services.AppLifecycleService,
             logStore,
             requestExit: Exit,
             vpnConnectionStateChanged: SetTrayConnectionState);
