@@ -6,6 +6,8 @@
 shell, visual theme, tray lifecycle, single-instance activation, profile and mode selection, live connection
 status, and connect/disconnect commands backed by the existing Presentation controllers. Profile creation,
 editing, deletion, clipboard import, and subscription-owned profile protection are also available in WPF.
+Subscription creation, editing, deletion, manual refresh, startup refresh, and periodic refresh are available;
+profile lists are synchronized after subscription changes.
 WinForms remains the packaged executable until the remaining screens reach parity.
 
 The application logic is ready to be consumed by a WPF front end. A new WPF project must reference

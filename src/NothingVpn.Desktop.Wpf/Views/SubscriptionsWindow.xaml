@@ -1,0 +1,41 @@
+<Window x:Class="NothingVpn.Desktop.Wpf.SubscriptionsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Подписки" Width="820" Height="560" MinWidth="700" MinHeight="460"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Icon="../Assets/app.ico">
+    <Grid Margin="26" IsEnabled="{Binding CanInteract}">
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="22" /><RowDefinition Height="*" /><RowDefinition Height="16" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <Grid>
+            <StackPanel>
+                <TextBlock Text="Подписки" FontSize="26" FontWeight="SemiBold" />
+                <TextBlock Text="Автоматическое получение и обновление профилей" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,0" />
+            </StackPanel>
+            <Button Content="Добавить" Click="OnAdd" HorizontalAlignment="Right" VerticalAlignment="Center" />
+        </Grid>
+        <Border Grid.Row="2" Style="{StaticResource CardStyle}" Padding="0">
+            <ListBox ItemsSource="{Binding Items}" SelectedItem="{Binding Selected}" BorderThickness="0" Padding="8" Background="Transparent" MouseDoubleClick="OnDoubleClick">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Margin="10,9" MinHeight="54">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="2*" /><ColumnDefinition Width="1.3*" /><ColumnDefinition Width="1.5*" /><ColumnDefinition Width="1.2*" /></Grid.ColumnDefinitions>
+                            <StackPanel><TextBlock Text="{Binding Name}" FontWeight="SemiBold" /><TextBlock Text="{Binding State}" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,4,0,0" /></StackPanel>
+                            <StackPanel Grid.Column="1"><TextBlock Text="Обновление" Foreground="{StaticResource MutedBrush}" FontSize="11" /><TextBlock Text="{Binding LastSync}" Margin="0,4,0,0" /></StackPanel>
+                            <StackPanel Grid.Column="2"><TextBlock Text="Трафик" Foreground="{StaticResource MutedBrush}" FontSize="11" /><TextBlock Text="{Binding Traffic}" Margin="0,4,0,0" /></StackPanel>
+                            <StackPanel Grid.Column="3"><TextBlock Text="Срок" Foreground="{StaticResource MutedBrush}" FontSize="11" /><TextBlock Text="{Binding Expires}" Margin="0,4,0,0" /></StackPanel>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Border>
+        <Grid Grid.Row="4">
+            <StackPanel Orientation="Horizontal">
+                <Button Content="Удалить" Click="OnDelete" IsEnabled="{Binding HasSelection}" Background="#FFF0F0" Foreground="#B42318" />
+                <Button Content="Изменить" Click="OnEdit" IsEnabled="{Binding HasSelection}" Background="#EEF0F4" Foreground="{StaticResource TextBrush}" Margin="10,0,0,0" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Обновить выбранную" Click="OnRefreshSelected" IsEnabled="{Binding HasSelection}" Background="#EEF0F4" Foreground="{StaticResource TextBrush}" Margin="0,0,10,0" />
+                <Button Content="Обновить все" Click="OnRefreshAll" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

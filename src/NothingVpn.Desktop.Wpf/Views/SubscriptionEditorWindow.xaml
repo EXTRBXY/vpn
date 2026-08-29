@@ -1,0 +1,17 @@
+<Window x:Class="NothingVpn.Desktop.Wpf.SubscriptionEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Подписка" Width="620" Height="390" ResizeMode="NoResize" WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Icon="../Assets/app.ico">
+    <Grid Margin="26">
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="20" /><RowDefinition Height="Auto" /><RowDefinition Height="16" /><RowDefinition Height="Auto" /><RowDefinition Height="14" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <TextBlock x:Name="Heading" FontSize="24" FontWeight="SemiBold" />
+        <StackPanel Grid.Row="2"><TextBlock Text="Название" Foreground="{StaticResource MutedBrush}" FontSize="12" /><TextBox x:Name="NameBox" Margin="0,7,0,0" Padding="11,9" /></StackPanel>
+        <StackPanel Grid.Row="4"><TextBlock Text="Адрес подписки" Foreground="{StaticResource MutedBrush}" FontSize="12" /><TextBox x:Name="UrlBox" Margin="0,7,0,0" Padding="11,9" /></StackPanel>
+        <CheckBox x:Name="EnabledBox" Grid.Row="6" Content="Обновлять автоматически" IsChecked="True" />
+        <TextBlock x:Name="ErrorText" Grid.Row="7" Foreground="#B42318" Margin="0,10,0,0" Visibility="Collapsed" TextWrapping="Wrap" />
+        <StackPanel Grid.Row="8" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Отмена" Click="OnCancel" Background="#EEF0F4" Foreground="{StaticResource TextBrush}" Margin="0,0,10,0" />
+            <Button Content="Сохранить" Click="OnSave" />
+        </StackPanel>
+    </Grid>
+</Window>

@@ -2,6 +2,8 @@ using Drawing = System.Drawing;
 using Forms = System.Windows.Forms;
 using NothingVpn.Infrastructure.Composition;
 using NothingVpn.Presentation;
+using NothingVpn.Application.Services;
+using System.Windows.Threading;
 
 namespace NothingVpn.Desktop.Wpf;
 
@@ -12,6 +14,10 @@ public partial class App : System.Windows.Application
     private Forms.NotifyIcon? _trayIcon;
     private MainWindow? _window;
     private MainViewModel? _viewModel;
+    private SubscriptionViewModel? _subscriptionViewModel;
+    private ISubscriptionService? _subscriptionService;
+    private DispatcherTimer? _subscriptionTimer;
+    private int _subscriptionRefreshRunning;
     private bool _exitInProgress;
 
     public static bool IsExitRequested { get; private set; }
@@ -45,6 +51,7 @@ public partial class App : System.Windows.Application
         try
         {
             var services = ApplicationServicesFactory.CreateDefault();
+            _subscriptionService = services.SubscriptionService;
             var connectionController = new ConnectionController(
                 services.VpnConnectionService,
                 services.AppLifecycleService);
@@ -54,7 +61,10 @@ public partial class App : System.Windows.Application
             var profileController = new ProfileManagementController(
                 services.ProfileService,
                 services.SettingsService.GetState().ActiveProfileId);
-            var profileViewModel = new ProfileViewModel(profileController);
+            var subscriptionController = new SubscriptionManagementController(services.SubscriptionService);
+            var subscriptionViewModel = new SubscriptionViewModel(subscriptionController);
+            _subscriptionViewModel = subscriptionViewModel;
+            var profileViewModel = new ProfileViewModel(profileController, subscriptionViewModel);
 
             _viewModel = new MainViewModel(screenController, connectionController, profileViewModel, RequestExit);
             _viewModel.ConnectionStateChanged += (_, connected) => UpdateTrayState(connected);
@@ -63,6 +73,11 @@ public partial class App : System.Windows.Application
             CreateTrayIcon();
             UpdateTrayState(connectionController.IsRunning);
             _window.Show();
+
+            _subscriptionTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(15) };
+            _subscriptionTimer.Tick += async (_, _) => await RefreshDueSubscriptionsAsync();
+            _subscriptionTimer.Start();
+            _ = RefreshSubscriptionsAfterStartupAsync();
 
             _singleInstance.StartServer(_ => Dispatcher.Invoke(ShowMainWindow));
         }
@@ -115,6 +130,26 @@ public partial class App : System.Windows.Application
 
     private void ShowMainWindow() => _window?.BringToFront();
 
+    private async Task RefreshSubscriptionsAfterStartupAsync()
+    {
+        await Task.Delay(TimeSpan.FromSeconds(5));
+        await RefreshDueSubscriptionsAsync();
+    }
+
+    private async Task RefreshDueSubscriptionsAsync()
+    {
+        if (_subscriptionService is null || Interlocked.Exchange(ref _subscriptionRefreshRunning, 1) == 1)
+            return;
+        try
+        {
+            var results = await _subscriptionService.RefreshAllDueAsync();
+            if (results.Count > 0)
+                _subscriptionViewModel?.ReloadAfterExternalRefresh();
+        }
+        catch { }
+        finally { Interlocked.Exchange(ref _subscriptionRefreshRunning, 0); }
+    }
+
     private async void RequestExit()
     {
         if (_exitInProgress) return;
@@ -128,6 +163,7 @@ public partial class App : System.Windows.Application
         catch { }
         finally
         {
+            _subscriptionTimer?.Stop();
             if (_trayIcon is not null)
             {
                 _trayIcon.Visible = false;

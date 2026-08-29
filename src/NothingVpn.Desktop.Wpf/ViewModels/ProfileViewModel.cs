@@ -14,9 +14,15 @@ public sealed class ProfileViewModel : INotifyPropertyChanged
     private readonly RelayCommand _deleteCommand;
     private VpnProfile? _selectedProfile;
 
-    public ProfileViewModel(IProfileManagementController controller)
+    public ProfileViewModel(IProfileManagementController controller, SubscriptionViewModel subscriptionManager)
     {
         _controller = controller;
+        SubscriptionManager = subscriptionManager;
+        SubscriptionManager.ProfilesChanged += (_, _) =>
+        {
+            Reload();
+            ProfilesChanged?.Invoke(this, null);
+        };
         AddCommand = new RelayCommand(() => EditRequested?.Invoke(this, null));
         _editCommand = new RelayCommand(RequestEdit, () => SelectedProfile is not null);
         _deleteCommand = new RelayCommand(() => DeleteRequested?.Invoke(this, SelectedProfile), () => SelectedProfile is not null);
@@ -31,6 +37,7 @@ public sealed class ProfileViewModel : INotifyPropertyChanged
     public event EventHandler<string?>? ProfilesChanged;
 
     public ObservableCollection<VpnProfile> Profiles { get; } = [];
+    public SubscriptionViewModel SubscriptionManager { get; }
     public ICommand AddCommand { get; }
     public ICommand EditCommand { get; }
     public ICommand DeleteCommand { get; }

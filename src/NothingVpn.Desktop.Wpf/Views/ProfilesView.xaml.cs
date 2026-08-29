@@ -33,6 +33,13 @@ public partial class ProfilesView : System.Windows.Controls.UserControl
             ViewModel.EditCommand.Execute(null);
     }
 
+    private void OnSubscriptions(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel is null) return;
+        var dialog = new SubscriptionsWindow(ViewModel.SubscriptionManager) { Owner = Window.GetWindow(this) };
+        dialog.ShowDialog();
+    }
+
     private void OnEditRequested(object? sender, VpnProfile? profile)
     {
         if (ViewModel is null) return;
