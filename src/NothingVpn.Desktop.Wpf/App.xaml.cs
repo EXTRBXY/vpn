@@ -67,6 +67,7 @@ public partial class App : System.Windows.Application
             var profileViewModel = new ProfileViewModel(profileController, subscriptionViewModel);
             var settingsViewModel = new SettingsViewModel(
                 new ConnectionSettingsController(services.SettingsService),
+                new TunAppsController(services.PathPolicy, services.SettingsService),
                 services.SettingsService.GetState());
 
             _viewModel = new MainViewModel(screenController, connectionController, profileViewModel, settingsViewModel, RequestExit);
