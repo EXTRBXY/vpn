@@ -1,3 +1,5 @@
+using NothingVpn.Infrastructure.TunApps;
+
 namespace NothingVpn.Tray.Internal.UI;
 
 internal sealed class TunAppsPanelControl : UserControl
@@ -104,10 +106,7 @@ internal sealed class TunAppsPanelControl : UserControl
     protected override void Dispose(bool disposing)
     {
         if (disposing)
-        {
-            _iconCache.Dispose();
             _icons.Dispose();
-        }
         base.Dispose(disposing);
     }
 }

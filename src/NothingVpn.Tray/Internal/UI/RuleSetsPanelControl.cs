@@ -19,7 +19,7 @@ internal sealed class RuleSetsPanelControl : UserControl
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
 
         var builtinGroup = Group("Встроенные списки", bottomMargin: true);
-        var builtinLayout = Layout();
+        var builtinLayout = CreateLayout();
         BuiltinGrid = CreateGrid(multiSelect: true);
         builtinLayout.Controls.Add(BuiltinGrid, 0, 0);
         var builtinButtons = Buttons(wrap: true);
@@ -31,7 +31,7 @@ internal sealed class RuleSetsPanelControl : UserControl
         builtinGroup.Controls.Add(builtinLayout);
 
         var userGroup = Group("Пользовательские списки (.srs)", bottomMargin: false);
-        var userLayout = Layout();
+        var userLayout = CreateLayout();
         UserGrid = CreateGrid(multiSelect: false);
         userLayout.Controls.Add(UserGrid, 0, 0);
         var userButtons = Buttons(wrap: false);
@@ -55,7 +55,7 @@ internal sealed class RuleSetsPanelControl : UserControl
         Margin = bottomMargin ? new Padding(0, 0, 0, UiMetrics.Space8) : Padding.Empty
     };
 
-    private static TableLayoutPanel Layout()
+    private static TableLayoutPanel CreateLayout()
     {
         var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, RowCount = 2 };
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 180));
