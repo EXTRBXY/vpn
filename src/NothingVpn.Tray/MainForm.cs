@@ -28,6 +28,7 @@ internal sealed class MainForm : Form
     private readonly IConnectionScreenController _connectionScreenController;
     private readonly IConnectionSettingsController _connectionSettingsController;
     private readonly ITunAppsController _tunAppsController;
+    private readonly IRuleSetManagementController _ruleSetManagementController;
     private readonly IConnectionController _connectionController;
     private readonly IDiagnosticsService _diagnosticsService;
     private readonly InMemoryLogStore _logStore;
@@ -124,6 +125,7 @@ internal sealed class MainForm : Form
         IConnectionScreenController connectionScreenController,
         IConnectionSettingsController connectionSettingsController,
         ITunAppsController tunAppsController,
+        IRuleSetManagementController ruleSetManagementController,
         IConnectionController connectionController,
         IDiagnosticsService diagnosticsService,
         InMemoryLogStore logStore,
@@ -136,6 +138,7 @@ internal sealed class MainForm : Form
         _connectionScreenController = connectionScreenController;
         _connectionSettingsController = connectionSettingsController;
         _tunAppsController = tunAppsController;
+        _ruleSetManagementController = ruleSetManagementController;
         _connectionController = connectionController;
         _diagnosticsService = diagnosticsService;
         _logStore = logStore;
@@ -1063,11 +1066,9 @@ internal sealed class MainForm : Form
 
     private void SyncRuleSetsGridFromState()
     {
-        var all = _state.UserRuleSets ?? new List<UserRuleSetModel>();
-        _builtinRuleSetsBinding = new BindingList<UserRuleSetModel>(
-            all.Where(x => !string.IsNullOrWhiteSpace(x.BuiltinId)).ToList());
-        _userRuleSetsBinding = new BindingList<UserRuleSetModel>(
-            all.Where(x => string.IsNullOrWhiteSpace(x.BuiltinId)).ToList());
+        var snapshot = _ruleSetManagementController.Load(_state);
+        _builtinRuleSetsBinding = new BindingList<UserRuleSetModel>(snapshot.Builtin.ToList());
+        _userRuleSetsBinding = new BindingList<UserRuleSetModel>(snapshot.User.ToList());
         _builtinRuleSetsGrid.DataSource = _builtinRuleSetsBinding;
         _userRuleSetsGrid.DataSource = _userRuleSetsBinding;
         RefreshBuiltinGridRowStyles();
@@ -1079,9 +1080,7 @@ internal sealed class MainForm : Form
         if (_loadingData) return;
         try
         {
-            if (_state.UserRuleSets is null) _state.UserRuleSets = new List<UserRuleSetModel>();
-            _state.UserRuleSets = _builtinRuleSetsBinding.Concat(_userRuleSetsBinding).ToList();
-            SaveState();
+            _ruleSetManagementController.Save(_state, _builtinRuleSetsBinding, _userRuleSetsBinding);
         }
         catch
         {
@@ -1177,15 +1176,7 @@ internal sealed class MainForm : Form
 
             File.Copy(src, dest, overwrite: false);
 
-            var tag = $"user-ruleset-{Guid.NewGuid():N}"[..("user-ruleset-".Length + 12)];
-            _userRuleSetsBinding.Add(new UserRuleSetModel
-            {
-                Tag = tag,
-                Name = string.IsNullOrWhiteSpace(baseName) ? fileName : baseName,
-                FileName = fileName,
-                Enabled = true,
-                Action = "direct"
-            });
+            _userRuleSetsBinding.Add(_ruleSetManagementController.CreateUserRuleSet(baseName, fileName));
             SaveRuleSetsFromGrid();
         }
         catch (Exception ex)
@@ -1230,12 +1221,13 @@ internal sealed class MainForm : Form
                     return;
                 }
 
-                rs.RemoteEtag = null;
-                rs.LastDownloadedUtc = null;
-                rs.Enabled = false;
             }
 
-            SaveRuleSetsFromGrid();
+            _ruleSetManagementController.MarkBuiltinFilesRemoved(
+                _state,
+                _builtinRuleSetsBinding,
+                _userRuleSetsBinding,
+                targets);
             RefreshBuiltinGridRowStyles();
             UpdateBuiltinFetchOrRemoveButton();
             _builtinRuleSetsGrid.ClearSelection();
@@ -1496,10 +1488,7 @@ internal sealed class MainForm : Form
 
     private void ApplyDownloadResultToRuleSet(UserRuleSetModel rs, string? newEtag)
     {
-        if (!string.IsNullOrWhiteSpace(newEtag))
-            rs.RemoteEtag = newEtag.Trim();
-        rs.LastDownloadedUtc = DateTimeOffset.UtcNow;
-        SaveState();
+        _ruleSetManagementController.MarkDownloaded(_state, rs, newEtag);
         SyncRuleSetsGridFromState();
     }
 
