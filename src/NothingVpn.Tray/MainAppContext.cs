@@ -61,6 +61,7 @@ internal sealed class MainAppContext : ApplicationContext
             tunAppsController,
             ruleSetManagementController,
             services.RuleSetFileService,
+            services.AppUpdateService,
             connectionController,
             connectionDiagnosticController,
             logStore,

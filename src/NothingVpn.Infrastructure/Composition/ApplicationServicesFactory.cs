@@ -3,6 +3,7 @@ using NothingVpn.Infrastructure.Ports;
 using NothingVpn.Infrastructure.Runtime;
 using NothingVpn.Infrastructure.Diagnostics;
 using NothingVpn.Infrastructure.RuleSets;
+using NothingVpn.Infrastructure.Updates;
 
 namespace NothingVpn.Infrastructure.Composition;
 
@@ -38,6 +39,7 @@ public static class ApplicationServicesFactory
         var appLifecycleService = new AppLifecycleService(elevationPort);
         var storageHealthService = new StorageHealthService(storageHealthPort);
         var ruleSetFileService = new RuleSetFileService(appPaths);
+        var appUpdateService = new GitHubAppUpdateService();
         var vpnService = new VpnConnectionService(
             profileStore,
             stateStore,
@@ -60,6 +62,7 @@ public static class ApplicationServicesFactory
             AppLifecycleService = appLifecycleService,
             StorageHealthService = storageHealthService,
             RuleSetFileService = ruleSetFileService,
+            AppUpdateService = appUpdateService,
             PathPolicy = pathPolicy,
             SharedLogStore = logStore
         };

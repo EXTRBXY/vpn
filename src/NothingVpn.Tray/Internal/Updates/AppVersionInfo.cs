@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Reflection;
+using NothingVpn.Domain.Updates;
 
 namespace NothingVpn.Tray.Internal.Updates;
 
@@ -48,9 +49,9 @@ internal static class AppVersionInfo
         if (space >= 0)
             raw = raw[..space].Trim();
 
-        if (!SemVerComparer.TryParse(raw, out _, out _, out _))
+        if (!SemanticVersionPolicy.TryParse(raw, out _, out _, out _))
             return false;
-        semver = SemVerComparer.NormalizeToString(raw);
+        semver = SemanticVersionPolicy.Normalize(raw);
         return true;
     }
 }

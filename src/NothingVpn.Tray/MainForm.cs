@@ -4,6 +4,7 @@ using NothingVpn.Application.Models;
 using NothingVpn.Application.Services;
 using NothingVpn.Domain.Models;
 using NothingVpn.Domain.Policies;
+using NothingVpn.Domain.Updates;
 using NothingVpn.Infrastructure.Profile;
 using NothingVpn.Infrastructure.SingBox;
 using NothingVpn.Infrastructure.Security;
@@ -29,6 +30,7 @@ internal sealed class MainForm : Form
     private readonly ITunAppsController _tunAppsController;
     private readonly IRuleSetManagementController _ruleSetManagementController;
     private readonly IRuleSetFileService _ruleSetFileService;
+    private readonly IAppUpdateService _appUpdateService;
     private readonly IConnectionController _connectionController;
     private readonly IConnectionDiagnosticController _connectionDiagnosticController;
     private readonly InMemoryLogStore _logStore;
@@ -110,7 +112,7 @@ internal sealed class MainForm : Form
     private readonly Button _updateBannerDownloadBtn;
     private readonly Button _updateManualCheckBtn;
     private readonly System.Windows.Forms.Timer _updatePeriodicTimer;
-    private GitHubReleaseInfo? _updatePendingRelease;
+    private AppReleaseModel? _updatePendingRelease;
     private bool _updateDownloadBusy;
 
     private int _lastLogVersion = -1;
@@ -127,6 +129,7 @@ internal sealed class MainForm : Form
         ITunAppsController tunAppsController,
         IRuleSetManagementController ruleSetManagementController,
         IRuleSetFileService ruleSetFileService,
+        IAppUpdateService appUpdateService,
         IConnectionController connectionController,
         IConnectionDiagnosticController connectionDiagnosticController,
         InMemoryLogStore logStore,
@@ -141,6 +144,7 @@ internal sealed class MainForm : Form
         _tunAppsController = tunAppsController;
         _ruleSetManagementController = ruleSetManagementController;
         _ruleSetFileService = ruleSetFileService;
+        _appUpdateService = appUpdateService;
         _connectionController = connectionController;
         _connectionDiagnosticController = connectionDiagnosticController;
         _logStore = logStore;
@@ -1900,8 +1904,6 @@ internal sealed class MainForm : Form
 
     #region Обновления (GitHub Releases)
 
-    private static string BuildUserAgent(string currentSemver) => $"NothingVpn/{currentSemver}";
-
     private void SyncUpdateBannerCachedInstallerUi()
     {
         if (IsDisposed) return;
@@ -2005,7 +2007,7 @@ internal sealed class MainForm : Form
         return tcs.Task;
     }
 
-    private Task<InstallerDownloader.Result> RunInstallerDownloadModalAsync(GitHubReleaseInfo release, string destPath)
+    private Task<InstallerDownloader.Result> RunInstallerDownloadModalAsync(AppReleaseModel release, string destPath)
     {
         if (IsDisposed || !IsHandleCreated)
             return Task.FromResult(new InstallerDownloader.Result(false, AppUpdateUserMessages.ModalUnavailable));
@@ -2061,20 +2063,14 @@ internal sealed class MainForm : Form
             }
             else
             {
-                var cmp = SemVerComparer.CompareSemver(currentSemver, _state.LastRecordedAppSemver);
+                var cmp = SemanticVersionPolicy.Compare(currentSemver, _state.LastRecordedAppSemver);
                 if (cmp > 0)
                 {
-                    GitHubReleaseInfo? rel = null;
+                    AppReleaseModel? rel = null;
                     try
                     {
-                        var ua = BuildUserAgent(currentSemver);
-                        using var client = new GitHubReleasesClient(ua);
-                        var tag = SemVerComparer.ToProbableGitTag(currentSemver);
-                        rel = await client.GetByTagAsync(
-                            UpdateChannelOptions.GitHubOwner,
-                            UpdateChannelOptions.GitHubRepo,
-                            tag,
-                            CancellationToken.None).ConfigureAwait(false);
+                        rel = await _appUpdateService.GetByVersionAsync(currentSemver, CancellationToken.None)
+                            .ConfigureAwait(false);
                     }
                     catch (Exception ex)
                     {
@@ -2136,7 +2132,7 @@ internal sealed class MainForm : Form
             }
 
             if (_updatePendingRelease is not null &&
-                SemVerComparer.CompareSemver(_updatePendingRelease.Semver, currentSemver) > 0)
+                SemanticVersionPolicy.Compare(_updatePendingRelease.Semver, currentSemver) > 0)
             {
                 MessageBox.Show(
                     this,
@@ -2182,15 +2178,11 @@ internal sealed class MainForm : Form
 
     private async Task<bool> RefreshUpdateAvailabilityAsync(string currentSemver, bool offerModal)
     {
-        GitHubReleaseInfo? latest = null;
+        AppReleaseModel? latest = null;
         try
         {
-            var ua = BuildUserAgent(currentSemver);
-            using var client = new GitHubReleasesClient(ua);
-            latest = await client.GetLatestAsync(
-                UpdateChannelOptions.GitHubOwner,
-                UpdateChannelOptions.GitHubRepo,
-                CancellationToken.None).ConfigureAwait(false);
+            latest = await _appUpdateService.GetLatestAsync(currentSemver, CancellationToken.None)
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -2204,7 +2196,7 @@ internal sealed class MainForm : Form
         await UiInvokeAsync(() =>
         {
             if (IsDisposed) return;
-            if (latest is null || SemVerComparer.CompareSemver(latest.Semver, currentSemver) <= 0)
+            if (latest is null || SemanticVersionPolicy.Compare(latest.Semver, currentSemver) <= 0)
             {
                 _updatePendingRelease = null;
                 _updateBannerPanel.Visible = false;
@@ -2247,7 +2239,7 @@ internal sealed class MainForm : Form
         await StartDownloadAndRunInstallerAsync(_updatePendingRelease).ConfigureAwait(false);
     }
 
-    private async Task StartDownloadAndRunInstallerAsync(GitHubReleaseInfo release)
+    private async Task StartDownloadAndRunInstallerAsync(AppReleaseModel release)
     {
         if (_updateDownloadBusy)
             return;
