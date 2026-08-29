@@ -1,5 +1,12 @@
 # WPF migration readiness
 
+## Current migration status
+
+`NothingVpn.Desktop.Wpf` is now part of the solution. Its first functional slice includes the application
+shell, visual theme, tray lifecycle, single-instance activation, profile and mode selection, live connection
+status, and connect/disconnect commands backed by the existing Presentation controllers. WinForms remains
+the packaged executable until the remaining screens reach parity.
+
 The application logic is ready to be consumed by a WPF front end. A new WPF project must reference
 `NothingVpn.Presentation`, `NothingVpn.Application`, and `NothingVpn.Domain`. Platform implementations
 are obtained from `NothingVpn.Infrastructure`; WPF must not place application logic in windows or controls.
