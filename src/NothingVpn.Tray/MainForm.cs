@@ -48,13 +48,7 @@ internal sealed class MainForm : Form
     private readonly LogPanelControl _logPanel;
     private readonly ConnectionSettingsUi _connectionSettings;
 
-    private readonly ComboBox _profilesCombo;
-    private readonly Button _profilesBtn;
-    private readonly Button _startBtn;
-    private readonly Button _stopBtn;
-    private readonly NumericUpDown _port;
-    private readonly Button _pingBtn;
-    private readonly ComboBox _modeCombo;
+    private readonly ConnectionControlPanelControl _connectionPanel;
     private readonly ConnectionStatusPanelControl _statusPanel;
 
     private readonly Panel _tunAppsPanel;
@@ -187,72 +181,7 @@ internal sealed class MainForm : Form
         var connectionSettingsRoot = _connectionSettings.Tab.Controls.Cast<Control>().Single();
         _connectionSettings.Tab.Controls.Remove(connectionSettingsRoot);
 
-        var layout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            ColumnCount = 3,
-            RowCount = 4,
-            Padding = new Padding(UiMetrics.Space12),
-        };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-
-        layout.Controls.Add(new Label { Text = "Профиль", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
-        _profilesCombo = new ComboBox
-        {
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            Anchor = AnchorStyles.Left | AnchorStyles.Right,
-            MinimumSize = new Size(UiMetrics.MinInputWidth, 0)
-        };
-        layout.Controls.Add(_profilesCombo, 1, 0);
-        _profilesBtn = new Button { Text = "Профили", AutoSize = true, Margin = new Padding(0, 2, 4, 2) };
-        _pingBtn = new Button { Text = "Пинг", AutoSize = true, Margin = new Padding(0, 2, 0, 2) };
-        var profileActions = new FlowLayoutPanel
-        {
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Anchor = AnchorStyles.Left | AnchorStyles.Top,
-            Margin = new Padding(6, 0, 0, 0),
-            Padding = Padding.Empty
-        };
-        profileActions.Controls.Add(_profilesBtn);
-        profileActions.Controls.Add(_pingBtn);
-        layout.Controls.Add(profileActions, 2, 0);
-
-        layout.Controls.Add(new Label { Text = "Режим", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
-        _modeCombo = new ComboBox
-        {
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            Anchor = AnchorStyles.Left | AnchorStyles.Right,
-            MinimumSize = new Size(UiMetrics.MinInputWidth, 0)
-        };
-        _modeCombo.Items.AddRange(new object[] { "Прокси", "TUN (весь трафик)", "TUN (выбранные приложения)" });
-        layout.Controls.Add(_modeCombo, 1, 1);
-        _startBtn = new Button { Text = "Старт", AutoSize = true, Margin = new Padding(0, 2, 4, 2) };
-        _stopBtn = new Button { Text = "Стоп", AutoSize = true, Margin = new Padding(0, 2, 0, 2) };
-        var modeActions = new FlowLayoutPanel
-        {
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Anchor = AnchorStyles.Left | AnchorStyles.Top,
-            Margin = new Padding(6, 0, 0, 0),
-            Padding = Padding.Empty
-        };
-        modeActions.Controls.Add(_startBtn);
-        modeActions.Controls.Add(_stopBtn);
-        layout.Controls.Add(modeActions, 2, 1);
-
-        layout.Controls.Add(new Label { Text = "Локальный порт", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
-        _port = new NumericUpDown { Minimum = 1, Maximum = 65535, Anchor = AnchorStyles.Left | AnchorStyles.Right };
-        layout.Controls.Add(_port, 1, 2);
-        layout.Controls.Add(new Label { Text = "", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 3);
-        layout.Controls.Add(new Label { Text = "", AutoSize = true, Anchor = AnchorStyles.Left }, 1, 3);
+        _connectionPanel = new ConnectionControlPanelControl();
 
         var mainStack = new TableLayoutPanel
         {
@@ -278,7 +207,7 @@ internal sealed class MainForm : Form
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Margin = new Padding(0, 0, 0, UiMetrics.Space8)
         };
-        connectionGroup.Controls.Add(layout);
+        connectionGroup.Controls.Add(_connectionPanel);
 
         _tunAppsPanel = new Panel
         {
@@ -518,28 +447,28 @@ internal sealed class MainForm : Form
             SaveConnectionSettingsFromUi(showDialogs: false);
         };
 
-        _profilesBtn.Click += (_, _) => OpenProfilesDialog();
-        _startBtn.Click += async (_, _) => await StartAsync();
-        _stopBtn.Click += (_, _) => _ = StopAsync();
-        _profilesCombo.SelectedIndexChanged += (_, _) =>
+        _connectionPanel.ProfilesRequested += (_, _) => OpenProfilesDialog();
+        _connectionPanel.StartRequested += async (_, _) => await StartAsync();
+        _connectionPanel.StopRequested += (_, _) => _ = StopAsync();
+        _connectionPanel.ProfileChanged += (_, _) =>
         {
             if (_loadingData) return;
-            if (_profilesCombo.SelectedItem is VpnProfile p)
+            if (_connectionPanel.SelectedProfile is VpnProfile p)
             {
                 _connectionScreenController.SelectProfile(_state, p.Id);
                 UpdateButtons();
             }
         };
-        _port.ValueChanged += (_, _) =>
+        _connectionPanel.PortChanged += (_, _) =>
         {
             if (_loadingData) return;
-            _state.LocalMixedPort = (int)_port.Value;
+            _state.LocalMixedPort = _connectionPanel.Port;
             SaveState();
         };
-        _modeCombo.SelectedIndexChanged += (_, _) =>
+        _connectionPanel.ModeChanged += (_, _) =>
         {
             if (_loadingData) return;
-            _state.Mode = ComboIndexToMode(_modeCombo.SelectedIndex);
+            _state.Mode = ComboIndexToMode(_connectionPanel.ModeIndex);
             if (!DnsDetourPolicy.AllowsProxyDetour(_state.Mode) &&
                 string.Equals(_state.DnsDetour, "proxy", StringComparison.OrdinalIgnoreCase))
             {
@@ -565,7 +494,7 @@ internal sealed class MainForm : Form
             _state.SingBoxLogLevel = _state.DebugLogs ? "debug" : "warn";
             SaveState();
         };
-        _pingBtn.Click += async (_, _) => await PingAsync();
+        _connectionPanel.PingRequested += async (_, _) => await PingAsync();
         _userRuleSetsAddBtn.Click += (_, _) => AddRuleSet();
         _userRuleSetsRemoveBtn.Click += (_, _) => RemoveSelectedUserRuleSet();
         _builtinRuleSetsFetchOrRemoveBtn.Click += async (_, _) => await OnBuiltinFetchOrRemoveClickAsync();
@@ -679,10 +608,10 @@ internal sealed class MainForm : Form
         {
             var match = _profiles.FirstOrDefault(p => string.Equals(p.Id, startup.ProfileId, StringComparison.OrdinalIgnoreCase));
             if (match is not null)
-                _profilesCombo.SelectedItem = match;
+                _connectionPanel.SelectProfile(match);
         }
 
-        _modeCombo.SelectedIndex = ModeToComboIndex(_state.Mode);
+        _connectionPanel.ModeIndex = ModeToComboIndex(_state.Mode);
         SyncTunAppsListFromState();
         UpdateConnectionTabVisibility();
         UpdateTitle();
@@ -782,14 +711,9 @@ internal sealed class MainForm : Form
         _profiles = snapshot.Profiles;
         _state = snapshot.State;
 
-        _profilesCombo.DataSource = _profiles.ToList();
-        _profilesCombo.DisplayMember = nameof(VpnProfile.Name);
-
-        if (snapshot.SelectedProfile is not null)
-            _profilesCombo.SelectedItem = snapshot.SelectedProfile;
-
-        _port.Value = Math.Clamp(_state.LocalMixedPort, 1, 65535);
-        _modeCombo.SelectedIndex = ModeToComboIndex(_state.Mode);
+        _connectionPanel.LoadProfiles(_profiles, snapshot.SelectedProfile);
+        _connectionPanel.SetPort(_state.LocalMixedPort);
+        _connectionPanel.ModeIndex = ModeToComboIndex(_state.Mode);
         SyncTunAppsListFromState();
         SyncRuleSetsGridFromState();
         UpdateConnectionTabVisibility();
@@ -1397,11 +1321,7 @@ internal sealed class MainForm : Form
     private void UpdateButtons()
     {
         var viewState = CreateConnectionViewState();
-        _startBtn.Enabled = viewState.CanStart;
-        _stopBtn.Enabled = viewState.CanStop;
-        _profilesBtn.Enabled = viewState.CanEditConnection;
-        _port.Enabled = viewState.CanEditConnection;
-        _modeCombo.Enabled = viewState.CanEditConnection;
+        _connectionPanel.ApplyAvailability(viewState.CanStart, viewState.CanStop, viewState.CanEditConnection);
         _tunAppsList.Enabled = viewState.CanEditTunApps;
         _tunAppsAddBtn.Enabled = viewState.CanEditTunApps;
         _tunAppsBrowseFileBtn.Enabled = viewState.CanEditTunApps;
@@ -1414,7 +1334,7 @@ internal sealed class MainForm : Form
 
     private ConnectionViewState CreateConnectionViewState() => ConnectionViewStateFactory.Create(
         _state,
-        _profilesCombo.SelectedItem as VpnProfile,
+        _connectionPanel.SelectedProfile,
         _connectionController.IsRunning,
         _connectionController.IsAdministrator);
 
@@ -1442,7 +1362,7 @@ internal sealed class MainForm : Form
 
     private async Task StartAsync()
     {
-        if (_profilesCombo.SelectedItem is not VpnProfile p) return;
+        if (_connectionPanel.SelectedProfile is not VpnProfile p) return;
 
         try
         {
@@ -1548,8 +1468,7 @@ internal sealed class MainForm : Form
 
     private async Task StopAsync()
     {
-        _stopBtn.Enabled = false;
-        _startBtn.Enabled = false;
+        _connectionPanel.DisableStartStop();
         try
         {
             await _connectionController.StopAsync().ConfigureAwait(false);
