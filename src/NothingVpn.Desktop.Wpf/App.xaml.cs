@@ -68,9 +68,12 @@ public partial class App : System.Windows.Application
             var settingsViewModel = new SettingsViewModel(
                 new ConnectionSettingsController(services.SettingsService),
                 new TunAppsController(services.PathPolicy, services.SettingsService),
+                new RuleSetManagementController(services.SettingsService),
+                services.RuleSetFileService,
                 services.SettingsService.GetState());
 
-            _viewModel = new MainViewModel(screenController, connectionController, profileViewModel, settingsViewModel, RequestExit);
+            _viewModel = new MainViewModel(screenController, connectionController, profileViewModel, settingsViewModel,
+                new ConnectionDiagnosticController(services.DiagnosticsService), services.SharedLogStore, RequestExit);
             _viewModel.ConnectionStateChanged += (_, connected) => UpdateTrayState(connected);
             _window = new MainWindow(_viewModel);
             MainWindow = _window;

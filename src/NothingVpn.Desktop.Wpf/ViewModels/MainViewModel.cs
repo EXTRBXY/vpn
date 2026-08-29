@@ -24,12 +24,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string? _errorMessage;
     private bool _showProfiles;
     private bool _showSettings;
+    private bool _showDiagnostics;
 
     public MainViewModel(
         IConnectionScreenController screenController,
         IConnectionController connectionController,
         ProfileViewModel profileManager,
         SettingsViewModel settings,
+        IConnectionDiagnosticController diagnosticController,
+        NothingVpn.Infrastructure.Diagnostics.InMemoryLogStore logStore,
         Action requestExit)
     {
         _screenController = screenController;
@@ -37,6 +40,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _requestExit = requestExit;
         ProfileManager = profileManager;
         Settings = settings;
+        Diagnostics = new DiagnosticsViewModel(diagnosticController, logStore, () => _state.Mode, () => _connectionController.IsRunning);
         Modes =
         [
             new ModeOption("proxy", "Прокси"),
@@ -48,7 +52,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ExitCommand = new RelayCommand(_requestExit);
         ShowHomeCommand = new RelayCommand(() => ShowProfiles = false);
         ShowProfilesCommand = new RelayCommand(() => ShowProfiles = true);
-        ShowSettingsCommand = new RelayCommand(() => { _showProfiles = false; _showSettings = true; RaisePage(); });
+        ShowSettingsCommand = new RelayCommand(() => { _showProfiles = false; _showDiagnostics=false; _showSettings = true; RaisePage(); });
+        ShowDiagnosticsCommand = new RelayCommand(() => { _showProfiles=false; _showSettings=false; _showDiagnostics=true; RaisePage(); });
         ProfileManager.ProfilesChanged += (_, preferredId) => ReloadProfiles(preferredId);
         _connectionController.ConnectionStateChanged += OnConnectionStateChanged;
         Load();
@@ -64,8 +69,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICommand ShowHomeCommand { get; }
     public ICommand ShowProfilesCommand { get; }
     public ICommand ShowSettingsCommand { get; }
+    public ICommand ShowDiagnosticsCommand { get; }
     public ProfileViewModel ProfileManager { get; }
     public SettingsViewModel Settings { get; }
+    public DiagnosticsViewModel Diagnostics { get; }
     public bool ShowProfiles
     {
         get => _showProfiles;
@@ -74,13 +81,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
             if (_showProfiles == value) return;
             _showProfiles = value;
             _showSettings = false;
+            _showDiagnostics = false;
             RaisePage();
         }
     }
-    public Visibility HomeVisibility => ShowProfiles || _showSettings ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility HomeVisibility => ShowProfiles || _showSettings || _showDiagnostics ? Visibility.Collapsed : Visibility.Visible;
     public Visibility ProfilesVisibility => ShowProfiles ? Visibility.Visible : Visibility.Collapsed;
     public Visibility SettingsVisibility => _showSettings ? Visibility.Visible : Visibility.Collapsed;
-    private void RaisePage() { OnPropertyChanged(nameof(ShowProfiles)); OnPropertyChanged(nameof(HomeVisibility)); OnPropertyChanged(nameof(ProfilesVisibility)); OnPropertyChanged(nameof(SettingsVisibility)); }
+    public Visibility DiagnosticsVisibility => _showDiagnostics ? Visibility.Visible : Visibility.Collapsed;
+    private void RaisePage() { OnPropertyChanged(nameof(ShowProfiles)); OnPropertyChanged(nameof(HomeVisibility)); OnPropertyChanged(nameof(ProfilesVisibility)); OnPropertyChanged(nameof(SettingsVisibility)); OnPropertyChanged(nameof(DiagnosticsVisibility)); }
 
     public VpnProfile? SelectedProfile
     {

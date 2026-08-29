@@ -26,6 +26,7 @@
                             Background="Transparent" Foreground="{StaticResource TextBrush}" />
                     <Button Content="Настройки" Command="{Binding ShowSettingsCommand}" HorizontalContentAlignment="Left"
                             Background="Transparent" Foreground="{StaticResource TextBrush}" Margin="0,6,0,0" />
+                    <Button Content="Диагностика" Command="{Binding ShowDiagnosticsCommand}" HorizontalContentAlignment="Left" Background="Transparent" Foreground="{StaticResource TextBrush}" Margin="0,6,0,0" />
                 </StackPanel>
                 <StackPanel DockPanel.Dock="Bottom" VerticalAlignment="Bottom">
                     <TextBlock Text="Работает в системном трее" Foreground="{StaticResource MutedBrush}"
@@ -113,5 +114,6 @@
         <local:SettingsView xmlns:local="clr-namespace:NothingVpn.Desktop.Wpf" Grid.Column="2"
                             DataContext="{Binding Settings}"
                             Visibility="{Binding DataContext.SettingsVisibility, RelativeSource={RelativeSource AncestorType=Window}}" />
+        <local:DiagnosticsView xmlns:local="clr-namespace:NothingVpn.Desktop.Wpf" Grid.Column="2" DataContext="{Binding Diagnostics}" Visibility="{Binding DataContext.DiagnosticsVisibility, RelativeSource={RelativeSource AncestorType=Window}}" />
     </Grid>
 </Window>
