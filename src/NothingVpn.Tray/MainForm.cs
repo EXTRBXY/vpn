@@ -45,7 +45,7 @@ internal sealed class MainForm : Form
     private IReadOnlyList<VpnProfile> _profiles = Array.Empty<VpnProfile>();
 
     private readonly TabControl _tabs;
-    private readonly TabPage _tabLogs;
+    private readonly LogPanelControl _logPanel;
     private readonly ConnectionSettingsUi _connectionSettings;
 
     private readonly ComboBox _profilesCombo;
@@ -54,12 +54,6 @@ internal sealed class MainForm : Form
     private readonly Button _stopBtn;
     private readonly NumericUpDown _port;
     private readonly Button _pingBtn;
-    private readonly TextBox _logBox;
-    private readonly ComboBox _logFilterCombo;
-    private readonly Button _copyLogsBtn;
-    private readonly Button _downloadLogsBtn;
-    private readonly System.Windows.Forms.Timer _logTimer;
-    private readonly CheckBox _debugLogs;
     private readonly ComboBox _modeCombo;
     private readonly Label _statusValue;
     private readonly Label _adminValue;
@@ -117,8 +111,6 @@ internal sealed class MainForm : Form
     private AppReleaseModel? _updatePendingRelease;
     private bool _updateDownloadBusy;
 
-    private int _lastLogVersion = -1;
-    private int _lastLogMinLevel = -1;
     private bool _connectionUiUpdateQueued;
     private bool _loadingData;
 
@@ -178,9 +170,9 @@ internal sealed class MainForm : Form
         _connectionSettings = ConnectionSettingsPanelBuilder.Build();
         var tabMain = _connectionSettings.Tab;
         tabMain.Text = "Основное";
-        _tabLogs = new TabPage("Логи");
+        var tabLogs = new TabPage("Логи");
         _tabs.TabPages.Add(tabMain);
-        _tabs.TabPages.Add(_tabLogs);
+        _tabs.TabPages.Add(tabLogs);
         Controls.Add(_tabs);
 
         _dnsModeCombo = _connectionSettings.DnsModeCombo;
@@ -414,50 +406,8 @@ internal sealed class MainForm : Form
         _connectionSettings.TunAppsHost.Controls.Add(_tunAppsGroup);
         _tunAppsGroup.Dock = DockStyle.Top;
 
-        // Logs tab
-        var logsRoot = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 2,
-        };
-        logsRoot.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        logsRoot.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        _tabLogs.Controls.Add(logsRoot);
-
-        var logsTop = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            Padding = new Padding(UiMetrics.Space8),
-            WrapContents = false,
-            FlowDirection = FlowDirection.LeftToRight
-        };
-        logsRoot.Controls.Add(logsTop, 0, 0);
-
-        logsTop.Controls.Add(new Label { Text = "Уровень", AutoSize = true, Margin = new Padding(6, 8, 6, 0) });
-        _logFilterCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
-        _logFilterCombo.Items.AddRange(new object[] { "TRACE", "DEBUG", "INFO", "WARN", "ERROR" });
-        logsTop.Controls.Add(_logFilterCombo);
-
-        _debugLogs = new CheckBox { Text = "Debug", AutoSize = true, Margin = new Padding(12, 6, 6, 0) };
-        logsTop.Controls.Add(_debugLogs);
-
-        _copyLogsBtn = new Button { Text = "Копировать", AutoSize = true, Margin = new Padding(12, 4, 6, 0) };
-        logsTop.Controls.Add(_copyLogsBtn);
-        _downloadLogsBtn = new Button { Text = "Скачать…", AutoSize = true, Margin = new Padding(6, 4, 6, 0) };
-        logsTop.Controls.Add(_downloadLogsBtn);
-
-        _logBox = new TextBox
-        {
-            Dock = DockStyle.Fill,
-            Multiline = true,
-            ReadOnly = true,
-            ScrollBars = ScrollBars.Both,
-            WordWrap = false,
-            Font = new Font(FontFamily.GenericMonospace, 9f),
-        };
-        logsRoot.Controls.Add(_logBox, 0, 1);
+        _logPanel = new LogPanelControl(_logStore, _appLogger);
+        tabLogs.Controls.Add(_logPanel);
 
         // Rule sets / DNS / updates on main tab
         var rsOuter = new Panel
@@ -608,9 +558,6 @@ internal sealed class MainForm : Form
         _updateBannerInstallCachedBtn.Click += (_, _) => OnUpdateBannerInstallCachedClick();
         _updateBannerDownloadBtn.Click += async (_, _) => await OnUpdateBannerDownloadClickAsync();
 
-        _logTimer = new System.Windows.Forms.Timer { Interval = 1000 };
-        _logTimer.Tick += (_, _) => RefreshLog();
-
         _dnsDebounceTimer = new System.Windows.Forms.Timer { Interval = 350 };
         _dnsDebounceTimer.Tick += (_, _) =>
         {
@@ -658,18 +605,15 @@ internal sealed class MainForm : Form
         _tunAppsAddBtn.Click += (_, _) => AddTunAppExecutable();
         _tunAppsBrowseFileBtn.Click += (_, _) => AddTunAppFromOpenFileDialog();
         _tunAppsRemoveBtn.Click += (_, _) => RemoveSelectedTunApp();
-        _debugLogs.CheckedChanged += (_, _) =>
+        _logPanel.DebugLogsChanged += (_, _) =>
         {
             if (_loadingData) return;
-            _state.DebugLogs = _debugLogs.Checked;
+            _state.DebugLogs = _logPanel.DebugLogs;
             // Keep sing-box logging minimal by default.
             _state.SingBoxLogLevel = _state.DebugLogs ? "debug" : "warn";
             SaveState();
         };
-        _copyLogsBtn.Click += (_, _) => CopyLogsToClipboard();
-        _downloadLogsBtn.Click += (_, _) => DownloadLogs();
         _pingBtn.Click += async (_, _) => await PingAsync();
-        _logFilterCombo.SelectedIndexChanged += (_, _) => RefreshLog();
         _userRuleSetsAddBtn.Click += (_, _) => AddRuleSet();
         _userRuleSetsRemoveBtn.Click += (_, _) => RemoveSelectedUserRuleSet();
         _builtinRuleSetsFetchOrRemoveBtn.Click += async (_, _) => await OnBuiltinFetchOrRemoveClickAsync();
@@ -764,7 +708,7 @@ internal sealed class MainForm : Form
         FormClosing += (_, e) =>
         {
             // MainForm may be hidden-to-tray by outer controller; default close is allowed.
-            _logTimer.Stop();
+            _logPanel.Stop();
             _updatePeriodicTimer.Stop();
         };
     }
@@ -841,7 +785,7 @@ internal sealed class MainForm : Form
         try
         {
             DisconnectVpnSync();
-            _logTimer.Stop();
+            _logPanel.Stop();
             NotifyVpnConnectionState(false);
         }
         catch
@@ -897,8 +841,7 @@ internal sealed class MainForm : Form
         SyncTunAppsListFromState();
         SyncRuleSetsGridFromState();
         UpdateConnectionTabVisibility();
-        _debugLogs.Checked = _state.DebugLogs;
-        if (_logFilterCombo.SelectedIndex < 0) _logFilterCombo.SelectedIndex = 2; // INFO
+        _logPanel.DebugLogs = _state.DebugLogs;
         _connectionSettings.LoadFromState(_state);
         UpdateDnsDetourControl();
         _dnsUiReady = true;
@@ -1483,51 +1426,6 @@ internal sealed class MainForm : Form
         }
     }
 
-    private void CopyLogsToClipboard()
-    {
-        try
-        {
-            var text = _logBox.Text ?? "";
-            if (text.Length == 0) return;
-            Clipboard.SetText(text, TextDataFormat.Text);
-            _appLogger.Debug("app/ui", "Логи скопированы в буфер обмена.");
-        }
-        catch (Exception ex)
-        {
-            _appLogger.Error("app/ui", ex, "Копирование логов завершилось ошибкой.");
-            MessageBox.Show(this, ex.Message, "Копирование не удалось", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
-    }
-
-    private void DownloadLogs()
-    {
-        try
-        {
-            var all = _logStore.SnapshotAll();
-            if (all.Length == 0)
-            {
-                MessageBox.Show(this, "Логи пустые.", "Скачать логи", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            using var sfd = new SaveFileDialog
-            {
-                Title = "Скачать логи",
-                Filter = "Текст (*.txt)|*.txt|Все файлы (*.*)|*.*",
-                FileName = $"nothingvpn-{DateTimeOffset.Now:yyyyMMdd-HHmmss}.txt",
-                OverwritePrompt = true
-            };
-            if (sfd.ShowDialog(this) != DialogResult.OK) return;
-            File.WriteAllText(sfd.FileName, all);
-            _appLogger.Info("app/ui", $"Логи экспортированы: {Path.GetFileName(sfd.FileName)}");
-        }
-        catch (Exception ex)
-        {
-            _appLogger.Error("app/ui", ex, "Экспорт логов завершился ошибкой.");
-            MessageBox.Show(this, ex.Message, "Скачать логи не удалось", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
-    }
-
     private async Task PingAsync()
     {
         var result = await _connectionDiagnosticController.RunAsync(_state.Mode, _connectionController.IsRunning);
@@ -1614,7 +1512,7 @@ internal sealed class MainForm : Form
 
             if (result.Connected)
             {
-                _logTimer.Start();
+                _logPanel.Start();
                 NotifyVpnConnectionState(true);
             }
         }
@@ -1730,7 +1628,7 @@ internal sealed class MainForm : Form
             {
                 void UiFinish()
                 {
-                    RefreshLog();
+                    _logPanel.RefreshNow();
                     UpdateButtons();
                 }
 
@@ -1744,57 +1642,8 @@ internal sealed class MainForm : Form
 
     private void ApplyStoppedUi()
     {
-        _logTimer.Stop();
+        _logPanel.Stop();
         NotifyVpnConnectionState(false);
-    }
-
-    // Logs are in-memory; export via "Скачать…" on the Logs tab.
-
-    private void RefreshLog()
-    {
-        try
-        {
-            // Don't do file IO unless user is actually viewing logs.
-            if (_tabs.SelectedTab != _tabLogs) return;
-
-            var min = SelectedMinLevel();
-            if (min == _lastLogMinLevel && _logStore.TryGetVersion(out var currentVer) && currentVer == _lastLogVersion)
-                return;
-
-            var text = _logStore.SnapshotText(min, out var ver);
-            if (ver == _lastLogVersion && min == _lastLogMinLevel) return;
-            _lastLogVersion = ver;
-            _lastLogMinLevel = min;
-            // Keep TextBox payload bounded to avoid heavy UI updates over time.
-            const int maxLogChars = 300_000;
-            if (text.Length > maxLogChars)
-                text = text[^maxLogChars..];
-
-            var current = _logBox.Text;
-            if (text.StartsWith(current, StringComparison.Ordinal))
-                _logBox.AppendText(text[current.Length..]);
-            else
-                _logBox.Text = text;
-
-            _logBox.SelectionStart = _logBox.TextLength;
-            _logBox.ScrollToCaret();
-        }
-        catch
-        {
-            // ignore
-        }
-    }
-
-    private int SelectedMinLevel()
-    {
-        return _logFilterCombo.SelectedIndex switch
-        {
-            0 => 0, // TRACE
-            1 => 1, // DEBUG
-            3 => 3, // WARN
-            4 => 4, // ERROR
-            _ => 2  // INFO
-        };
     }
 
     private static int ModeToComboIndex(string? mode) =>
