@@ -48,6 +48,7 @@ internal sealed class MainAppContext : ApplicationContext
         var tunAppsController = new TunAppsController(services.PathPolicy, services.SettingsService);
         var ruleSetManagementController = new RuleSetManagementController(services.SettingsService);
         var connectionDiagnosticController = new ConnectionDiagnosticController(services.DiagnosticsService);
+        var appUpdateController = new AppUpdateController(services.AppUpdateService, services.SettingsService);
 
         var extracted = Icon.ExtractAssociatedIcon(System.Windows.Forms.Application.ExecutablePath);
         _trayBaseIcon = extracted is null ? (Icon)SystemIcons.Application.Clone() : (Icon)extracted.Clone();
@@ -61,7 +62,7 @@ internal sealed class MainAppContext : ApplicationContext
             tunAppsController,
             ruleSetManagementController,
             services.RuleSetFileService,
-            services.AppUpdateService,
+            appUpdateController,
             connectionController,
             connectionDiagnosticController,
             logStore,

@@ -30,7 +30,7 @@ internal sealed class MainForm : Form
     private readonly ITunAppsController _tunAppsController;
     private readonly IRuleSetManagementController _ruleSetManagementController;
     private readonly IRuleSetFileService _ruleSetFileService;
-    private readonly IAppUpdateService _appUpdateService;
+    private readonly IAppUpdateController _appUpdateController;
     private readonly IConnectionController _connectionController;
     private readonly IConnectionDiagnosticController _connectionDiagnosticController;
     private readonly InMemoryLogStore _logStore;
@@ -129,7 +129,7 @@ internal sealed class MainForm : Form
         ITunAppsController tunAppsController,
         IRuleSetManagementController ruleSetManagementController,
         IRuleSetFileService ruleSetFileService,
-        IAppUpdateService appUpdateService,
+        IAppUpdateController appUpdateController,
         IConnectionController connectionController,
         IConnectionDiagnosticController connectionDiagnosticController,
         InMemoryLogStore logStore,
@@ -144,7 +144,7 @@ internal sealed class MainForm : Form
         _tunAppsController = tunAppsController;
         _ruleSetManagementController = ruleSetManagementController;
         _ruleSetFileService = ruleSetFileService;
-        _appUpdateService = appUpdateService;
+        _appUpdateController = appUpdateController;
         _connectionController = connectionController;
         _connectionDiagnosticController = connectionDiagnosticController;
         _logStore = logStore;
@@ -2069,7 +2069,7 @@ internal sealed class MainForm : Form
                     AppReleaseModel? rel = null;
                     try
                     {
-                        rel = await _appUpdateService.GetByVersionAsync(currentSemver, CancellationToken.None)
+                        rel = await _appUpdateController.GetCurrentReleaseAsync(currentSemver, CancellationToken.None)
                             .ConfigureAwait(false);
                     }
                     catch (Exception ex)
@@ -2164,8 +2164,7 @@ internal sealed class MainForm : Form
         {
             if (!AppVersionInfo.TryGetCurrentSemver(out var currentSemver))
                 return;
-            if (_state.UpdateLastCheckUtc is { } last &&
-                (DateTimeOffset.UtcNow - last).TotalHours < 23.5)
+            if (!_appUpdateController.IsPeriodicCheckDue(_state, DateTimeOffset.UtcNow))
                 return;
 
             await RefreshUpdateAvailabilityAsync(currentSemver, offerModal: false).ConfigureAwait(false);
@@ -2178,25 +2177,19 @@ internal sealed class MainForm : Form
 
     private async Task<bool> RefreshUpdateAvailabilityAsync(string currentSemver, bool offerModal)
     {
-        AppReleaseModel? latest = null;
-        try
+        var check = await _appUpdateController.CheckAsync(_state, currentSemver, CancellationToken.None)
+            .ConfigureAwait(false);
+        if (!check.Succeeded)
         {
-            latest = await _appUpdateService.GetLatestAsync(currentSemver, CancellationToken.None)
-                .ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _appLogger.Warn("app/update", $"GitHub releases: {ex.Message}");
+            _appLogger.Warn("app/update", $"GitHub releases: {check.Error}");
             return false;
         }
-
-        _state.UpdateLastCheckUtc = DateTimeOffset.UtcNow;
-        SaveState();
+        var latest = check.AvailableRelease;
 
         await UiInvokeAsync(() =>
         {
             if (IsDisposed) return;
-            if (latest is null || SemanticVersionPolicy.Compare(latest.Semver, currentSemver) <= 0)
+            if (latest is null)
             {
                 _updatePendingRelease = null;
                 _updateBannerPanel.Visible = false;
@@ -2211,7 +2204,7 @@ internal sealed class MainForm : Form
 
             if (!offerModal)
                 return;
-            if (string.Equals(_state.UpdateDismissedModalForTag, latest.TagName, StringComparison.OrdinalIgnoreCase))
+            if (!_appUpdateController.ShouldOffer(_state, latest))
                 return;
 
             var r = MessageBox.Show(
@@ -2224,8 +2217,7 @@ internal sealed class MainForm : Form
                 _ = StartDownloadAndRunInstallerAsync(latest);
             else
             {
-                _state.UpdateDismissedModalForTag = latest.TagName;
-                SaveState();
+                _appUpdateController.DismissOffer(_state, latest);
             }
         }).ConfigureAwait(false);
 
