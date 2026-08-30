@@ -29,6 +29,9 @@ public partial class App : System.Windows.Application
     {
         base.OnStartup(e);
         ThemeManager.ApplySystemTheme();
+        var smokeTest = e.Args.Any(x => string.Equals(x, "--smoke-test", StringComparison.OrdinalIgnoreCase));
+        var smokeErrorPath = System.IO.Path.Combine(AppContext.BaseDirectory, "wpf-smoke-error.txt");
+        if (smokeTest) { try { System.IO.File.Delete(smokeErrorPath); } catch { } }
         var takeover = e.Args.Any(x => string.Equals(x, "--takeover", StringComparison.OrdinalIgnoreCase));
         bool alreadyRunning;
         if (takeover)
@@ -89,12 +92,12 @@ public partial class App : System.Windows.Application
             CreateTrayIcon();
             UpdateTrayState(connectionController.IsRunning);
             _window.Show();
-            ShowStorageIssues(services.StorageHealthService);
-            if (e.Args.Any(x => string.Equals(x, "--smoke-test", StringComparison.OrdinalIgnoreCase)))
+            if (smokeTest)
             {
-                Dispatcher.BeginInvoke(RequestExit);
+                Dispatcher.BeginInvoke(ExitSmokeTest);
                 return;
             }
+            ShowStorageIssues(services.StorageHealthService);
             _ = settingsViewModel.Updates.CheckAtStartupAsync();
             _ = _viewModel.ApplyStartupAsync(StartupOptions.Parse(e.Args));
 
@@ -107,6 +110,13 @@ public partial class App : System.Windows.Application
         }
         catch (Exception ex)
         {
+            if (smokeTest)
+            {
+                Console.Error.WriteLine(ex);
+                try { System.IO.File.WriteAllText(smokeErrorPath, ex.ToString()); } catch { }
+                Shutdown(1);
+                return;
+            }
             System.Windows.MessageBox.Show(
                 ex.Message,
                 "Nothing VPN",
@@ -158,6 +168,15 @@ public partial class App : System.Windows.Application
     }
 
     private void ShowMainWindow() => _window?.BringToFront();
+
+    private void ExitSmokeTest()
+    {
+        IsExitRequested = true;
+        if (_trayIcon is not null) { _trayIcon.Visible=false; _trayIcon.ContextMenuStrip?.Dispose(); _trayIcon.Dispose(); }
+        _singleInstance?.Dispose();
+        _window?.Close();
+        Shutdown(0);
+    }
 
     private void ShowStorageIssues(IStorageHealthService health)
     {

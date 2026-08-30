@@ -64,9 +64,9 @@ function Invoke-WpfSmokeTest {
     if (-not (Test-Path -LiteralPath $application)) {
         throw "WPF smoke-test executable not found: $application"
     }
-    & $application '--smoke-test'
-    if ($LASTEXITCODE -ne 0) {
-        throw "WPF smoke test failed with exit code $LASTEXITCODE."
+    $process = Start-Process -FilePath $application -ArgumentList '--smoke-test' -Wait -PassThru -WindowStyle Hidden
+    if ($process.ExitCode -ne 0) {
+        throw "WPF smoke test failed with exit code $($process.ExitCode)."
     }
     Write-Host 'WPF smoke test: passed'
 }
