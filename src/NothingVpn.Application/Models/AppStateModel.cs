@@ -23,6 +23,7 @@ public sealed class AppStateModel
     public string DnsDetour { get; set; } = "direct";
     public bool DebugLogs { get; set; }
     public string SingBoxLogLevel { get; set; } = "warn";
+    public string CloseBehavior { get; set; } = AppCloseBehavior.HideToTray;
     public string? UpdateDismissedModalForTag { get; set; }
     public string? LastRecordedAppSemver { get; set; }
     public DateTimeOffset? UpdateLastCheckUtc { get; set; }

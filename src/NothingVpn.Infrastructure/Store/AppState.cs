@@ -39,6 +39,8 @@ internal sealed class AppState
     // sing-box log level: trace|debug|info|warn|error|fatal|panic
     public string SingBoxLogLevel { get; set; } = "warn";
 
+    public string CloseBehavior { get; set; } = "tray";
+
     /// <summary>Тег релиза (например v1.2.3), для которого скрыто всплывающее предложение обновиться.</summary>
     public string? UpdateDismissedModalForTag { get; set; }
 

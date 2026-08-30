@@ -30,7 +30,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         AddressCidr = state.TunAddressCidr; Mtu = TunSettingsPolicy.NormalizeMtu(state.TunMtu);
         Stack = TunSettingsPolicy.NormalizeStack(state.TunStack); AutoRoute = state.TunAutoRoute; StrictRoute = state.TunStrictRoute;
         DnsMode = state.DnsMode; DohServer = state.DohServer; DohPath = state.DohPath; DohSni = state.DohSni; DnsDetour = state.DnsDetour;
-        DebugLogs = state.DebugLogs; LogLevel = state.SingBoxLogLevel;
+        LogLevel = state.SingBoxLogLevel; CloseBehavior = AppCloseBehavior.Normalize(state.CloseBehavior);
         SaveCommand = new RelayCommand(Save);
         ReplaceTunApps(_tunAppsController.Normalize(state.TunAppProcessPaths));
         var rules = _ruleSetController.Load(state);
@@ -119,8 +119,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public string DohPath { get; set; } = "/dns-query";
     public string DohSni { get; set; } = "";
     public string DnsDetour { get; set; } = "direct";
-    public bool DebugLogs { get; set; }
     public string LogLevel { get; set; } = "warn";
+    public string CloseBehavior { get; set; } = AppCloseBehavior.HideToTray;
     public void ApplyDnsPreset(string preset)
     {
         (DohServer, DohSni) = preset switch
@@ -140,8 +140,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         try
         {
             _state=_settingsService.GetState();
-            _state.DebugLogs = DebugLogs;
             _state.SingBoxLogLevel = LogLevel;
+            _state.CloseBehavior = AppCloseBehavior.Normalize(CloseBehavior);
             _controller.Save(_state, new ConnectionSettingsDraft(
                 new ProxyConnectionSettings { ProxyOverride = ProxyOverride },
                 new TunSettings { InterfaceName = InterfaceName, AddressCidr = AddressCidr, Mtu = Mtu, Stack = Stack, AutoRoute = AutoRoute, StrictRoute = StrictRoute },

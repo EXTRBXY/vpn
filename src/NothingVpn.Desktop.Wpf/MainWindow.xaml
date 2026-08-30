@@ -22,11 +22,6 @@
                                   Style="{StaticResource NavigationToggleButtonStyle}" Margin="0,6,0,0" />
                     <ToggleButton Content="Диагностика" Command="{Binding ShowDiagnosticsCommand}" IsChecked="{Binding IsDiagnosticsActive, Mode=OneWay}" Style="{StaticResource NavigationToggleButtonStyle}" Margin="0,6,0,0" />
                 </StackPanel>
-                <StackPanel DockPanel.Dock="Bottom" VerticalAlignment="Bottom">
-                    <TextBlock Text="Работает в системном трее" Foreground="{DynamicResource MutedBrush}"
-                               FontSize="12" TextWrapping="Wrap" Margin="4,0,4,10" />
-                    <Button Content="Выйти" Command="{Binding ExitCommand}" Style="{StaticResource SecondaryButtonStyle}" />
-                </StackPanel>
             </DockPanel>
         </Border>
 

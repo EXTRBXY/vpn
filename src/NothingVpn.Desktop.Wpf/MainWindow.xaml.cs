@@ -5,8 +5,10 @@ namespace NothingVpn.Desktop.Wpf;
 
 public partial class MainWindow : Window
 {
+    private readonly MainViewModel _viewModel;
     public MainWindow(MainViewModel viewModel)
     {
+        _viewModel = viewModel;
         InitializeComponent();
         DataContext = viewModel;
         Closing += OnClosing;
@@ -21,6 +23,12 @@ public partial class MainWindow : Window
     {
         if (App.IsExitRequested)
             return;
+        if (!_viewModel.CloseToTray)
+        {
+            e.Cancel = true;
+            _viewModel.RequestExit();
+            return;
+        }
         e.Cancel = true;
         Hide();
     }

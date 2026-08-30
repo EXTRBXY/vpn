@@ -10,7 +10,6 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
 {
     private readonly IConnectionDiagnosticController _controller; private readonly InMemoryLogStore _logs;
     private readonly Func<string> _mode; private readonly Func<bool> _running; private string _result=""; private string _logText="";
-    private int _minimumLevel=2;
     public DiagnosticsViewModel(IConnectionDiagnosticController controller, InMemoryLogStore logs, Func<string> mode, Func<bool> running)
     {
         _controller=controller; _logs=logs; _mode=mode; _running=running; RunCommand=new AsyncRelayCommand(RunAsync); ClearCommand=new RelayCommand(()=>{_logs.Clear(); Refresh();});
@@ -18,8 +17,6 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
     }
     public event PropertyChangedEventHandler? PropertyChanged; public ICommand RunCommand{get;} public ICommand ClearCommand{get;}
     public string Result { get=>_result; private set{_result=value;OnChanged();} } public string LogText { get=>_logText;private set{_logText=value;OnChanged();} }
-    public int MinimumLevel{get=>_minimumLevel;set{_minimumLevel=value;OnChanged();Refresh();}}
-    public string AllLogs=>_logs.SnapshotAll();
     private async Task RunAsync(){var r=await _controller.RunAsync(_mode(),_running());Result=r.Message;}
-    private void Refresh()=>LogText=_logs.SnapshotText(MinimumLevel); private void OnChanged([CallerMemberName]string? n=null)=>PropertyChanged?.Invoke(this,new PropertyChangedEventArgs(n));
+    private void Refresh()=>LogText=_logs.SnapshotAll(); private void OnChanged([CallerMemberName]string? n=null)=>PropertyChanged?.Invoke(this,new PropertyChangedEventArgs(n));
 }

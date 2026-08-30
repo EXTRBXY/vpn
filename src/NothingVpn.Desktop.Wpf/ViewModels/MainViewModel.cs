@@ -48,7 +48,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ];
         _toggleCommand = new AsyncRelayCommand(ToggleConnectionAsync, () => CanStart || CanStop);
         ToggleConnectionCommand = _toggleCommand;
-        ExitCommand = new RelayCommand(_requestExit);
         ShowHomeCommand = new RelayCommand(() => Navigate(Page.Home));
         ShowProfilesCommand = new RelayCommand(() => Navigate(Page.Profiles));
         ShowSettingsCommand = new RelayCommand(() => Navigate(Page.Settings));
@@ -64,7 +63,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<VpnProfile> Profiles { get; } = [];
     public IReadOnlyList<ModeOption> Modes { get; }
     public ICommand ToggleConnectionCommand { get; }
-    public ICommand ExitCommand { get; }
     public ICommand ShowHomeCommand { get; }
     public ICommand ShowProfilesCommand { get; }
     public ICommand ShowSettingsCommand { get; }
@@ -72,6 +70,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ProfileViewModel ProfileManager { get; }
     public SettingsViewModel Settings { get; }
     public DiagnosticsViewModel Diagnostics { get; }
+    public bool CloseToTray => AppCloseBehavior.Normalize(_state.CloseBehavior) == AppCloseBehavior.HideToTray;
+    public void RequestExit() => _requestExit();
     public bool ShowProfiles
     {
         get => _activePage == Page.Profiles;
