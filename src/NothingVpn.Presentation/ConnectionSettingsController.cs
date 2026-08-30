@@ -26,6 +26,7 @@ public sealed class ConnectionSettingsController : IConnectionSettingsController
 
         ProxyConnectionPolicy.Validate(proxy);
         TunSettingsPolicy.Validate(tun);
+        dns.Detour = DnsDetourPolicy.EffectiveDetour(state.Mode, dns.Detour);
         if (string.Equals(dns.Mode?.Trim(), "doh", StringComparison.OrdinalIgnoreCase))
         {
             if (string.IsNullOrWhiteSpace(dns.DohServer))

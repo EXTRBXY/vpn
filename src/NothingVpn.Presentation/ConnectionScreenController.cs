@@ -1,5 +1,6 @@
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Services;
+using NothingVpn.Domain.Policies;
 
 namespace NothingVpn.Presentation;
 
@@ -21,6 +22,9 @@ public sealed class ConnectionScreenController : IConnectionScreenController
         var profiles = _profileService.GetProfiles();
         var state = _settingsService.GetState();
         NormalizeCollections(state);
+        var normalizedDetour = DnsDetourPolicy.EffectiveDetour(state.Mode, state.DnsDetour);
+        var settingsChanged = !string.Equals(state.DnsDetour, normalizedDetour, StringComparison.Ordinal);
+        state.DnsDetour = normalizedDetour;
 
         var selected = profiles.FirstOrDefault(p =>
             string.Equals(p.Id, state.ActiveProfileId, StringComparison.OrdinalIgnoreCase))
@@ -29,8 +33,10 @@ public sealed class ConnectionScreenController : IConnectionScreenController
         if (!string.Equals(state.ActiveProfileId ?? string.Empty, selectedId, StringComparison.OrdinalIgnoreCase))
         {
             state.ActiveProfileId = selectedId;
-            _settingsService.SaveState(state);
+            settingsChanged = true;
         }
+        if (settingsChanged)
+            _settingsService.SaveState(state);
 
         return new ConnectionScreenSnapshot(state, profiles, selected);
     }

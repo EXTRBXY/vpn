@@ -15,6 +15,7 @@ public sealed class SettingsService(IStateStorePort stateStore, IPathPolicyPort 
     public void SaveState(AppStateModel state)
     {
         state.Mode = ConnectionPolicy.NormalizeMode(state.Mode);
+        state.DnsDetour = DnsDetourPolicy.EffectiveDetour(state.Mode, state.DnsDetour);
         state.CloseBehavior = AppCloseBehavior.Normalize(state.CloseBehavior);
         state.TunAppProcessPaths = pathPolicy.NormalizeDistinctExePaths(state.TunAppProcessPaths).ToList();
         NormalizeConnectionSettings(state);

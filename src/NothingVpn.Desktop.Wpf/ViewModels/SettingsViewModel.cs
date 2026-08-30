@@ -21,6 +21,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private readonly NothingVpn.Infrastructure.TunApps.TunAppsSelectionService _tunAppSelection;
     private string? _message;
     private string? _dnsPreset;
+    private string _dnsMode = "doh";
+    private bool _dnsDetourEditable = true;
     private CancellationTokenSource? _messageCancellation;
     public SettingsViewModel(IConnectionSettingsController controller, ITunAppsController tunAppsController,
         IRuleSetManagementController ruleSetController, NothingVpn.Application.Services.IRuleSetFileService ruleSetFiles,
@@ -108,13 +110,29 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public string Stack { get; set; } = "";
     public bool AutoRoute { get; set; }
     public bool StrictRoute { get; set; }
-    public string DnsMode { get; set; } = "doh";
+    public string DnsMode
+    {
+        get => _dnsMode;
+        set
+        {
+            if (string.Equals(_dnsMode, value, StringComparison.Ordinal)) return;
+            _dnsMode = value;
+            OnPropertyChanged();
+            UpdateDnsDetourAvailability();
+        }
+    }
     public string DohServer { get; set; } = "";
     public string DohPath { get; set; } = "/dns-query";
     public string DohSni { get; set; } = "";
     public string DnsDetour { get; set; } = "direct";
     public string LogLevel { get; set; } = "warn";
     public string CloseBehavior { get; set; } = AppCloseBehavior.HideToTray;
+    public bool IsDnsDetourEditable { get => _dnsDetourEditable; private set { if (_dnsDetourEditable == value) return; _dnsDetourEditable = value; OnPropertyChanged(); OnPropertyChanged(nameof(DnsDetourHint)); } }
+    public string DnsDetourHint => !string.Equals(DnsMode, "doh", StringComparison.OrdinalIgnoreCase)
+        ? "Маршрут используется только для защищённого DNS."
+        : !DnsDetourPolicy.AllowsProxyDetour(_state.Mode)
+            ? "В режиме TUN для выбранных приложений DNS всегда идёт напрямую."
+            : string.Empty;
     public string? DnsPreset
     {
         get => _dnsPreset;
@@ -193,5 +211,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         foreach (var item in rules.User) UserRuleSets.Add(item);
         foreach (var property in new[] { nameof(ProxyOverride), nameof(InterfaceName), nameof(AddressCidr), nameof(Mtu), nameof(Stack), nameof(AutoRoute), nameof(StrictRoute), nameof(DnsMode), nameof(DohServer), nameof(DohPath), nameof(DohSni), nameof(DnsDetour), nameof(LogLevel), nameof(CloseBehavior), nameof(DnsPreset) })
             OnPropertyChanged(property);
+        UpdateDnsDetourAvailability();
     }
+    private void UpdateDnsDetourAvailability() => IsDnsDetourEditable =
+        string.Equals(DnsMode, "doh", StringComparison.OrdinalIgnoreCase) && DnsDetourPolicy.AllowsProxyDetour(_state.Mode);
 }

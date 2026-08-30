@@ -27,7 +27,7 @@ public sealed class ConnectionSettingsControllerTests
     }
 
     [Fact]
-    public void Save_TunAppsMode_PreservesRequestedDnsDetourPreference()
+    public void Save_TunAppsMode_ForcesDnsDetourToDirect()
     {
         var settings = new FakeSettingsService();
         var state = new AppStateModel { Mode = "tun_apps" };
@@ -35,7 +35,7 @@ public sealed class ConnectionSettingsControllerTests
 
         controller.Save(state, CreateDraft());
 
-        Assert.Equal("proxy", state.DnsDetour);
+        Assert.Equal("direct", state.DnsDetour);
         Assert.Equal(1, settings.SaveCalls);
     }
 

@@ -590,7 +590,8 @@ internal sealed class MainForm : Form
         var allowProxyDetour = DnsDetourPolicy.AllowsProxyDetour(_state.Mode);
         if (!allowProxyDetour)
         {
-            _dnsDetourCombo.SelectedIndex = DnsPolicy.DetourToComboIndex(_state.DnsDetour);
+            _dnsDetourCombo.SelectedIndex = DnsPolicy.DetourToComboIndex("direct");
+            _state.DnsDetour = "direct";
         }
 
         var isDoh = _dnsModeCombo.SelectedIndex == 1;
