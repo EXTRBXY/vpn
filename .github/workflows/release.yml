@@ -111,7 +111,7 @@ jobs:
           .\build\Build.ps1 -Target Installer `
             -Version $env:APP_VERSION `
             -RepositoryUrl $repoUrl
-          $exe = Join-Path $env:GITHUB_WORKSPACE "artifacts\publish\win-x64\NothingVpn.Tray.exe"
+          $exe = Join-Path $env:GITHUB_WORKSPACE "artifacts\publish\win-x64\NothingVpn.Desktop.Wpf.exe"
           $pv = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion
           if ($pv -notlike "$($env:APP_VERSION)*") {
             throw "Версия в PE не совпадает с APP_VERSION: '$pv' vs '$($env:APP_VERSION)'"

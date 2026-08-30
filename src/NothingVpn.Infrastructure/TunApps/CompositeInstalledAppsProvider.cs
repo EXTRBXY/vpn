@@ -1,6 +1,6 @@
 ﻿namespace NothingVpn.Infrastructure.TunApps;
 
-internal sealed class CompositeInstalledAppsProvider : IInstalledAppsProvider
+public sealed class CompositeInstalledAppsProvider : IInstalledAppsProvider
 {
     private readonly IReadOnlyList<IInstalledAppsProvider> _providers;
 

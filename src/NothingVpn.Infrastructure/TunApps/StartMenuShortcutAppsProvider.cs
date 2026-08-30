@@ -2,7 +2,7 @@
 
 namespace NothingVpn.Infrastructure.TunApps;
 
-internal sealed class StartMenuShortcutAppsProvider : IInstalledAppsProvider
+public sealed class StartMenuShortcutAppsProvider : IInstalledAppsProvider
 {
     private const int MaxShortcutScanDepth = 5;
 

@@ -2,7 +2,7 @@
 
 namespace NothingVpn.Infrastructure.TunApps;
 
-internal sealed class RunningProcessesProvider : IRunningAppsProvider
+public sealed class RunningProcessesProvider : IRunningAppsProvider
 {
     public Task<IReadOnlyList<AppCandidate>> GetRunningAppsAsync(CancellationToken cancellationToken)
     {

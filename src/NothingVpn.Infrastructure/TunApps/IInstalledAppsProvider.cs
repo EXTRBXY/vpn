@@ -1,6 +1,6 @@
 ﻿namespace NothingVpn.Infrastructure.TunApps;
 
-internal interface IInstalledAppsProvider
+public interface IInstalledAppsProvider
 {
     Task<IReadOnlyList<AppCandidate>> GetInstalledAppsAsync(CancellationToken cancellationToken);
 }

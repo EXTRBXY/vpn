@@ -20,7 +20,7 @@ artifacts/    результаты сборки (не добавляются в 
 Для обычной проверки приложения не требуется запускать автоматические тесты:
 
 1. Запустите `build-app.cmd` двойным кликом. Скрипт создаст опубликованную self-contained сборку без установщика и откроет её каталог.
-2. Запустите и проверьте `artifacts\publish\win-x64\NothingVpn.Tray.exe`.
+2. Запустите и проверьте `artifacts\publish\win-x64\NothingVpn.Desktop.Wpf.exe`.
 3. После проверки запустите `build-installer.cmd`. Он упакует в Inno Setup именно существующую опубликованную сборку, не пересобирая её.
 4. Проверьте `artifacts\installer\NothingVpnSetup.exe`.
 
@@ -54,7 +54,7 @@ artifacts/installer/NothingVpnSetup.exe.sha256
 
 ## Runtime-зависимости
 
-Для установленного приложения рядом с `NothingVpn.Tray.exe` необходим `sing-box.exe`; для TUN также нужен `wintun.dll`.
+Для установленного приложения рядом с `NothingVpn.Desktop.Wpf.exe` необходим `sing-box.exe`; для TUN также нужен `wintun.dll`.
 
 Локальный `Publish` ищет их в `%LOCALAPPDATA%\Programs\NothingVpn`. Можно явно передать каталог:
 

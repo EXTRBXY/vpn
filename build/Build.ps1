@@ -14,7 +14,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $script:RepoRoot = Split-Path -Parent $PSScriptRoot
 $script:Solution = Join-Path $script:RepoRoot 'NothingVpn.sln'
-$script:TrayProject = Join-Path $script:RepoRoot 'src\NothingVpn.Tray\NothingVpn.Tray.csproj'
+$script:DesktopProject = Join-Path $script:RepoRoot 'src\NothingVpn.Desktop.Wpf\NothingVpn.Desktop.Wpf.csproj'
 $script:Artifacts = Join-Path $script:RepoRoot 'artifacts'
 $script:PublishDirectory = Join-Path $script:Artifacts "publish\$Runtime"
 $script:TestResultsDirectory = Join-Path $script:Artifacts 'test-results'
@@ -92,10 +92,18 @@ function Copy-RuntimeAssets {
 }
 
 function Invoke-Publish {
+    if (Test-Path -LiteralPath $script:PublishDirectory) {
+        $resolvedPublish = [System.IO.Path]::GetFullPath($script:PublishDirectory)
+        $expectedPublishRoot = [System.IO.Path]::GetFullPath((Join-Path $script:Artifacts 'publish'))
+        if (-not $resolvedPublish.StartsWith($expectedPublishRoot + [System.IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to clean unexpected publish path: $resolvedPublish"
+        }
+        Remove-Item -LiteralPath $resolvedPublish -Recurse -Force
+    }
     New-Item -ItemType Directory -Path $script:PublishDirectory -Force | Out-Null
     $versionArguments = Get-VersionArguments
     $arguments = @(
-        'publish', $script:TrayProject,
+        'publish', $script:DesktopProject,
         '-c', $Configuration,
         '-r', $Runtime,
         '--no-restore',
@@ -103,7 +111,7 @@ function Invoke-Publish {
     Invoke-DotNet -Arguments $arguments
     Copy-RuntimeAssets
 
-    $application = Join-Path $script:PublishDirectory 'NothingVpn.Tray.exe'
+    $application = Join-Path $script:PublishDirectory 'NothingVpn.Desktop.Wpf.exe'
     if (-not (Test-Path -LiteralPath $application)) {
         throw "Publish output not found: $application"
     }
@@ -128,7 +136,7 @@ function Resolve-InnoCompiler {
 }
 
 function Invoke-Installer {
-    $application = Join-Path $script:PublishDirectory 'NothingVpn.Tray.exe'
+    $application = Join-Path $script:PublishDirectory 'NothingVpn.Desktop.Wpf.exe'
     $singBox = Join-Path $script:PublishDirectory 'sing-box.exe'
     if (-not (Test-Path -LiteralPath $application)) {
         throw "Publish the application before creating the installer: $application"

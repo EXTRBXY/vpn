@@ -3,7 +3,7 @@ using Microsoft.Win32;
 
 namespace NothingVpn.Infrastructure.TunApps;
 
-internal sealed class RegistryUninstallAppsProvider : IInstalledAppsProvider
+public sealed class RegistryUninstallAppsProvider : IInstalledAppsProvider
 {
     private const string UninstallSubKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
 

@@ -4,6 +4,7 @@ using NothingVpn.Infrastructure.Composition;
 using NothingVpn.Presentation;
 using NothingVpn.Application.Services;
 using System.Windows.Threading;
+using NothingVpn.Infrastructure.TunApps;
 
 namespace NothingVpn.Desktop.Wpf;
 
@@ -18,6 +19,8 @@ public partial class App : System.Windows.Application
     private ISubscriptionService? _subscriptionService;
     private DispatcherTimer? _subscriptionTimer;
     private int _subscriptionRefreshRunning;
+    private Forms.ToolStripMenuItem? _trayConnect;
+    private Forms.ToolStripMenuItem? _trayDisconnect;
     private bool _exitInProgress;
 
     public static bool IsExitRequested { get; private set; }
@@ -25,6 +28,7 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(System.Windows.StartupEventArgs e)
     {
         base.OnStartup(e);
+        ThemeManager.ApplySystemTheme();
         var takeover = e.Args.Any(x => string.Equals(x, "--takeover", StringComparison.OrdinalIgnoreCase));
         bool alreadyRunning;
         if (takeover)
@@ -70,7 +74,11 @@ public partial class App : System.Windows.Application
                 new TunAppsController(services.PathPolicy, services.SettingsService),
                 new RuleSetManagementController(services.SettingsService),
                 services.RuleSetFileService,
-                services.SettingsService.GetState());
+                new TunAppsSelectionService(new CompositeInstalledAppsProvider(new RegistryUninstallAppsProvider(),new AppPathsRegistryProvider(),new StartMenuShortcutAppsProvider()),new RunningProcessesProvider()),
+                services.SettingsService.GetState(),
+                new UpdateViewModel(controller: new AppUpdateController(services.AppUpdateService, services.SettingsService),
+                    installer: services.InstallerUpdateService, launcher: services.InstallerLaunchService,
+                    state: services.SettingsService.GetState(), exit: RequestExit));
 
             _viewModel = new MainViewModel(screenController, connectionController, profileViewModel, settingsViewModel,
                 new ConnectionDiagnosticController(services.DiagnosticsService), services.SharedLogStore, RequestExit);
@@ -80,13 +88,21 @@ public partial class App : System.Windows.Application
             CreateTrayIcon();
             UpdateTrayState(connectionController.IsRunning);
             _window.Show();
+            ShowStorageIssues(services.StorageHealthService);
+            if (e.Args.Any(x => string.Equals(x, "--smoke-test", StringComparison.OrdinalIgnoreCase)))
+            {
+                Dispatcher.BeginInvoke(RequestExit);
+                return;
+            }
+            _ = settingsViewModel.Updates.CheckAtStartupAsync();
+            _ = _viewModel.ApplyStartupAsync(StartupOptions.Parse(e.Args));
 
             _subscriptionTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(15) };
             _subscriptionTimer.Tick += async (_, _) => await RefreshDueSubscriptionsAsync();
             _subscriptionTimer.Start();
             _ = RefreshSubscriptionsAfterStartupAsync();
 
-            _singleInstance.StartServer(_ => Dispatcher.Invoke(ShowMainWindow));
+            _singleInstance.StartServer(args => Dispatcher.Invoke(async () => { ShowMainWindow(); if(_viewModel is not null) await _viewModel.ApplyStartupAsync(StartupOptions.Parse(args)); }));
         }
         catch (Exception ex)
         {
@@ -123,6 +139,9 @@ public partial class App : System.Windows.Application
         };
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Открыть", null, (_, _) => Dispatcher.Invoke(ShowMainWindow));
+        _trayConnect = new Forms.ToolStripMenuItem("Подключить", null, async (_, _) => { if(_viewModel is not null) await _viewModel.ConnectFromTrayAsync(); });
+        _trayDisconnect = new Forms.ToolStripMenuItem("Отключить", null, async (_, _) => { if(_viewModel is not null) await _viewModel.DisconnectFromTrayAsync(); });
+        menu.Items.Add(_trayConnect); menu.Items.Add(_trayDisconnect);
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Выход", null, (_, _) => Dispatcher.Invoke(RequestExit));
         _trayIcon.ContextMenuStrip = menu;
@@ -133,9 +152,20 @@ public partial class App : System.Windows.Application
     {
         if (_trayIcon is not null)
             _trayIcon.Text = connected ? "Nothing VPN — подключено" : "Nothing VPN — отключено";
+        if(_trayConnect is not null)_trayConnect.Enabled=!connected;
+        if(_trayDisconnect is not null)_trayDisconnect.Enabled=connected;
     }
 
     private void ShowMainWindow() => _window?.BringToFront();
+
+    private void ShowStorageIssues(IStorageHealthService health)
+    {
+        var issues=health.DrainIssues(); if(issues.Count==0)return;
+        var recovered=issues.All(x=>x.RecoveredFromBackup);
+        System.Windows.MessageBox.Show(_window,
+            recovered?"Повреждённый файл данных восстановлен из резервной копии.":"Некоторые данные не удалось прочитать. Резервные файлы сохранены для восстановления.",
+            "Nothing VPN",System.Windows.MessageBoxButton.OK,recovered?System.Windows.MessageBoxImage.Warning:System.Windows.MessageBoxImage.Error);
+    }
 
     private async Task RefreshSubscriptionsAfterStartupAsync()
     {

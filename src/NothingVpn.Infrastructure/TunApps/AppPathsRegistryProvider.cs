@@ -2,7 +2,7 @@
 
 namespace NothingVpn.Infrastructure.TunApps;
 
-internal sealed class AppPathsRegistryProvider : IInstalledAppsProvider
+public sealed class AppPathsRegistryProvider : IInstalledAppsProvider
 {
     private const string AppPathsSubKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths";
 

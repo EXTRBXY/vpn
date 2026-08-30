@@ -1,13 +1,12 @@
-; Inno Setup script for NothingVpn.Tray
+; Inno Setup script for Nothing VPN WPF desktop client
 ; Build prerequisites:
 ; Use build\Build.ps1 -Target Installer. Paths are injected by the build script.
-; 2) Put sing-box.exe into the publish folder next to NothingVpn.Tray.exe
+; 2) Put sing-box.exe into the publish folder next to NothingVpn.Desktop.Wpf.exe
 ; 3) Compile this .iss with Inno Setup (ISCC.exe)
 
 #define MyAppName "Nothing VPN"
-#define MyAppExeName "NothingVpn.Tray.exe"
-; Должно совпадать с Mutex в NothingVpn.Tray Program.cs: Global\{appId}, appId = "NothingVpn.Tray"
-#define MyAppMutex "Global\NothingVpn.Tray"
+#define MyAppExeName "NothingVpn.Desktop.Wpf.exe"
+#define MyAppMutex "Global\NothingVpn.Desktop.Wpf"
 #define MyAppPublisher "NothingVpn"
 ; URL и версию при CI переопределяют: ISCC /DMyAppURL=... /DMyAppVersion=...
 #ifndef MyAppURL

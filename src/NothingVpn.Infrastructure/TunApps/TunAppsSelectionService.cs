@@ -1,6 +1,6 @@
 ﻿namespace NothingVpn.Infrastructure.TunApps;
 
-internal sealed class TunAppsSelectionService
+public sealed class TunAppsSelectionService
 {
     private readonly IInstalledAppsProvider _installedAppsProvider;
     private readonly IRunningAppsProvider _runningAppsProvider;

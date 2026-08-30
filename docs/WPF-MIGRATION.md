@@ -2,13 +2,11 @@
 
 ## Current migration status
 
-`NothingVpn.Desktop.Wpf` is now part of the solution. Its first functional slice includes the application
-shell, visual theme, tray lifecycle, single-instance activation, profile and mode selection, live connection
-status, and connect/disconnect commands backed by the existing Presentation controllers. Profile creation,
-editing, deletion, clipboard import, and subscription-owned profile protection are also available in WPF.
-Subscription creation, editing, deletion, manual refresh, startup refresh, and periodic refresh are available;
-profile lists are synchronized after subscription changes.
-WinForms remains the packaged executable until the remaining screens reach parity.
+`NothingVpn.Desktop.Wpf` is the packaged desktop client. It includes connection control, profiles,
+subscriptions, DNS/proxy/TUN settings, application routing, rule sets, diagnostics, logs, updates,
+single-instance activation, startup arguments, UAC takeover, storage recovery notices, and tray lifecycle.
+`NothingVpn.Tray` remains in the solution temporarily as a reference implementation; release publish and
+Inno Setup use only `NothingVpn.Desktop.Wpf.exe`.
 
 The application logic is ready to be consumed by a WPF front end. A new WPF project must reference
 `NothingVpn.Presentation`, `NothingVpn.Application`, and `NothingVpn.Domain`. Platform implementations
@@ -59,7 +57,7 @@ src/NothingVpn.Desktop.Wpf/
   Resources/
 ```
 
-Use `CommunityToolkit.Mvvm` for observable properties and commands. Keep file pickers, clipboard,
+Keep file pickers, clipboard,
 message dialogs, tray icon, and window activation behind WPF-only adapters. Do not move these concerns
 into Presentation.
 

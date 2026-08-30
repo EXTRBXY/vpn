@@ -147,6 +147,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (_connectionController.IsRunning)
             await _connectionController.StopAsync();
     }
+    internal async Task ApplyStartupAsync(StartupOptions options)
+    {
+        if (!string.IsNullOrWhiteSpace(options.Mode)) SelectedMode=Modes.FirstOrDefault(x=>string.Equals(x.Id,options.Mode,StringComparison.OrdinalIgnoreCase))??SelectedMode;
+        if (!string.IsNullOrWhiteSpace(options.ProfileId)) SelectedProfile=Profiles.FirstOrDefault(x=>string.Equals(x.Id,options.ProfileId,StringComparison.OrdinalIgnoreCase))??SelectedProfile;
+        if(options.Start&&!_connectionController.IsRunning) await ToggleConnectionAsync();
+    }
+    public Task ConnectFromTrayAsync()=>_connectionController.IsRunning?Task.CompletedTask:ToggleConnectionAsync();
+    public Task DisconnectFromTrayAsync()=>!_connectionController.IsRunning?Task.CompletedTask:ToggleConnectionAsync();
 
     private void Load()
     {
