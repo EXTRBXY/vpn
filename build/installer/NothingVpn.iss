@@ -6,7 +6,7 @@
 
 #define MyAppName "Nothing VPN"
 #define MyAppExeName "NothingVpn.Desktop.Wpf.exe"
-#define MyAppMutex "Global\NothingVpn.Desktop.Wpf"
+#define MyAppMutex "Global\NothingVpn.Desktop.Wpf,Global\NothingVpn.Tray"
 #define MyAppPublisher "NothingVpn"
 ; URL и версию при CI переопределяют: ISCC /DMyAppURL=... /DMyAppVersion=...
 #ifndef MyAppURL
@@ -57,6 +57,10 @@ Source: "{#PublishDir}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PublishDir}\sing-box.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PublishDir}\wintun.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#PublishDir}\*.pdb"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+
+[InstallDelete]
+Type: files; Name: "{app}\NothingVpn.Tray.exe"
+Type: files; Name: "{app}\NothingVpn.Tray.pdb"
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

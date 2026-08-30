@@ -40,6 +40,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _requestExit = requestExit;
         ProfileManager = profileManager;
         Settings = settings;
+        Settings.SettingsChanged += (_, _) => Load();
         Diagnostics = new DiagnosticsViewModel(diagnosticController, logStore, () => _state.Mode, () => _connectionController.IsRunning);
         Modes =
         [

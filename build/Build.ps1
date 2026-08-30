@@ -59,6 +59,18 @@ function Invoke-Tests {
         '--results-directory', $script:TestResultsDirectory)
 }
 
+function Invoke-WpfSmokeTest {
+    $application = Join-Path $script:RepoRoot "src\NothingVpn.Desktop.Wpf\bin\$Configuration\net8.0-windows\$Runtime\NothingVpn.Desktop.Wpf.exe"
+    if (-not (Test-Path -LiteralPath $application)) {
+        throw "WPF smoke-test executable not found: $application"
+    }
+    & $application '--smoke-test'
+    if ($LASTEXITCODE -ne 0) {
+        throw "WPF smoke test failed with exit code $LASTEXITCODE."
+    }
+    Write-Host 'WPF smoke test: passed'
+}
+
 function Get-VersionArguments {
     if ([string]::IsNullOrWhiteSpace($Version)) { return @() }
     return @("-p:Version=$Version", "-p:InformationalVersion=$Version")
@@ -177,8 +189,8 @@ switch ($Target) {
     'Clean' { Invoke-Clean }
     'Restore' { Invoke-Restore }
     'Build' { Invoke-Restore; Invoke-Build }
-    'Test' { Invoke-Restore; Invoke-Build; Invoke-Tests }
+    'Test' { Invoke-Restore; Invoke-Build; Invoke-Tests; Invoke-WpfSmokeTest }
     'Publish' { Invoke-Restore; Invoke-Publish }
     'Installer' { Invoke-Installer }
-    'All' { Invoke-Clean; Invoke-Restore; Invoke-Build; Invoke-Tests; Invoke-Publish; Invoke-Installer }
+    'All' { Invoke-Clean; Invoke-Restore; Invoke-Build; Invoke-Tests; Invoke-WpfSmokeTest; Invoke-Publish; Invoke-Installer }
 }

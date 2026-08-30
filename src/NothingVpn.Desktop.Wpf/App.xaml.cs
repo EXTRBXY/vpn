@@ -75,10 +75,11 @@ public partial class App : System.Windows.Application
                 new RuleSetManagementController(services.SettingsService),
                 services.RuleSetFileService,
                 new TunAppsSelectionService(new CompositeInstalledAppsProvider(new RegistryUninstallAppsProvider(),new AppPathsRegistryProvider(),new StartMenuShortcutAppsProvider()),new RunningProcessesProvider()),
+                services.SettingsService,
                 services.SettingsService.GetState(),
                 new UpdateViewModel(controller: new AppUpdateController(services.AppUpdateService, services.SettingsService),
                     installer: services.InstallerUpdateService, launcher: services.InstallerLaunchService,
-                    state: services.SettingsService.GetState(), exit: RequestExit));
+                    settings: services.SettingsService, state: services.SettingsService.GetState(), exit: RequestExit));
 
             _viewModel = new MainViewModel(screenController, connectionController, profileViewModel, settingsViewModel,
                 new ConnectionDiagnosticController(services.DiagnosticsService), services.SharedLogStore, RequestExit);
