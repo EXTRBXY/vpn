@@ -7,6 +7,7 @@ using System.Windows.Media;
 using MediaBrush = System.Windows.Media.Brush;
 using MediaColor = System.Windows.Media.Color;
 using NothingVpn.Application.Models;
+using NothingVpn.Domain.Policies;
 using NothingVpn.Presentation;
 
 namespace NothingVpn.Desktop.Wpf;
@@ -42,9 +43,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         Diagnostics = new DiagnosticsViewModel(diagnosticController, logStore, () => _state.Mode, () => _connectionController.IsRunning);
         Modes =
         [
-            new ModeOption("proxy", "Прокси"),
-            new ModeOption("tun", "TUN — весь трафик"),
-            new ModeOption("tun-apps", "TUN — выбранные приложения")
+            new ModeOption(ConnectionPolicy.ProxyMode, "Прокси"),
+            new ModeOption(ConnectionPolicy.TunMode, "TUN — весь трафик"),
+            new ModeOption(ConnectionPolicy.TunAppsMode, "TUN — выбранные приложения")
         ];
         _toggleCommand = new AsyncRelayCommand(ToggleConnectionAsync, () => CanStart || CanStop);
         ToggleConnectionCommand = _toggleCommand;

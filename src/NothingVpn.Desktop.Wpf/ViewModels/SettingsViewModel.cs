@@ -20,6 +20,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private readonly NothingVpn.Application.Services.IRuleSetFileService _ruleSetFiles;
     private readonly NothingVpn.Infrastructure.TunApps.TunAppsSelectionService _tunAppSelection;
     private string? _message;
+    private CancellationTokenSource? _messageCancellation;
     public SettingsViewModel(IConnectionSettingsController controller, ITunAppsController tunAppsController,
         IRuleSetManagementController ruleSetController, NothingVpn.Application.Services.IRuleSetFileService ruleSetFiles,
         NothingVpn.Infrastructure.TunApps.TunAppsSelectionService tunAppSelection,
@@ -86,10 +87,10 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         if (SelectedBuiltinRuleSet is null) return;
         _state=_settingsService.GetState();
         var result = await _ruleSetFiles.DownloadBuiltinAsync(SelectedBuiltinRuleSet, true);
-        if (!result.Success) { Message = result.Error ?? "Не удалось скачать список."; return; }
+        if (!result.Success) { ShowMessage(result.Error ?? "Не удалось скачать список.", TimeSpan.FromSeconds(6)); return; }
         SelectedBuiltinRuleSet.Enabled = true;
         _ruleSetController.MarkDownloaded(_state, SelectedBuiltinRuleSet, result.NewEtag);
-        SaveRuleSets(); Message = result.NotModified ? "Список уже актуален." : "Список обновлён.";
+        SaveRuleSets(); ShowMessage(result.NotModified ? "Список уже актуален." : "Список обновлён.");
     }
     public void RemoveSelectedBuiltin()
     {
@@ -97,14 +98,14 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         _ruleSetFiles.Delete(SelectedBuiltinRuleSet);
         _state=_settingsService.GetState();
         _ruleSetController.MarkBuiltinFilesRemoved(_state, BuiltinRuleSets, UserRuleSets, [SelectedBuiltinRuleSet]);
-        Message = "Файл списка удалён.";
+        ShowMessage("Файл списка удалён.");
         SettingsChanged?.Invoke(this, EventArgs.Empty);
     }
     public string RuleSetCatalogUrl => _ruleSetFiles.CatalogUrl;
     public void SaveRuleSets()
     {
         _state=_settingsService.GetState();
-        _ruleSetController.Save(_state, BuiltinRuleSets, UserRuleSets); Message = "Правила сохранены.";
+        _ruleSetController.Save(_state, BuiltinRuleSets, UserRuleSets); ShowMessage("Правила сохранены.");
         SettingsChanged?.Invoke(this, EventArgs.Empty);
     }
     public string ProxyOverride { get; set; } = "";
@@ -146,10 +147,25 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
                 new ProxyConnectionSettings { ProxyOverride = ProxyOverride },
                 new TunSettings { InterfaceName = InterfaceName, AddressCidr = AddressCidr, Mtu = Mtu, Stack = Stack, AutoRoute = AutoRoute, StrictRoute = StrictRoute },
                 new DnsSettings { Mode = DnsMode, DohServer = DohServer, DohPath = DohPath, DohSni = DohSni, Detour = DnsDetour }));
-            Message = "Настройки сохранены.";
+            ShowMessage("Настройки сохранены.");
             SettingsChanged?.Invoke(this, EventArgs.Empty);
         }
-        catch (Exception ex) { Message = ex.Message; }
+        catch (Exception ex) { ShowMessage(ex.Message, TimeSpan.FromSeconds(6)); }
+    }
+    private async void ShowMessage(string message, TimeSpan? duration = null)
+    {
+        _messageCancellation?.Cancel();
+        _messageCancellation?.Dispose();
+        var cancellation = new CancellationTokenSource();
+        _messageCancellation = cancellation;
+        Message = message;
+        try
+        {
+            await Task.Delay(duration ?? TimeSpan.FromSeconds(3), cancellation.Token);
+            if (ReferenceEquals(_messageCancellation, cancellation))
+                Message = null;
+        }
+        catch (OperationCanceledException) { }
     }
     private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     private void ReplaceTunApps(IEnumerable<string> paths)
