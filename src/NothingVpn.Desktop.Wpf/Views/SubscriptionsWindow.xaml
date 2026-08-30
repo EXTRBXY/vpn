@@ -29,11 +29,11 @@
         </Border>
         <Grid Grid.Row="4">
             <StackPanel Orientation="Horizontal">
-                <Button Content="Удалить" Click="OnDelete" IsEnabled="{Binding HasSelection}" Background="#FFF0F0" Foreground="#B42318" />
-                <Button Content="Изменить" Click="OnEdit" IsEnabled="{Binding HasSelection}" Background="#EEF0F4" Foreground="{StaticResource TextBrush}" Margin="10,0,0,0" />
+                <Button Content="Удалить" Click="OnDelete" IsEnabled="{Binding HasSelection}" Style="{StaticResource DangerButtonStyle}" />
+                <Button Content="Изменить" Click="OnEdit" IsEnabled="{Binding HasSelection}" Style="{StaticResource SecondaryButtonStyle}" Margin="10,0,0,0" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="Обновить выбранную" Click="OnRefreshSelected" IsEnabled="{Binding HasSelection}" Background="#EEF0F4" Foreground="{StaticResource TextBrush}" Margin="0,0,10,0" />
+                <Button Content="Обновить выбранную" Click="OnRefreshSelected" IsEnabled="{Binding HasSelection}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,0" />
                 <Button Content="Обновить все" Click="OnRefreshAll" />
             </StackPanel>
         </Grid>

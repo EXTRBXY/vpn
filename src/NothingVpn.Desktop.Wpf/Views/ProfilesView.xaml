@@ -13,7 +13,7 @@
                 <TextBlock Text="Сохранённые подключения VLESS" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,0" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                <Button Content="Подписки" Click="OnSubscriptions" Background="#EEF0F4" Foreground="{StaticResource TextBrush}" Margin="0,0,10,0" />
+                <Button Content="Подписки" Click="OnSubscriptions" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,0" />
                 <Button Content="Добавить профиль" Command="{Binding AddCommand}" />
             </StackPanel>
         </Grid>
@@ -33,7 +33,7 @@
                                         <Run Text="{Binding Host}" /><Run Text=":" /><Run Text="{Binding Port}" />
                                     </TextBlock>
                                 </StackPanel>
-                                <Border Grid.Column="1" Background="#EEF0F4" CornerRadius="8" Padding="9,5" VerticalAlignment="Center">
+                                <Border Grid.Column="1" Background="{DynamicResource SubtleBrush}" CornerRadius="8" Padding="9,5" VerticalAlignment="Center">
                                     <TextBlock FontSize="11" Foreground="{StaticResource MutedBrush}">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">
@@ -53,8 +53,8 @@
                 </ListBox>
                 <Border Grid.Row="1" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="14">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                        <Button Content="Удалить" Command="{Binding DeleteCommand}" Background="#FFF0F0" Foreground="#B42318" Margin="0,0,10,0" />
-                        <Button Content="Изменить" Command="{Binding EditCommand}" Background="#EEF0F4" Foreground="{StaticResource TextBrush}" />
+                        <Button Content="Удалить" Command="{Binding DeleteCommand}" Style="{StaticResource DangerButtonStyle}" Margin="0,0,10,0" />
+                        <Button Content="Изменить" Command="{Binding EditCommand}" Style="{StaticResource SecondaryButtonStyle}" />
                     </StackPanel>
                 </Border>
             </Grid>

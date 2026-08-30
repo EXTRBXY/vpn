@@ -17,10 +17,10 @@
         <StackPanel Grid.Row="4">
             <TextBlock Text="VLESS-ссылка" Foreground="{StaticResource MutedBrush}" FontSize="12" />
             <TextBox x:Name="LinkBox" Margin="0,7,0,0" Padding="11,9" TextWrapping="NoWrap" />
-            <TextBlock x:Name="ErrorText" Foreground="#B42318" Margin="0,9,0,0" TextWrapping="Wrap" Visibility="Collapsed" />
+            <TextBlock x:Name="ErrorText" Foreground="{DynamicResource DangerBrush}" Margin="0,9,0,0" TextWrapping="Wrap" Visibility="Collapsed" />
         </StackPanel>
         <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Content="Отмена" Click="OnCancel" Background="#EEF0F4" Foreground="{StaticResource TextBrush}" Margin="0,0,10,0" />
+            <Button Content="Отмена" Click="OnCancel" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,0" />
             <Button Content="Сохранить" Click="OnSave" />
         </StackPanel>
     </Grid>

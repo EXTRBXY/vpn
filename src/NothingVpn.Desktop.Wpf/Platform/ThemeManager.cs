@@ -11,6 +11,8 @@ internal static class ThemeManager
         Set(r,"TextBrush",dark?"#F2F4F7":"#18202A"); Set(r,"MutedBrush",dark?"#C2C8D2":"#475467");
         Set(r,"BorderBrush",dark?"#3B424E":"#D7DCE5"); Set(r,"SubtleBrush",dark?"#242932":"#EEF1F5");
         Set(r,"HoverBrush",dark?"#2B3445":"#E5EBF8"); Set(r,"SelectedBrush",dark?"#263B68":"#DCE7FF");
+        Set(r,"DangerBrush",dark?"#FDA29B":"#B42318"); Set(r,"DangerSurfaceBrush",dark?"#4A2424":"#FDECEA");
+        Set(r,"WarningBrush",dark?"#FEC84B":"#7A4D00"); Set(r,"WarningSurfaceBrush",dark?"#433515":"#FFF5D9");
     }
     private static bool IsDark()
     {
