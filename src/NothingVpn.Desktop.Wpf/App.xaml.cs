@@ -28,6 +28,7 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(System.Windows.StartupEventArgs e)
     {
         base.OnStartup(e);
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
         ThemeManager.ApplySystemTheme();
         var smokeTest = e.Args.Any(x => string.Equals(x, "--smoke-test", StringComparison.OrdinalIgnoreCase));
         var smokeErrorPath = System.IO.Path.Combine(AppContext.BaseDirectory, "wpf-smoke-error.txt");
@@ -124,6 +125,21 @@ public partial class App : System.Windows.Application
                 System.Windows.MessageBoxImage.Error);
             RequestExit();
         }
+    }
+
+    protected override void OnExit(System.Windows.ExitEventArgs e)
+    {
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+        base.OnExit(e);
+    }
+
+    private void OnUserPreferenceChanged(object sender, Microsoft.Win32.UserPreferenceChangedEventArgs e)
+    {
+        if (e.Category is not (Microsoft.Win32.UserPreferenceCategory.General
+            or Microsoft.Win32.UserPreferenceCategory.Color
+            or Microsoft.Win32.UserPreferenceCategory.VisualStyle
+            or Microsoft.Win32.UserPreferenceCategory.Accessibility)) return;
+        Dispatcher.BeginInvoke(ThemeManager.ApplySystemTheme);
     }
 
     private static SingleInstance? WaitForPrimaryTakeover()
