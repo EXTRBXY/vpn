@@ -29,7 +29,7 @@ public sealed class AppUpdateController : IAppUpdateController
                 : InstalledVersionTransition.Downgraded;
 
         state.LastRecordedAppSemver = currentVersion;
-        _settingsService.SaveState(state);
+        _settingsService.UpdateState(current => current.LastRecordedAppSemver = currentVersion);
         return transition;
     }
 
@@ -45,7 +45,7 @@ public sealed class AppUpdateController : IAppUpdateController
         {
             var latest = await _updateService.GetLatestAsync(currentVersion, cancellationToken).ConfigureAwait(false);
             state.UpdateLastCheckUtc = DateTimeOffset.UtcNow;
-            _settingsService.SaveState(state);
+            _settingsService.UpdateState(current => current.UpdateLastCheckUtc = state.UpdateLastCheckUtc);
             var available = latest is not null &&
                             SemanticVersionPolicy.Compare(latest.Semver, currentVersion) > 0
                 ? latest
@@ -73,6 +73,6 @@ public sealed class AppUpdateController : IAppUpdateController
     public void DismissOffer(AppStateModel state, AppReleaseModel release)
     {
         state.UpdateDismissedModalForTag = release.TagName;
-        _settingsService.SaveState(state);
+        _settingsService.UpdateState(current => current.UpdateDismissedModalForTag = release.TagName);
     }
 }

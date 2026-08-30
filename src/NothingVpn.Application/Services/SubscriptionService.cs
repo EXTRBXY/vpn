@@ -218,7 +218,7 @@ public sealed class SubscriptionService(
             return false;
 
         state.ActiveProfileId = null;
-        settingsService.SaveState(state);
+        settingsService.UpdateState(current => current.ActiveProfileId = null);
         return true;
     }
 

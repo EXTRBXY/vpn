@@ -23,6 +23,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private string? _dnsPreset;
     private string _dnsMode = "doh";
     private bool _dnsDetourEditable = true;
+    private bool _isConnectionRunning;
     private CancellationTokenSource? _messageCancellation;
     public SettingsViewModel(IConnectionSettingsController controller, ITunAppsController tunAppsController,
         IRuleSetManagementController ruleSetController, NothingVpn.Application.Services.IRuleSetFileService ruleSetFiles,
@@ -45,10 +46,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public TunAppListItem? SelectedTunApp { get; set; }
     public void AddTunApp(string path)
     {
-        _state=_settingsService.GetState();
-        var saved = _tunAppsController.AddAndSave(_state, TunApps.Select(x => x.Path), [path]);
-        ReplaceTunApps(saved);
-        SettingsChanged?.Invoke(this, EventArgs.Empty);
+        var updated = _tunAppsController.Normalize(TunApps.Select(x => x.Path).Append(path));
+        ReplaceTunApps(updated);
+        ShowMessage("Приложение добавлено. Сохраните настройки.");
     }
     public async Task<IReadOnlyList<NothingVpn.Infrastructure.TunApps.AppCandidate>> FindTunAppsAsync()
     {
@@ -61,21 +61,23 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public void RemoveSelectedTunApp()
     {
         if (SelectedTunApp is null) return;
-        _state=_settingsService.GetState();
-        var saved = _tunAppsController.RemoveAndSave(_state, TunApps.Select(x => x.Path), SelectedTunApp.Path);
-        ReplaceTunApps(saved);
-        SettingsChanged?.Invoke(this, EventArgs.Empty);
+        var removedPath = SelectedTunApp.Path;
+        ReplaceTunApps(TunApps.Select(x => x.Path).Where(path => !string.Equals(path, removedPath, StringComparison.OrdinalIgnoreCase)));
+        SelectedTunApp = null;
+        ShowMessage("Приложение удалено из списка. Сохраните настройки.");
     }
     public void ImportRuleSet(string sourcePath)
     {
         var imported = _ruleSetFiles.Import(sourcePath);
         UserRuleSets.Add(_ruleSetController.CreateUserRuleSet(imported.Name, imported.FileName));
-        SaveRuleSets();
+        ShowMessage("Список добавлен. Сохраните настройки.");
     }
     public void RemoveSelectedRuleSet()
     {
         if (SelectedUserRuleSet is null) return;
-        _ruleSetFiles.Delete(SelectedUserRuleSet); UserRuleSets.Remove(SelectedUserRuleSet); SaveRuleSets();
+        _ruleSetFiles.Delete(SelectedUserRuleSet); UserRuleSets.Remove(SelectedUserRuleSet);
+        SelectedUserRuleSet = null;
+        ShowMessage("Список удалён. Сохраните настройки.");
     }
     public async Task DownloadSelectedBuiltinAsync()
     {
@@ -85,7 +87,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         if (!result.Success) { ShowMessage(result.Error ?? "Не удалось скачать список.", TimeSpan.FromSeconds(6)); return; }
         SelectedBuiltinRuleSet.Enabled = true;
         _ruleSetController.MarkDownloaded(_state, SelectedBuiltinRuleSet, result.NewEtag);
-        SaveRuleSets(); ShowMessage(result.NotModified ? "Список уже актуален." : "Список обновлён.");
+        ShowMessage(result.NotModified ? "Список уже актуален." : "Список обновлён. Сохраните настройки.");
     }
     public void RemoveSelectedBuiltin()
     {
@@ -97,12 +99,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         SettingsChanged?.Invoke(this, EventArgs.Empty);
     }
     public string RuleSetCatalogUrl => _ruleSetFiles.CatalogUrl;
-    public void SaveRuleSets()
-    {
-        _state=_settingsService.GetState();
-        _ruleSetController.Save(_state, BuiltinRuleSets, UserRuleSets); ShowMessage("Правила сохранены.");
-        SettingsChanged?.Invoke(this, EventArgs.Empty);
-    }
     public string ProxyOverride { get; set; } = "";
     public string InterfaceName { get; set; } = "";
     public string AddressCidr { get; set; } = "auto";
@@ -133,6 +129,15 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         : !DnsDetourPolicy.AllowsProxyDetour(_state.Mode)
             ? "В режиме TUN для выбранных приложений DNS всегда идёт напрямую."
             : string.Empty;
+    public string ConnectionNotice => _isConnectionRunning
+        ? "VPN подключён. Сетевые изменения будут применены после переподключения."
+        : string.Empty;
+    public void SetConnectionState(bool running)
+    {
+        if (_isConnectionRunning == running) return;
+        _isConnectionRunning = running;
+        OnPropertyChanged(nameof(ConnectionNotice));
+    }
     public string? DnsPreset
     {
         get => _dnsPreset;
@@ -165,8 +170,14 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
                 new ProxyConnectionSettings { ProxyOverride = ProxyOverride },
                 new TunSettings { InterfaceName = InterfaceName, AddressCidr = AddressCidr, Mtu = Mtu, Stack = Stack, AutoRoute = AutoRoute, StrictRoute = StrictRoute },
                 new DnsSettings { Mode = DnsMode, DohServer = DohServer, DohPath = DohPath, DohSni = DohSni, Detour = DnsDetour }));
+            _state = _settingsService.GetState();
+            _tunAppsController.Save(_state, TunApps.Select(x => x.Path));
+            _state = _settingsService.GetState();
+            _ruleSetController.Save(_state, BuiltinRuleSets, UserRuleSets);
             ApplyState(_settingsService.GetState());
-            ShowMessage("Настройки сохранены.");
+            ShowMessage(_isConnectionRunning
+                ? "Настройки сохранены. Они применятся после переподключения."
+                : "Все настройки сохранены.");
             SettingsChanged?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex) { ShowMessage(ex.Message, TimeSpan.FromSeconds(6)); }

@@ -111,7 +111,8 @@ public sealed class AppUpdateControllerTests
     {
         public event EventHandler<AppStateModel>? StateChanged { add { } remove { } }
         public int SaveCalls { get; private set; }
-        public AppStateModel GetState() => throw new NotSupportedException();
+        private AppStateModel State { get; } = new();
+        public AppStateModel GetState() => State;
         public void SaveState(AppStateModel state) => SaveCalls++;
         public void UpdateMode(string mode) => throw new NotSupportedException();
         public void UpdateDns(string mode, string dohServer, string dohPath, string dohSni, string detour) => throw new NotSupportedException();

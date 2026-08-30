@@ -8,6 +8,13 @@ public interface ISettingsService
     event EventHandler<AppStateModel>? StateChanged;
     AppStateModel GetState();
     void SaveState(AppStateModel state);
+    void UpdateState(Action<AppStateModel> update)
+    {
+        ArgumentNullException.ThrowIfNull(update);
+        var state = GetState();
+        update(state);
+        SaveState(state);
+    }
     void UpdateMode(string mode);
     void UpdateDns(string mode, string dohServer, string dohPath, string dohSni, string detour);
     void UpdateTunSettings(TunSettings settings);

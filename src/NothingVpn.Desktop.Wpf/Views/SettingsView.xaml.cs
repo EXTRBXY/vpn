@@ -34,5 +34,4 @@ public partial class SettingsView : System.Windows.Controls.UserControl
     {
         if (DataContext is SettingsViewModel vm) System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(vm.RuleSetCatalogUrl) { UseShellExecute = true });
     }
-    private void OnSaveRuleSets(object sender, System.Windows.RoutedEventArgs e) { if (DataContext is SettingsViewModel vm) vm.SaveRuleSets(); }
 }

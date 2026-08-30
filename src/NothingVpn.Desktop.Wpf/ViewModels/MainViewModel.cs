@@ -56,6 +56,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ProfileManager.ProfilesChanged += (_, preferredId) => ReloadProfiles(preferredId);
         _connectionController.ConnectionStateChanged += OnConnectionStateChanged;
         Load();
+        Settings.SetConnectionState(_connectionController.IsRunning);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -229,6 +230,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         System.Windows.Application.Current.Dispatcher.Invoke(() =>
         {
             RefreshViewState();
+            Settings.SetConnectionState(connected);
             ConnectionStateChanged?.Invoke(this, connected);
         });
     }

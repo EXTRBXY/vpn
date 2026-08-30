@@ -50,7 +50,7 @@ public sealed class ConnectionScreenController : IConnectionScreenController
     public void SelectProfile(AppStateModel state, string? profileId)
     {
         state.ActiveProfileId = profileId?.Trim() ?? string.Empty;
-        Save(state);
+        _settingsService.UpdateState(current => current.ActiveProfileId = state.ActiveProfileId);
     }
 
     private static void NormalizeCollections(AppStateModel state)

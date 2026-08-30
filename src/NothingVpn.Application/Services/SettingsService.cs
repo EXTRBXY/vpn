@@ -8,31 +8,54 @@ namespace NothingVpn.Application.Services;
 
 public sealed class SettingsService(IStateStorePort stateStore, IPathPolicyPort pathPolicy) : ISettingsService
 {
+    private readonly object _stateSync = new();
     public event EventHandler<AppStateModel>? StateChanged;
 
-    public AppStateModel GetState() => stateStore.Load();
+    public AppStateModel GetState()
+    {
+        lock (_stateSync) return stateStore.Load();
+    }
 
     public void SaveState(AppStateModel state)
+    {
+        lock (_stateSync)
+        {
+            NormalizeState(state);
+            stateStore.Save(state);
+        }
+        StateChanged?.Invoke(this, state);
+    }
+
+    public void UpdateState(Action<AppStateModel> update)
+    {
+        ArgumentNullException.ThrowIfNull(update);
+        AppStateModel state;
+        lock (_stateSync)
+        {
+            state = stateStore.Load();
+            update(state);
+            NormalizeState(state);
+            stateStore.Save(state);
+        }
+        StateChanged?.Invoke(this, state);
+    }
+
+    private void NormalizeState(AppStateModel state)
     {
         state.Mode = ConnectionPolicy.NormalizeMode(state.Mode);
         state.DnsDetour = DnsDetourPolicy.EffectiveDetour(state.Mode, state.DnsDetour);
         state.CloseBehavior = AppCloseBehavior.Normalize(state.CloseBehavior);
         state.TunAppProcessPaths = pathPolicy.NormalizeDistinctExePaths(state.TunAppProcessPaths).ToList();
         NormalizeConnectionSettings(state);
-        stateStore.Save(state);
-        StateChanged?.Invoke(this, state);
     }
 
     public void UpdateMode(string mode)
     {
-        var state = stateStore.Load();
-        state.Mode = ConnectionPolicy.NormalizeMode(mode);
-        SaveState(state);
+        UpdateState(state => state.Mode = ConnectionPolicy.NormalizeMode(mode));
     }
 
     public void UpdateDns(string mode, string dohServer, string dohPath, string dohSni, string detour)
     {
-        var state = stateStore.Load();
         var dns = new DnsSettings
         {
             Mode = mode,
@@ -43,38 +66,29 @@ public sealed class SettingsService(IStateStorePort stateStore, IPathPolicyPort 
         };
         DnsPolicy.Normalize(dns);
         DnsPolicy.Validate(dns);
-        ConnectionSettingsMapper.ApplyDnsSettings(state, dns);
-        SaveState(state);
+        UpdateState(state => ConnectionSettingsMapper.ApplyDnsSettings(state, dns));
     }
 
     public void UpdateTunSettings(TunSettings settings)
     {
-        var state = stateStore.Load();
         TunSettingsPolicy.Normalize(settings);
-        ConnectionSettingsMapper.ApplyTunSettings(state, settings);
-        SaveState(state);
+        UpdateState(state => ConnectionSettingsMapper.ApplyTunSettings(state, settings));
     }
 
     public void UpdateProxySettings(ProxyConnectionSettings settings)
     {
-        var state = stateStore.Load();
         ProxyConnectionPolicy.Normalize(settings);
-        ConnectionSettingsMapper.ApplyProxySettings(state, settings);
-        SaveState(state);
+        UpdateState(state => ConnectionSettingsMapper.ApplyProxySettings(state, settings));
     }
 
     public void UpdateRuleSets(IReadOnlyCollection<UserRuleSetModel> ruleSets)
     {
-        var state = stateStore.Load();
-        state.UserRuleSets = ruleSets.ToList();
-        SaveState(state);
+        UpdateState(state => state.UserRuleSets = ruleSets.ToList());
     }
 
     public void UpdateTunApps(IReadOnlyCollection<string> paths)
     {
-        var state = stateStore.Load();
-        state.TunAppProcessPaths = pathPolicy.NormalizeDistinctExePaths(paths).ToList();
-        SaveState(state);
+        UpdateState(state => state.TunAppProcessPaths = pathPolicy.NormalizeDistinctExePaths(paths).ToList());
     }
 
     private static void NormalizeConnectionSettings(AppStateModel state)
