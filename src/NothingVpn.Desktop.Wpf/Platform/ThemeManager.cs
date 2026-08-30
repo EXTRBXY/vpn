@@ -14,6 +14,8 @@ internal static class ThemeManager
         Set(r,"HoverBrush",dark?"#2B3445":"#F5F7FA"); Set(r,"SelectedBrush",dark?"#263B68":"#EEF3FF");
         Set(r,"DangerBrush",dark?"#FDA29B":"#B42318"); Set(r,"DangerSurfaceBrush",dark?"#4A2424":"#FDECEA");
         Set(r,"WarningBrush",dark?"#FEC84B":"#7A4D00"); Set(r,"WarningSurfaceBrush",dark?"#433515":"#FFF5D9");
+        Set(r,"ScrollTrackBrush",dark?"#242932":"#EEF1F5"); Set(r,"ScrollThumbBrush",dark?"#596273":"#98A2B3");
+        Set(r,"ScrollThumbHoverBrush",dark?"#7B8493":"#667085");
     }
     public static bool IsDarkTheme()
     {
