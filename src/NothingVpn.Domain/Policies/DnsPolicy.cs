@@ -29,6 +29,8 @@ public static class DnsPolicy
     {
         var server = (settings.DohServer ?? string.Empty).Trim();
         var sni = (settings.DohSni ?? string.Empty).Trim();
+        var path = NormalizePath(settings.DohPath);
+        if (!string.Equals(path, "/dns-query", StringComparison.Ordinal)) return 4;
         if (server == "1.1.1.1" && sni.Equals("cloudflare-dns.com", StringComparison.OrdinalIgnoreCase)) return 0;
         if (server == "8.8.8.8" && sni.Equals("dns.google", StringComparison.OrdinalIgnoreCase)) return 1;
         if (server == "9.9.9.9" && sni.Equals("dns.quad9.net", StringComparison.OrdinalIgnoreCase)) return 2;

@@ -89,6 +89,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void Navigate(Page page)
     {
         if (_activePage == page) return;
+        if (page == Page.Settings)
+            Settings.Reload();
         _activePage = page;
         RaisePage();
     }

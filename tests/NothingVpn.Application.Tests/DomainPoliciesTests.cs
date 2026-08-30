@@ -73,6 +73,20 @@ public sealed class DomainPoliciesTests
         Assert.Throws<InvalidOperationException>(() => DnsPolicy.Validate(bad));
     }
 
+    [Theory]
+    [InlineData("1.1.1.1", "cloudflare-dns.com", "/dns-query", 0)]
+    [InlineData("8.8.8.8", "dns.google", "/dns-query", 1)]
+    [InlineData("9.9.9.9", "dns.quad9.net", "/dns-query", 2)]
+    [InlineData("94.140.14.14", "dns.adguard.com", "/dns-query", 3)]
+    [InlineData("8.8.8.8", "dns.google", "/custom", 4)]
+    public void DnsPolicy_StateToPresetIndex_ReflectsActualDnsFields(
+        string server, string sni, string path, int expected)
+    {
+        var settings = new DnsSettings { DohServer = server, DohSni = sni, DohPath = path };
+
+        Assert.Equal(expected, DnsPolicy.StateToPresetIndex(settings));
+    }
+
     [Fact]
     public void RuleSetRoutingPolicy_TunAlwaysRequiresSniff()
     {

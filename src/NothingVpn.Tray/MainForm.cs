@@ -324,13 +324,6 @@ internal sealed class MainForm : Form
         {
             if (_loadingData) return;
             _state.Mode = ComboIndexToMode(_connectionPanel.ModeIndex);
-            if (!DnsDetourPolicy.AllowsProxyDetour(_state.Mode) &&
-                string.Equals(_state.DnsDetour, "proxy", StringComparison.OrdinalIgnoreCase))
-            {
-                _state.DnsDetour = "direct";
-                if (_dnsUiReady)
-                    _connectionSettings.LoadFromState(_state);
-            }
             SaveState();
             UpdateTitle();
             UpdateConnectionTabVisibility();
@@ -597,8 +590,7 @@ internal sealed class MainForm : Form
         var allowProxyDetour = DnsDetourPolicy.AllowsProxyDetour(_state.Mode);
         if (!allowProxyDetour)
         {
-            _dnsDetourCombo.SelectedIndex = DnsPolicy.DetourToComboIndex("direct");
-            _state.DnsDetour = "direct";
+            _dnsDetourCombo.SelectedIndex = DnsPolicy.DetourToComboIndex(_state.DnsDetour);
         }
 
         var isDoh = _dnsModeCombo.SelectedIndex == 1;

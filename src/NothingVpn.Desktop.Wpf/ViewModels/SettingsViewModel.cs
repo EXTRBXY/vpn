@@ -20,6 +20,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private readonly NothingVpn.Application.Services.IRuleSetFileService _ruleSetFiles;
     private readonly NothingVpn.Infrastructure.TunApps.TunAppsSelectionService _tunAppSelection;
     private string? _message;
+    private string? _dnsPreset;
     private CancellationTokenSource? _messageCancellation;
     public SettingsViewModel(IConnectionSettingsController controller, ITunAppsController tunAppsController,
         IRuleSetManagementController ruleSetController, NothingVpn.Application.Services.IRuleSetFileService ruleSetFiles,
@@ -27,17 +28,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         NothingVpn.Application.Services.ISettingsService settingsService, AppStateModel state, UpdateViewModel updates)
     {
         _controller = controller; _tunAppsController = tunAppsController; _ruleSetController = ruleSetController; _ruleSetFiles = ruleSetFiles; _tunAppSelection=tunAppSelection; _settingsService=settingsService; _state = state;
-        ProxyOverride = state.ProxyOverride; InterfaceName = state.TunInterfaceName;
-        AddressCidr = state.TunAddressCidr; Mtu = TunSettingsPolicy.NormalizeMtu(state.TunMtu);
-        Stack = TunSettingsPolicy.NormalizeStack(state.TunStack); AutoRoute = state.TunAutoRoute; StrictRoute = state.TunStrictRoute;
-        DnsMode = state.DnsMode; DohServer = state.DohServer; DohPath = state.DohPath; DohSni = state.DohSni; DnsDetour = state.DnsDetour;
-        LogLevel = state.SingBoxLogLevel; CloseBehavior = AppCloseBehavior.Normalize(state.CloseBehavior);
         SaveCommand = new RelayCommand(Save);
-        ReplaceTunApps(_tunAppsController.Normalize(state.TunAppProcessPaths));
-        var rules = _ruleSetController.Load(state);
-        foreach (var item in rules.Builtin) BuiltinRuleSets.Add(item);
-        foreach (var item in rules.User) UserRuleSets.Add(item);
         Updates = updates;
+        ApplyState(state);
     }
     public event PropertyChangedEventHandler? PropertyChanged;
     public ICommand SaveCommand { get; }
@@ -122,17 +115,24 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public string DnsDetour { get; set; } = "direct";
     public string LogLevel { get; set; } = "warn";
     public string CloseBehavior { get; set; } = AppCloseBehavior.HideToTray;
+    public string? DnsPreset
+    {
+        get => _dnsPreset;
+        set
+        {
+            if (string.Equals(_dnsPreset, value, StringComparison.Ordinal)) return;
+            _dnsPreset = value;
+            OnPropertyChanged();
+            if (value is not null) ApplyDnsPreset(value);
+        }
+    }
+    public void Reload() => ApplyState(_settingsService.GetState());
     public void ApplyDnsPreset(string preset)
     {
-        (DohServer, DohSni) = preset switch
-        {
-            "cloudflare" => ("1.1.1.1", "cloudflare-dns.com"),
-            "google" => ("8.8.8.8", "dns.google"),
-            "quad9" => ("9.9.9.9", "dns.quad9.net"),
-            "adguard" => ("94.140.14.14", "dns.adguard.com"),
-            _ => (DohServer, DohSni)
-        };
-        DohPath = "/dns-query";
+        var index = preset switch { "cloudflare" => 0, "google" => 1, "quad9" => 2, "adguard" => 3, _ => -1 };
+        if (index < 0) return;
+        var dns = DnsPolicy.ApplyPreset(index, new DnsSettings { Mode = DnsMode, Detour = DnsDetour, DohServer = DohServer, DohSni = DohSni, DohPath = DohPath });
+        DohServer = dns.DohServer; DohSni = dns.DohSni; DohPath = dns.DohPath;
         OnPropertyChanged(nameof(DohServer)); OnPropertyChanged(nameof(DohSni)); OnPropertyChanged(nameof(DohPath));
     }
     public string? Message { get => _message; private set { _message = value; OnPropertyChanged(); } }
@@ -147,6 +147,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
                 new ProxyConnectionSettings { ProxyOverride = ProxyOverride },
                 new TunSettings { InterfaceName = InterfaceName, AddressCidr = AddressCidr, Mtu = Mtu, Stack = Stack, AutoRoute = AutoRoute, StrictRoute = StrictRoute },
                 new DnsSettings { Mode = DnsMode, DohServer = DohServer, DohPath = DohPath, DohSni = DohSni, Detour = DnsDetour }));
+            ApplyState(_settingsService.GetState());
             ShowMessage("Настройки сохранены.");
             SettingsChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -172,5 +173,25 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     {
         TunApps.Clear();
         foreach (var path in paths) TunApps.Add(TunAppListItem.FromPath(path));
+    }
+    private void ApplyState(AppStateModel state)
+    {
+        _state = state;
+        ProxyOverride = state.ProxyOverride; InterfaceName = state.TunInterfaceName;
+        AddressCidr = state.TunAddressCidr; Mtu = TunSettingsPolicy.NormalizeMtu(state.TunMtu);
+        Stack = TunSettingsPolicy.NormalizeStack(state.TunStack); AutoRoute = state.TunAutoRoute; StrictRoute = state.TunStrictRoute;
+        DnsMode = state.DnsMode; DohServer = state.DohServer; DohPath = state.DohPath; DohSni = state.DohSni; DnsDetour = state.DnsDetour;
+        LogLevel = state.SingBoxLogLevel; CloseBehavior = AppCloseBehavior.Normalize(state.CloseBehavior);
+        _dnsPreset = DnsPolicy.StateToPresetIndex(new DnsSettings { Mode = DnsMode, Detour = DnsDetour, DohServer = DohServer, DohSni = DohSni, DohPath = DohPath }) switch
+        {
+            0 => "cloudflare", 1 => "google", 2 => "quad9", 3 => "adguard", _ => null
+        };
+        ReplaceTunApps(_tunAppsController.Normalize(state.TunAppProcessPaths));
+        BuiltinRuleSets.Clear(); UserRuleSets.Clear();
+        var rules = _ruleSetController.Load(state);
+        foreach (var item in rules.Builtin) BuiltinRuleSets.Add(item);
+        foreach (var item in rules.User) UserRuleSets.Add(item);
+        foreach (var property in new[] { nameof(ProxyOverride), nameof(InterfaceName), nameof(AddressCidr), nameof(Mtu), nameof(Stack), nameof(AutoRoute), nameof(StrictRoute), nameof(DnsMode), nameof(DohServer), nameof(DohPath), nameof(DohSni), nameof(DnsDetour), nameof(LogLevel), nameof(CloseBehavior), nameof(DnsPreset) })
+            OnPropertyChanged(property);
     }
 }
