@@ -20,13 +20,13 @@
                         </Border>
                         <TextBlock Text="Nothing VPN" Margin="10,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold" />
                     </StackPanel>
-                    <Button Content="Главная" Command="{Binding ShowHomeCommand}" HorizontalContentAlignment="Left"
-                            Style="{StaticResource SelectedNavigationButtonStyle}" Margin="0,0,0,6" />
-                    <Button Content="Профили" Command="{Binding ShowProfilesCommand}" HorizontalContentAlignment="Left"
-                            Style="{StaticResource GhostButtonStyle}" />
-                    <Button Content="Настройки" Command="{Binding ShowSettingsCommand}" HorizontalContentAlignment="Left"
-                            Style="{StaticResource GhostButtonStyle}" Margin="0,6,0,0" />
-                    <Button Content="Диагностика" Command="{Binding ShowDiagnosticsCommand}" HorizontalContentAlignment="Left" Style="{StaticResource GhostButtonStyle}" Margin="0,6,0,0" />
+                    <Button Content="Главная" Command="{Binding ShowHomeCommand}" Tag="{Binding IsHomeActive}"
+                            Style="{StaticResource NavigationButtonStyle}" Margin="0,0,0,6" />
+                    <Button Content="Профили" Command="{Binding ShowProfilesCommand}" Tag="{Binding IsProfilesActive}"
+                            Style="{StaticResource NavigationButtonStyle}" />
+                    <Button Content="Настройки" Command="{Binding ShowSettingsCommand}" Tag="{Binding IsSettingsActive}"
+                            Style="{StaticResource NavigationButtonStyle}" Margin="0,6,0,0" />
+                    <Button Content="Диагностика" Command="{Binding ShowDiagnosticsCommand}" Tag="{Binding IsDiagnosticsActive}" Style="{StaticResource NavigationButtonStyle}" Margin="0,6,0,0" />
                 </StackPanel>
                 <StackPanel DockPanel.Dock="Bottom" VerticalAlignment="Bottom">
                     <TextBlock Text="Работает в системном трее" Foreground="{StaticResource MutedBrush}"

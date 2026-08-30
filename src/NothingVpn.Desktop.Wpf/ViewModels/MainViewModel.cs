@@ -22,9 +22,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private ModeOption? _selectedMode;
     private ConnectionViewState? _viewState;
     private string? _errorMessage;
-    private bool _showProfiles;
-    private bool _showSettings;
-    private bool _showDiagnostics;
+    private Page _activePage = Page.Home;
 
     public MainViewModel(
         IConnectionScreenController screenController,
@@ -51,10 +49,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _toggleCommand = new AsyncRelayCommand(ToggleConnectionAsync, () => CanStart || CanStop);
         ToggleConnectionCommand = _toggleCommand;
         ExitCommand = new RelayCommand(_requestExit);
-        ShowHomeCommand = new RelayCommand(() => ShowProfiles = false);
-        ShowProfilesCommand = new RelayCommand(() => ShowProfiles = true);
-        ShowSettingsCommand = new RelayCommand(() => { _showProfiles = false; _showDiagnostics=false; _showSettings = true; RaisePage(); });
-        ShowDiagnosticsCommand = new RelayCommand(() => { _showProfiles=false; _showSettings=false; _showDiagnostics=true; RaisePage(); });
+        ShowHomeCommand = new RelayCommand(() => Navigate(Page.Home));
+        ShowProfilesCommand = new RelayCommand(() => Navigate(Page.Profiles));
+        ShowSettingsCommand = new RelayCommand(() => Navigate(Page.Settings));
+        ShowDiagnosticsCommand = new RelayCommand(() => Navigate(Page.Diagnostics));
         ProfileManager.ProfilesChanged += (_, preferredId) => ReloadProfiles(preferredId);
         _connectionController.ConnectionStateChanged += OnConnectionStateChanged;
         Load();
@@ -76,21 +74,28 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public DiagnosticsViewModel Diagnostics { get; }
     public bool ShowProfiles
     {
-        get => _showProfiles;
-        set
-        {
-            if (_showProfiles == value) return;
-            _showProfiles = value;
-            _showSettings = false;
-            _showDiagnostics = false;
-            RaisePage();
-        }
+        get => _activePage == Page.Profiles;
+        set => Navigate(value ? Page.Profiles : Page.Home);
     }
-    public Visibility HomeVisibility => ShowProfiles || _showSettings || _showDiagnostics ? Visibility.Collapsed : Visibility.Visible;
-    public Visibility ProfilesVisibility => ShowProfiles ? Visibility.Visible : Visibility.Collapsed;
-    public Visibility SettingsVisibility => _showSettings ? Visibility.Visible : Visibility.Collapsed;
-    public Visibility DiagnosticsVisibility => _showDiagnostics ? Visibility.Visible : Visibility.Collapsed;
-    private void RaisePage() { OnPropertyChanged(nameof(ShowProfiles)); OnPropertyChanged(nameof(HomeVisibility)); OnPropertyChanged(nameof(ProfilesVisibility)); OnPropertyChanged(nameof(SettingsVisibility)); OnPropertyChanged(nameof(DiagnosticsVisibility)); }
+    public bool IsHomeActive => _activePage == Page.Home;
+    public bool IsProfilesActive => _activePage == Page.Profiles;
+    public bool IsSettingsActive => _activePage == Page.Settings;
+    public bool IsDiagnosticsActive => _activePage == Page.Diagnostics;
+    public Visibility HomeVisibility => IsHomeActive ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility ProfilesVisibility => IsProfilesActive ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility SettingsVisibility => IsSettingsActive ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility DiagnosticsVisibility => IsDiagnosticsActive ? Visibility.Visible : Visibility.Collapsed;
+    private void Navigate(Page page)
+    {
+        if (_activePage == page) return;
+        _activePage = page;
+        RaisePage();
+    }
+    private void RaisePage()
+    {
+        foreach (var name in new[] { nameof(ShowProfiles), nameof(IsHomeActive), nameof(IsProfilesActive), nameof(IsSettingsActive), nameof(IsDiagnosticsActive), nameof(HomeVisibility), nameof(ProfilesVisibility), nameof(SettingsVisibility), nameof(DiagnosticsVisibility) })
+            OnPropertyChanged(name);
+    }
 
     public VpnProfile? SelectedProfile
     {
@@ -243,4 +248,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void OnPropertyChanged([CallerMemberName] string? name = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
+    private enum Page { Home, Profiles, Settings, Diagnostics }
 }
