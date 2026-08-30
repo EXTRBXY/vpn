@@ -159,7 +159,7 @@ function Invoke-Installer {
 
     New-Item -ItemType Directory -Path $script:InstallerOutputDirectory -Force | Out-Null
     $compiler = Resolve-InnoCompiler
-    $effectiveVersion = if ([string]::IsNullOrWhiteSpace($Version)) { '0.5.9' } else { $Version }
+    $effectiveVersion = if ([string]::IsNullOrWhiteSpace($Version)) { '0.6.0' } else { $Version }
     & $compiler `
         "/DMyAppVersion=$effectiveVersion" `
         "/DMyAppURL=$RepositoryUrl" `
