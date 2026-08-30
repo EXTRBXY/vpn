@@ -5,6 +5,7 @@ using NothingVpn.Infrastructure.Diagnostics;
 using NothingVpn.Infrastructure.Store;
 using NothingVpn.Tray.Internal.Diagnostics;
 using NothingVpn.Tray.Internal.Windows;
+using NothingVpn.Infrastructure.Windows;
 using NothingVpn.Tray.Internal.UI;
 using NothingVpn.Presentation;
 

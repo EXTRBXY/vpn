@@ -5,6 +5,7 @@ using NothingVpn.Presentation;
 using NothingVpn.Application.Services;
 using System.Windows.Threading;
 using NothingVpn.Infrastructure.TunApps;
+using NothingVpn.Infrastructure.Windows;
 
 namespace NothingVpn.Desktop.Wpf;
 
@@ -13,6 +14,8 @@ public partial class App : System.Windows.Application
     private const string AppId = "NothingVpn.Desktop.Wpf";
     private SingleInstance? _singleInstance;
     private Forms.NotifyIcon? _trayIcon;
+    private Drawing.Icon? _trayBaseIcon;
+    private Drawing.Icon? _trayStatusIcon;
     private MainWindow? _window;
     private MainViewModel? _viewModel;
     private SubscriptionViewModel? _subscriptionViewModel;
@@ -172,10 +175,14 @@ public partial class App : System.Windows.Application
 
     private void CreateTrayIcon()
     {
-        var icon = Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath!);
+        var extractedIcon = Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath!);
+        _trayBaseIcon = extractedIcon is null
+            ? (Drawing.Icon)Drawing.SystemIcons.Application.Clone()
+            : (Drawing.Icon)extractedIcon.Clone();
+        extractedIcon?.Dispose();
         _trayIcon = new Forms.NotifyIcon
         {
-            Icon = icon ?? Drawing.SystemIcons.Application,
+            Icon = _trayBaseIcon,
             Visible = true,
             Text = "Nothing VPN"
         };
@@ -193,7 +200,13 @@ public partial class App : System.Windows.Application
     private void UpdateTrayState(bool connected)
     {
         if (_trayIcon is not null)
+        {
+            var nextIcon = TrayStatusIconBuilder.Create(_trayBaseIcon ?? Drawing.SystemIcons.Application, connected);
+            _trayIcon.Icon = nextIcon;
+            _trayStatusIcon?.Dispose();
+            _trayStatusIcon = nextIcon;
             _trayIcon.Text = connected ? "Nothing VPN — подключено" : "Nothing VPN — отключено";
+        }
         if(_trayConnect is not null)_trayConnect.Enabled=!connected;
         if(_trayDisconnect is not null)_trayDisconnect.Enabled=connected;
     }
@@ -203,7 +216,7 @@ public partial class App : System.Windows.Application
     private void ExitSmokeTest()
     {
         IsExitRequested = true;
-        if (_trayIcon is not null) { _trayIcon.Visible=false; _trayIcon.ContextMenuStrip?.Dispose(); _trayIcon.Dispose(); }
+        DisposeTrayIcon();
         _singleInstance?.Dispose();
         _window?.Close();
         Shutdown(0);
@@ -252,15 +265,26 @@ public partial class App : System.Windows.Application
         finally
         {
             _subscriptionTimer?.Stop();
-            if (_trayIcon is not null)
-            {
-                _trayIcon.Visible = false;
-                _trayIcon.ContextMenuStrip?.Dispose();
-                _trayIcon.Dispose();
-            }
+            DisposeTrayIcon();
             _singleInstance?.Dispose();
             _window?.Close();
             Shutdown();
         }
+    }
+
+    private void DisposeTrayIcon()
+    {
+        if (_trayIcon is not null)
+        {
+            _trayIcon.Visible = false;
+            _trayIcon.Icon = null;
+            _trayIcon.ContextMenuStrip?.Dispose();
+            _trayIcon.Dispose();
+            _trayIcon = null;
+        }
+        _trayStatusIcon?.Dispose();
+        _trayStatusIcon = null;
+        _trayBaseIcon?.Dispose();
+        _trayBaseIcon = null;
     }
 }
