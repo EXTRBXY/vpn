@@ -11,11 +11,11 @@
         </Grid.RowDefinitions>
         <TextBlock x:Name="Heading" FontSize="24" FontWeight="SemiBold" />
         <StackPanel Grid.Row="2">
-            <TextBlock Text="Название" Foreground="{StaticResource MutedBrush}" FontSize="12" />
+            <TextBlock Text="Название" Foreground="{DynamicResource MutedBrush}" FontSize="12" />
             <TextBox x:Name="NameBox" Margin="0,7,0,0" Padding="11,9" />
         </StackPanel>
         <StackPanel Grid.Row="4">
-            <TextBlock Text="VLESS-ссылка" Foreground="{StaticResource MutedBrush}" FontSize="12" />
+            <TextBlock Text="VLESS-ссылка" Foreground="{DynamicResource MutedBrush}" FontSize="12" />
             <TextBox x:Name="LinkBox" Margin="0,7,0,0" Padding="11,9" TextWrapping="NoWrap" />
             <TextBlock x:Name="ErrorText" Foreground="{DynamicResource DangerBrush}" Margin="0,9,0,0" TextWrapping="Wrap" Visibility="Collapsed" />
         </StackPanel>

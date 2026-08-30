@@ -10,7 +10,7 @@
         <Grid>
             <StackPanel>
                 <TextBlock Text="Профили" FontSize="28" FontWeight="SemiBold" />
-                <TextBlock Text="Сохранённые подключения VLESS" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,0" />
+                <TextBlock Text="Сохранённые подключения VLESS" Foreground="{DynamicResource MutedBrush}" Margin="0,5,0,0" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                 <Button Content="Подписки" Click="OnSubscriptions" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,0" />
@@ -29,12 +29,12 @@
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                 <StackPanel>
                                     <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
-                                    <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,4,0,0">
+                                    <TextBlock Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,4,0,0">
                                         <Run Text="{Binding Host}" /><Run Text=":" /><Run Text="{Binding Port}" />
                                     </TextBlock>
                                 </StackPanel>
                                 <Border Grid.Column="1" Background="{DynamicResource SubtleBrush}" CornerRadius="8" Padding="9,5" VerticalAlignment="Center">
-                                    <TextBlock FontSize="11" Foreground="{StaticResource MutedBrush}">
+                                    <TextBlock FontSize="11" Foreground="{DynamicResource MutedBrush}">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">
                                                 <Setter Property="Text" Value="Подписка" />
@@ -51,7 +51,7 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
-                <Border Grid.Row="1" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="14">
+                <Border Grid.Row="1" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="14">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                         <Button Content="Удалить" Command="{Binding DeleteCommand}" Style="{StaticResource DangerButtonStyle}" Margin="0,0,10,0" />
                         <Button Content="Изменить" Command="{Binding EditCommand}" Style="{StaticResource SecondaryButtonStyle}" />

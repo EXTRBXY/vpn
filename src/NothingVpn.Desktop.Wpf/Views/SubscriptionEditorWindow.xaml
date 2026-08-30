@@ -5,8 +5,8 @@
     <Grid Margin="26">
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="20" /><RowDefinition Height="Auto" /><RowDefinition Height="16" /><RowDefinition Height="Auto" /><RowDefinition Height="14" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
         <TextBlock x:Name="Heading" FontSize="24" FontWeight="SemiBold" />
-        <StackPanel Grid.Row="2"><TextBlock Text="Название" Foreground="{StaticResource MutedBrush}" FontSize="12" /><TextBox x:Name="NameBox" Margin="0,7,0,0" Padding="11,9" /></StackPanel>
-        <StackPanel Grid.Row="4"><TextBlock Text="Адрес подписки" Foreground="{StaticResource MutedBrush}" FontSize="12" /><TextBox x:Name="UrlBox" Margin="0,7,0,0" Padding="11,9" /></StackPanel>
+        <StackPanel Grid.Row="2"><TextBlock Text="Название" Foreground="{DynamicResource MutedBrush}" FontSize="12" /><TextBox x:Name="NameBox" Margin="0,7,0,0" Padding="11,9" /></StackPanel>
+        <StackPanel Grid.Row="4"><TextBlock Text="Адрес подписки" Foreground="{DynamicResource MutedBrush}" FontSize="12" /><TextBox x:Name="UrlBox" Margin="0,7,0,0" Padding="11,9" /></StackPanel>
         <CheckBox x:Name="EnabledBox" Grid.Row="6" Content="Обновлять автоматически" IsChecked="True" />
         <TextBlock x:Name="ErrorText" Grid.Row="7" Foreground="{DynamicResource DangerBrush}" Margin="0,10,0,0" Visibility="Collapsed" TextWrapping="Wrap" />
         <StackPanel Grid.Row="8" Orientation="Horizontal" HorizontalAlignment="Right">

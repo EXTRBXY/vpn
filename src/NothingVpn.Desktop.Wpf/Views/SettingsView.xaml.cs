@@ -2,6 +2,11 @@ namespace NothingVpn.Desktop.Wpf;
 public partial class SettingsView : System.Windows.Controls.UserControl
 {
     public SettingsView() => InitializeComponent();
+    private void OnSettingsMouseWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
+    {
+        SettingsScroll.ScrollToVerticalOffset(SettingsScroll.VerticalOffset - e.Delta);
+        e.Handled = true;
+    }
     private void OnAddTunApp(object sender, System.Windows.RoutedEventArgs e)
     {
         var dialog = new Microsoft.Win32.OpenFileDialog { Filter = "Приложения (*.exe)|*.exe", CheckFileExists = true };

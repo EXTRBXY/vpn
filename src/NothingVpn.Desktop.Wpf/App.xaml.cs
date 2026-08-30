@@ -18,6 +18,8 @@ public partial class App : System.Windows.Application
     private SubscriptionViewModel? _subscriptionViewModel;
     private ISubscriptionService? _subscriptionService;
     private DispatcherTimer? _subscriptionTimer;
+    private DispatcherTimer? _themeTimer;
+    private bool _isDarkTheme;
     private int _subscriptionRefreshRunning;
     private Forms.ToolStripMenuItem? _trayConnect;
     private Forms.ToolStripMenuItem? _trayDisconnect;
@@ -30,6 +32,10 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
         Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
         ThemeManager.ApplySystemTheme();
+        _isDarkTheme = ThemeManager.IsDarkTheme();
+        _themeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _themeTimer.Tick += (_, _) => RefreshSystemTheme();
+        _themeTimer.Start();
         var smokeTest = e.Args.Any(x => string.Equals(x, "--smoke-test", StringComparison.OrdinalIgnoreCase));
         var smokeErrorPath = System.IO.Path.Combine(AppContext.BaseDirectory, "wpf-smoke-error.txt");
         if (smokeTest) { try { System.IO.File.Delete(smokeErrorPath); } catch { } }
@@ -129,6 +135,7 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(System.Windows.ExitEventArgs e)
     {
+        _themeTimer?.Stop();
         Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         base.OnExit(e);
     }
@@ -139,7 +146,15 @@ public partial class App : System.Windows.Application
             or Microsoft.Win32.UserPreferenceCategory.Color
             or Microsoft.Win32.UserPreferenceCategory.VisualStyle
             or Microsoft.Win32.UserPreferenceCategory.Accessibility)) return;
-        Dispatcher.BeginInvoke(ThemeManager.ApplySystemTheme);
+        Dispatcher.BeginInvoke(RefreshSystemTheme);
+    }
+
+    private void RefreshSystemTheme()
+    {
+        var dark = ThemeManager.IsDarkTheme();
+        if (dark == _isDarkTheme) return;
+        _isDarkTheme = dark;
+        ThemeManager.ApplySystemTheme();
     }
 
     private static SingleInstance? WaitForPrimaryTakeover()
