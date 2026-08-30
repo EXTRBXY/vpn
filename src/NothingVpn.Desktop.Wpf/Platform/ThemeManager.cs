@@ -8,8 +8,9 @@ internal static class ThemeManager
     {
         var dark=IsDark(); var r=System.Windows.Application.Current.Resources;
         Set(r,"WindowBrush",dark?"#111318":"#F4F6FA"); Set(r,"SurfaceBrush",dark?"#1B1E24":"#FFFFFF");
-        Set(r,"TextBrush",dark?"#F2F4F7":"#18202A"); Set(r,"MutedBrush",dark?"#AAB2C0":"#667085");
-        Set(r,"BorderBrush",dark?"#303641":"#E3E7EE");
+        Set(r,"TextBrush",dark?"#F2F4F7":"#18202A"); Set(r,"MutedBrush",dark?"#C2C8D2":"#475467");
+        Set(r,"BorderBrush",dark?"#3B424E":"#D7DCE5"); Set(r,"SubtleBrush",dark?"#242932":"#EEF1F5");
+        Set(r,"HoverBrush",dark?"#2B3445":"#E5EBF8"); Set(r,"SelectedBrush",dark?"#263B68":"#DCE7FF");
     }
     private static bool IsDark()
     {

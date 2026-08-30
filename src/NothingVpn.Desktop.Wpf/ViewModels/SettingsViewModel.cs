@@ -32,7 +32,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         DnsMode = state.DnsMode; DohServer = state.DohServer; DohPath = state.DohPath; DohSni = state.DohSni; DnsDetour = state.DnsDetour;
         DebugLogs = state.DebugLogs; LogLevel = state.SingBoxLogLevel;
         SaveCommand = new RelayCommand(Save);
-        foreach (var path in _tunAppsController.Normalize(state.TunAppProcessPaths)) TunApps.Add(path);
+        ReplaceTunApps(_tunAppsController.Normalize(state.TunAppProcessPaths));
         var rules = _ruleSetController.Load(state);
         foreach (var item in rules.Builtin) BuiltinRuleSets.Add(item);
         foreach (var item in rules.User) UserRuleSets.Add(item);
@@ -41,23 +41,24 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     public ICommand SaveCommand { get; }
     public UpdateViewModel Updates { get; }
-    public ObservableCollection<string> TunApps { get; } = [];
+    public ObservableCollection<TunAppListItem> TunApps { get; } = [];
     public ObservableCollection<UserRuleSetModel> BuiltinRuleSets { get; } = [];
     public ObservableCollection<UserRuleSetModel> UserRuleSets { get; } = [];
     public UserRuleSetModel? SelectedBuiltinRuleSet { get; set; }
     public UserRuleSetModel? SelectedUserRuleSet { get; set; }
-    public string? SelectedTunApp { get; set; }
+    public TunAppListItem? SelectedTunApp { get; set; }
     public void AddTunApp(string path)
     {
         _state=_settingsService.GetState();
-        var saved = _tunAppsController.AddAndSave(_state, TunApps, [path]);
-        TunApps.Clear(); foreach (var item in saved) TunApps.Add(item);
+        var saved = _tunAppsController.AddAndSave(_state, TunApps.Select(x => x.Path), [path]);
+        ReplaceTunApps(saved);
         SettingsChanged?.Invoke(this, EventArgs.Empty);
     }
     public async Task<IReadOnlyList<NothingVpn.Infrastructure.TunApps.AppCandidate>> FindTunAppsAsync()
     {
-        var installed=_tunAppSelection.GetInstalledCandidatesAsync(TunApps,CancellationToken.None);
-        var running=_tunAppSelection.GetRunningCandidatesAsync(TunApps,CancellationToken.None);
+        var selectedPaths = TunApps.Select(x => x.Path).ToArray();
+        var installed=_tunAppSelection.GetInstalledCandidatesAsync(selectedPaths,CancellationToken.None);
+        var running=_tunAppSelection.GetRunningCandidatesAsync(selectedPaths,CancellationToken.None);
         await Task.WhenAll(installed,running);
         return installed.Result.Concat(running.Result).GroupBy(x=>x.ExePath,StringComparer.OrdinalIgnoreCase).Select(x=>x.First()).OrderBy(x=>x.DisplayName).ToList();
     }
@@ -65,8 +66,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     {
         if (SelectedTunApp is null) return;
         _state=_settingsService.GetState();
-        var saved = _tunAppsController.RemoveAndSave(_state, TunApps, SelectedTunApp);
-        TunApps.Clear(); foreach (var item in saved) TunApps.Add(item);
+        var saved = _tunAppsController.RemoveAndSave(_state, TunApps.Select(x => x.Path), SelectedTunApp.Path);
+        ReplaceTunApps(saved);
         SettingsChanged?.Invoke(this, EventArgs.Empty);
     }
     public void ImportRuleSet(string sourcePath)
@@ -151,4 +152,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         catch (Exception ex) { Message = ex.Message; }
     }
     private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+    private void ReplaceTunApps(IEnumerable<string> paths)
+    {
+        TunApps.Clear();
+        foreach (var path in paths) TunApps.Add(TunAppListItem.FromPath(path));
+    }
 }
