@@ -89,6 +89,7 @@ internal sealed class MainForm : Form
     private readonly System.Windows.Forms.Timer _updatePeriodicTimer;
     private AppReleaseModel? _updatePendingRelease;
     private bool _updateDownloadBusy;
+    private bool _updateInstallBusy;
 
     private bool _connectionUiUpdateQueued;
     private bool _loadingData;
@@ -1355,8 +1356,9 @@ internal sealed class MainForm : Form
         OfferInstallDownloadedThenExit(path);
     }
 
-    private void OfferInstallDownloadedThenExit(string installerPath)
+    private async void OfferInstallDownloadedThenExit(string installerPath)
     {
+        if (_updateInstallBusy) return;
         var confirm = MessageBox.Show(
             this,
             AppUpdateUserMessages.ConfirmInstallDownloaded(),
@@ -1381,16 +1383,29 @@ internal sealed class MainForm : Form
 
         try
         {
-            DisconnectVpnSync();
-            _installerLaunchService.ScheduleAfterApplicationExits(installerPath);
+            _updateInstallBusy = true;
+            _updateBannerDownloadBtn.Enabled = false;
+            _updateBannerInstallCachedBtn.Enabled = false;
+            await Task.Run(() =>
+            {
+                _installerLaunchService.EnsureLaunchAllowed();
+                _installerLaunchService.ScheduleAfterApplicationExits(installerPath);
+            });
+            _requestExit();
         }
         catch (Exception ex)
         {
             MessageBox.Show(this, ex.Message, AppUpdateUserMessages.DialogTitle, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return;
         }
-
-        _requestExit();
+        finally
+        {
+            _updateInstallBusy = false;
+            if (!IsDisposed)
+            {
+                _updateBannerDownloadBtn.Enabled = true;
+                _updateBannerInstallCachedBtn.Enabled = true;
+            }
+        }
     }
 
     private Task UiInvokeAsync(Action action)
@@ -1631,7 +1646,7 @@ internal sealed class MainForm : Form
 
     private async Task StartDownloadAndRunInstallerAsync(AppReleaseModel release)
     {
-        if (_updateDownloadBusy)
+        if (_updateDownloadBusy || _updateInstallBusy)
             return;
         _updateDownloadBusy = true;
         try

@@ -17,7 +17,29 @@ public sealed class UpdateViewModel:INotifyPropertyChanged
     public string CurrentVersion=>GetVersion(); public string Status{get=>_status;private set{_status=value;Changed();}} public int Progress{get=>_progress;private set{_progress=value;Changed();}}
     public async Task CheckAsync(){Status="Проверка…";_state=_settings.GetState();var result=await _controller.CheckAsync(_state,GetVersion());_release=result.AvailableRelease;Status=!result.Succeeded?"Не удалось проверить обновления.":_release is null?"Установлена актуальная версия.":$"Доступна версия {_release.Semver}.";(InstallCommand as AsyncRelayCommand)?.RaiseCanExecuteChanged();}
     public async Task CheckAtStartupAsync(){_installer.CleanupOldInstallers();_state=_settings.GetState();_controller.RecordInstalledVersion(_state,GetVersion());if(_controller.IsPeriodicCheckDue(_state,DateTimeOffset.UtcNow))await CheckAsync();}
-    private async Task InstallAsync(){if(_release is null)return;Status="Загрузка обновления…";var p=new Progress<InstallerDownloadProgressModel>(x=>Progress=x.TotalBytes is>0?(int)(x.BytesReceived*100/x.TotalBytes.Value):0);var r=await _installer.DownloadAsync(_release,p);if(!r.Success||string.IsNullOrWhiteSpace(r.InstallerPath)){Status=r.Error??"Не удалось загрузить обновление.";return;}_launcher.ScheduleAfterApplicationExits(r.InstallerPath);_exit();}
+    private async Task InstallAsync()
+    {
+        if (_release is null) return;
+        Status = "Загрузка обновления…";
+        try
+        {
+            _launcher.EnsureLaunchAllowed();
+            var p = new Progress<InstallerDownloadProgressModel>(x => Progress = x.TotalBytes is > 0 ? (int)(x.BytesReceived * 100 / x.TotalBytes.Value) : 0);
+            var r = await _installer.DownloadAsync(_release, p);
+            if (!r.Success || string.IsNullOrWhiteSpace(r.InstallerPath))
+            {
+                Status = r.Error ?? "Не удалось загрузить обновление.";
+                return;
+            }
+            Status = "Подготовка установки…";
+            await Task.Run(() => _launcher.ScheduleAfterApplicationExits(r.InstallerPath));
+            _exit();
+        }
+        catch (Exception ex)
+        {
+            Status = ex.Message;
+        }
+    }
     private static string GetVersion(){var v=Assembly.GetEntryAssembly()?.GetName().Version;return v is null?"0.0.0":$"{v.Major}.{v.Minor}.{Math.Max(0,v.Build)}";}
     private void Changed([CallerMemberName]string? n=null)=>PropertyChanged?.Invoke(this,new PropertyChangedEventArgs(n));
 }

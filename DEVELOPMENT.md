@@ -84,6 +84,8 @@ artifacts/installer/NothingVpnSetup.exe.sha256
 
 ## GitHub Actions и релизы
 
+Механизм обновления из повышенного TUN-клиента и отдельные Windows-проверки описаны в [docs/UPDATE-HANDOFF.md](docs/UPDATE-HANDOFF.md).
+
 - `CI` вызывает `build/Build.ps1 -Target Test` на push в `main` и в pull request.
 - `Release` скачивает зафиксированные версии sing-box/Wintun и вызывает тот же build-скрипт.
 - SHA-256 runtime-архивов проверяется до распаковки; GitHub Actions закреплены по commit SHA.

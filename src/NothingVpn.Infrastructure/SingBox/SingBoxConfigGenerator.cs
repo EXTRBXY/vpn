@@ -106,7 +106,7 @@ internal static class SingBoxConfigGenerator
             });
         }
 
-        foreach (var domain in TunBootstrapPolicy.CollectEndpointDomains(profile.Host, profile.Sni))
+        foreach (var domain in TunBootstrapPolicy.CollectEndpointDomains(profile.Host))
         {
             rules.Add(new SingBoxRouteRule
             {
@@ -408,7 +408,7 @@ internal static class SingBoxConfigGenerator
                 throw new ArgumentException("DoH SNI is required.");
 
             var bootstrapDomains = useTun
-                ? TunBootstrapPolicy.CollectEndpointDomains(profile.Host, profile.Sni)
+                ? TunBootstrapPolicy.CollectEndpointDomains(profile.Host)
                 : Array.Empty<string>();
 
             var servers = new List<SingBoxDnsServer>();
@@ -460,7 +460,7 @@ internal static class SingBoxConfigGenerator
 
     private static SingBoxDns BuildTunSystemDns(VlessProfile profile, bool reverseMapping)
     {
-        var bootstrapDomains = TunBootstrapPolicy.CollectEndpointDomains(profile.Host, profile.Sni);
+        var bootstrapDomains = TunBootstrapPolicy.CollectEndpointDomains(profile.Host);
         const string tag = TunBootstrapPolicy.BootstrapLocalDnsTag;
 
         return new SingBoxDns

@@ -9,23 +9,30 @@ namespace NothingVpn.Infrastructure.Ports;
 public sealed class SubscriptionHttpFetcher : ISubscriptionFetcherPort
 {
     private static readonly string UserAgent = BuildUserAgent();
+    internal const int MaximumBodyBytes = 4 * 1024 * 1024;
+    private readonly Func<HttpMessageHandler> _handlerFactory;
+    private readonly TimeSpan _timeout;
+
+    public SubscriptionHttpFetcher() : this(
+        () => new HttpClientHandler { Proxy = null, UseProxy = false }, TimeSpan.FromSeconds(90)) { }
+
+    internal SubscriptionHttpFetcher(Func<HttpMessageHandler> handlerFactory, TimeSpan timeout)
+    {
+        _handlerFactory = handlerFactory;
+        _timeout = timeout;
+    }
 
     public async Task<SubscriptionFetchResult> FetchAsync(string url, CancellationToken cancellationToken = default)
     {
         try
         {
-            using var handler = new HttpClientHandler
-            {
-                Proxy = null,
-                UseProxy = false
-            };
-            using var client = new HttpClient(handler)
-            {
-                Timeout = TimeSpan.FromSeconds(90)
-            };
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deadline.CancelAfter(_timeout);
+            var token = deadline.Token;
+            using var client = new HttpClient(_handlerFactory()) { Timeout = Timeout.InfiniteTimeSpan };
             client.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
 
-            using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+            using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token)
                 .ConfigureAwait(false);
 
             var headers = ExtractHeaders(response.Headers);
@@ -43,7 +50,26 @@ public sealed class SubscriptionHttpFetcher : ISubscriptionFetcherPort
                 };
             }
 
-            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            if (response.Content.Headers.ContentLength > MaximumBodyBytes)
+                throw new InvalidDataException("Размер подписки превышает допустимые 4 МиБ.");
+
+            // Enforce the limit on actual bytes too: Content-Length may be absent or incorrect.
+            await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
+            using var buffer = new MemoryStream();
+            var chunk = new byte[81920];
+            while (true)
+            {
+                var read = await stream.ReadAsync(chunk.AsMemory(), token).ConfigureAwait(false);
+                if (read == 0) break;
+                if (buffer.Length + read > MaximumBodyBytes)
+                    throw new InvalidDataException("Размер подписки превышает допустимые 4 МиБ.");
+                buffer.Write(chunk, 0, read);
+            }
+
+            // Let HttpContent retain the existing charset/BOM decoding behavior.
+            using var boundedContent = new ByteArrayContent(buffer.ToArray());
+            boundedContent.Headers.ContentType = response.Content.Headers.ContentType;
+            var body = await boundedContent.ReadAsStringAsync(token).ConfigureAwait(false);
             return new SubscriptionFetchResult
             {
                 Success = true,
@@ -52,7 +78,11 @@ public sealed class SubscriptionHttpFetcher : ISubscriptionFetcherPort
                 Headers = headers
             };
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return new SubscriptionFetchResult { Success = false, Error = "Загрузка отменена." };
+        }
+        catch (OperationCanceledException)
         {
             return new SubscriptionFetchResult { Success = false, Error = "Timeout." };
         }

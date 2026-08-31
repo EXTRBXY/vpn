@@ -6,11 +6,10 @@ public static class TunBootstrapPolicy
 {
     public const string BootstrapLocalDnsTag = "bootstrap-local";
 
-    public static IReadOnlyList<string> CollectEndpointDomains(string? host, string? sni)
+    public static IReadOnlyList<string> CollectEndpointDomains(string? host)
     {
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         AddDomain(set, host);
-        AddDomain(set, sni);
         return set.ToList();
     }
 

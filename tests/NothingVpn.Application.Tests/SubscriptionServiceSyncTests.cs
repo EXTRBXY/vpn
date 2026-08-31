@@ -2,11 +2,45 @@ using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
 using NothingVpn.Application.Services;
 using NothingVpn.Domain.Models;
+using NothingVpn.Infrastructure.Ports;
 
 namespace NothingVpn.Application.Tests;
 
 public sealed class SubscriptionServiceSyncTests
 {
+    [Fact]
+    public async Task RefreshAll_OversizedResponseKeepsOldProfilesAndContinuesWithNextSubscription()
+    {
+        var profiles = new InMemoryProfileStorePort();
+        profiles.Upsert(new VpnProfile { Id = "saved", SubscriptionId = "bad", Host = "saved.example" });
+        var subscriptions = new InMemorySubscriptionStorePort();
+        subscriptions.Upsert(new SubscriptionModel { Id = "bad", Url = "https://bad.example/list", Enabled = true });
+        subscriptions.Upsert(new SubscriptionModel { Id = "good", Url = "https://good.example/list", Enabled = true });
+        var settings = new InMemorySettingsService();
+        settings.GetState().ActiveProfileId = "saved";
+        var fetcher = new SubscriptionHttpFetcher(() => new SubscriptionResponseHandler(), TimeSpan.FromSeconds(5));
+        var service = new SubscriptionService(subscriptions, fetcher, profiles, new FakeProfileParserPort(), settings);
+
+        var results = await service.RefreshAllDueAsync();
+
+        Assert.False(results.Single(r => r.SubscriptionId == "bad").Success);
+        Assert.True(results.Single(r => r.SubscriptionId == "good").Success);
+        Assert.Contains(profiles.Load(), p => p.Id == "saved" && p.SubscriptionId == "bad");
+        Assert.Contains(profiles.Load(), p => p.SubscriptionId == "good" && p.Host == "new.example");
+        Assert.Equal("saved", settings.GetState().ActiveProfileId);
+    }
+
+    private sealed class SubscriptionResponseHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            HttpContent content = request.RequestUri!.Host == "bad.example"
+                ? new ByteArrayContent(new byte[SubscriptionHttpFetcher.MaximumBodyBytes + 1])
+                : new StringContent("vless://11111111-1111-1111-1111-111111111111@new.example:443?security=tls&type=tcp#Node");
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = content });
+        }
+    }
+
     [Fact]
     public async Task Refresh_ReplacesStaleProfiles_AndKeepsManual()
     {

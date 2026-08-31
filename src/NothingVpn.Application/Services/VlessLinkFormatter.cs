@@ -76,7 +76,7 @@ public static class VlessLinkFormatter
             if (!first)
                 query.Append('&');
             first = false;
-            query.Append(key);
+            query.Append(Escape(key));
             query.Append('=');
             query.Append(Escape(value));
         }

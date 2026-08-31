@@ -219,18 +219,21 @@ public sealed class DomainPoliciesTests
     }
 
     [Fact]
-    public void CollectEndpointDomains_IncludesHostAndDistinctSni()
+    public void CollectEndpointDomains_IncludesOnlyEndpointHost()
     {
-        var domains = TunBootstrapPolicy.CollectEndpointDomains("node.example", "cdn.example");
-        Assert.Equal(2, domains.Count);
+        var domains = TunBootstrapPolicy.CollectEndpointDomains("node.example");
+        Assert.Single(domains);
         Assert.Contains("node.example", domains, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("cdn.example", domains, StringComparer.OrdinalIgnoreCase);
     }
 
-    [Fact]
-    public void CollectEndpointDomains_DeduplicatesMatchingHostAndSni()
+    [Theory]
+    [InlineData("203.0.113.7")]
+    [InlineData("2001:db8::7")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void CollectEndpointDomains_IgnoresIpAndEmptyHosts(string? host)
     {
-        Assert.Single(TunBootstrapPolicy.CollectEndpointDomains("node.example", "node.example"));
+        Assert.Empty(TunBootstrapPolicy.CollectEndpointDomains(host));
     }
 
     [Theory]
