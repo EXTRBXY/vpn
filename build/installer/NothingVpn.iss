@@ -13,7 +13,7 @@
   #define MyAppURL "https://github.com/"
 #endif
 #ifndef MyAppVersion
-  #define MyAppVersion "0.6.0"
+  #define MyAppVersion "0.6.1"
 #endif
 #ifndef PublishDir
   #define PublishDir "..\..\artifacts\publish\win-x64"

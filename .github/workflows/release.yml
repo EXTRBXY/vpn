@@ -1,4 +1,4 @@
-# Сборка NothingVpnSetup.exe и публикация в GitHub Releases при push тега v* (например v0.1.0).
+# Сборка NothingVpnSetup.exe и публикация в GitHub Releases при push тега v* (например v0.6.1).
 name: Release
 
 on:
@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Версия установщика без префикса v (например 0.1.0)'
+        description: 'Версия установщика без префикса v (например 0.6.1)'
         required: true
-        default: '0.1.0'
+        default: '0.6.1'
 
 permissions:
   contents: write
