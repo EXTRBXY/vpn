@@ -448,6 +448,57 @@ public sealed class SingBoxConfigGeneratorTests
     }
 
     [Fact]
+    public void Build_FullTun_UserRuleSetsTakePriorityOverIpv6AndQuicFallbacks()
+    {
+        var baseDir = Path.Combine(Path.GetTempPath(), "NothingVpnTests", Guid.NewGuid().ToString("N"));
+        var ruleSetsDir = Path.Combine(baseDir, "rulesets");
+        Directory.CreateDirectory(ruleSetsDir);
+        File.WriteAllBytes(Path.Combine(ruleSetsDir, "marketplaces.srs"), new byte[] { 1 });
+
+        var paths = new AppPaths(
+            BaseDir: baseDir,
+            ConfigsDir: Path.Combine(baseDir, "configs"),
+            RuleSetsDir: ruleSetsDir,
+            LogsDir: Path.Combine(baseDir, "logs"),
+            ProfilesJsonPath: Path.Combine(baseDir, "profiles.json"),
+            SubscriptionsJsonPath: Path.Combine(baseDir, "subscriptions.json"),
+            StateJsonPath: Path.Combine(baseDir, "state.json"));
+        var profile = new VlessProfile
+        {
+            Id = "tunrulespriority",
+            Host = "node.example",
+            Port = 443,
+            Uuid = Guid.NewGuid().ToString(),
+            Security = "tls",
+            Sni = "node.example"
+        };
+        var state = new AppState
+        {
+            Mode = "tun",
+            DnsMode = "system",
+            UserRuleSets =
+            [
+                new UserRuleSet
+                {
+                    Tag = "marketplaces",
+                    FileName = "marketplaces.srs",
+                    Enabled = true,
+                    Action = "direct"
+                }
+            ]
+        };
+
+        var rules = SingBoxConfigGenerator.Build(paths, profile, state).Route.Rules!;
+        var ruleSetIndex = rules.FindIndex(r => r.RuleSet?.Contains("marketplaces") == true);
+        var quicIndex = rules.FindIndex(r => string.Equals(r.Protocol, "quic", StringComparison.OrdinalIgnoreCase));
+        var ipv6Index = rules.FindIndex(r => r.IpVersion == 6);
+
+        Assert.True(ruleSetIndex >= 0);
+        Assert.True(quicIndex > ruleSetIndex);
+        Assert.True(ipv6Index > ruleSetIndex);
+    }
+
+    [Fact]
     public void Build_ProxyMode_MixedInboundAndNoDnsBlock()
     {
         var paths = AppPaths.CreateDefault();

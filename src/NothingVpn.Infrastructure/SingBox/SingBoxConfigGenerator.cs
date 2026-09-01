@@ -126,6 +126,14 @@ internal static class SingBoxConfigGenerator
             });
         }
 
+        return rules;
+    }
+
+    private static void AddTunFallbackRules(List<SingBoxRouteRule> rules, string mode)
+    {
+        // Rule evaluation is first-match-wins. These broad protocol/address rules must
+        // stay after domain rule-sets, otherwise a direct/block .srs entry is bypassed
+        // whenever the same site happens to use HTTP/3 or resolves to IPv6.
         if (TunRoutingPolicy.RouteQuicThroughProxy(mode))
         {
             rules.Add(new SingBoxRouteRule
@@ -145,8 +153,6 @@ internal static class SingBoxConfigGenerator
                 Outbound = "proxy"
             });
         }
-
-        return rules;
     }
 
     private static SingBoxRoute BuildRoute(
@@ -185,6 +191,7 @@ internal static class SingBoxConfigGenerator
         var rules = BuildTunHeadRules(profile, mode);
         rules.Add(new SingBoxRouteRule { Protocol = "stun", Action = "reject" });
         rules.AddRange(userRules);
+        AddTunFallbackRules(rules, mode);
 
         if (string.Equals(mode, ConnectionPolicy.TunAppsMode, StringComparison.Ordinal))
         {
