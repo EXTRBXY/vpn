@@ -9,11 +9,11 @@ using NothingVpn.Presentation;
 namespace NothingVpn.Desktop.Wpf;
 public sealed class UpdateViewModel:INotifyPropertyChanged
 {
-    private readonly IAppUpdateController _controller; private readonly IInstallerUpdateService _installer; private readonly IInstallerLaunchService _launcher; private AppStateModel _state; private readonly ISettingsService _settings; private readonly Action _exit;
+    private readonly IAppUpdateController _controller; private readonly IInstallerUpdateService _installer; private readonly IInstallerLaunchService _launcher; private AppStateModel _state; private readonly ISettingsService _settings; private readonly Action _exit; private readonly Action<AppReleaseModel>? _notifyAvailable;
     private AppReleaseModel? _release; private string _status=""; private int _progress;
     private int _checkRunning;
-    public UpdateViewModel(IAppUpdateController controller,IInstallerUpdateService installer,IInstallerLaunchService launcher,ISettingsService settings,AppStateModel state,Action exit)
-    { _controller=controller;_installer=installer;_launcher=launcher;_settings=settings;_state=state;_exit=exit;CheckCommand=new AsyncRelayCommand(CheckAsync);InstallCommand=new AsyncRelayCommand(InstallAsync,()=>_release is not null); }
+    public UpdateViewModel(IAppUpdateController controller,IInstallerUpdateService installer,IInstallerLaunchService launcher,ISettingsService settings,AppStateModel state,Action exit,Action<AppReleaseModel>? notifyAvailable=null)
+    { _controller=controller;_installer=installer;_launcher=launcher;_settings=settings;_state=state;_exit=exit;_notifyAvailable=notifyAvailable;CheckCommand=new AsyncRelayCommand(CheckAsync);InstallCommand=new AsyncRelayCommand(InstallAsync,()=>_release is not null); }
     public event PropertyChangedEventHandler? PropertyChanged; public ICommand CheckCommand{get;} public ICommand InstallCommand{get;}
     public string CurrentVersion=>GetVersion(); public string Status{get=>_status;private set{_status=value;Changed();}} public int Progress{get=>_progress;private set{_progress=value;Changed();}}
     public async Task CheckAsync()
@@ -22,6 +22,11 @@ public sealed class UpdateViewModel:INotifyPropertyChanged
         try
         {
             Status="Проверка…";_state=_settings.GetState();var result=await _controller.CheckAsync(_state,GetVersion());_release=result.AvailableRelease;Status=!result.Succeeded?"Не удалось проверить обновления.":_release is null?"Установлена актуальная версия.":$"Доступна версия {_release.Semver}.";(InstallCommand as AsyncRelayCommand)?.RaiseCanExecuteChanged();
+            if (_release is not null && _notifyAvailable is not null && _controller.ShouldOffer(_state, _release))
+            {
+                _notifyAvailable(_release);
+                _controller.DismissOffer(_state, _release);
+            }
         }
         finally { Interlocked.Exchange(ref _checkRunning, 0); }
     }

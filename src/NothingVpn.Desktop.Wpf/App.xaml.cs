@@ -85,7 +85,8 @@ public partial class App : System.Windows.Application
             var profileViewModel = new ProfileViewModel(profileController, subscriptionViewModel);
             var updateViewModel = new UpdateViewModel(controller: new AppUpdateController(services.AppUpdateService, services.SettingsService),
                 installer: services.InstallerUpdateService, launcher: services.InstallerLaunchService,
-                settings: services.SettingsService, state: services.SettingsService.GetState(), exit: RequestExit);
+                settings: services.SettingsService, state: services.SettingsService.GetState(), exit: RequestExit,
+                notifyAvailable: ShowUpdateNotification);
             var settingsViewModel = new SettingsViewModel(
                 new ConnectionSettingsController(services.SettingsService),
                 new TunAppsController(services.PathPolicy, services.SettingsService),
@@ -200,6 +201,16 @@ public partial class App : System.Windows.Application
         menu.Items.Add("Выход", null, (_, _) => Dispatcher.Invoke(RequestExit));
         _trayIcon.ContextMenuStrip = menu;
         _trayIcon.DoubleClick += (_, _) => Dispatcher.Invoke(ShowMainWindow);
+        _trayIcon.BalloonTipClicked += (_, _) => Dispatcher.Invoke(ShowMainWindow);
+    }
+
+    private void ShowUpdateNotification(NothingVpn.Application.Models.AppReleaseModel release)
+    {
+        if (_trayIcon is null) return;
+        _trayIcon.BalloonTipTitle = "Доступно обновление Nothing VPN";
+        _trayIcon.BalloonTipText = $"Версия {release.Semver} готова к загрузке. Нажмите, чтобы открыть приложение.";
+        _trayIcon.BalloonTipIcon = Forms.ToolTipIcon.Info;
+        _trayIcon.ShowBalloonTip(8000);
     }
 
     private void UpdateTrayState(bool connected)
