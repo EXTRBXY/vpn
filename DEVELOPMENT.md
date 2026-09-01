@@ -69,14 +69,14 @@ artifacts/installer/NothingVpnSetup.exe.sha256
 Сначала соберите и проверьте опубликованную сборку приложения, затем установите Inno Setup 6 и выполните:
 
 ```powershell
-.\build\Build.ps1 -Target Installer -Version 0.6.2
+.\build\Build.ps1 -Target Installer -Version 0.6.4
 ```
 
 При нестандартном расположении компилятора:
 
 ```powershell
 .\build\Build.ps1 -Target Installer `
-  -Version 0.6.2 `
+  -Version 0.6.4 `
   -InnoCompilerPath C:\Tools\InnoSetup\ISCC.exe
 ```
 
@@ -96,6 +96,6 @@ artifacts/installer/NothingVpnSetup.exe.sha256
 Версия тега передаётся одновременно в `dotnet publish` и Inno Setup:
 
 ```powershell
-git tag v0.6.2
-git push origin v0.6.2
+git tag v0.6.4
+git push origin v0.6.4
 ```
