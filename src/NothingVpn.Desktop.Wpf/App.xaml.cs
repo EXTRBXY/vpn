@@ -21,6 +21,7 @@ public partial class App : System.Windows.Application
     private SubscriptionViewModel? _subscriptionViewModel;
     private ISubscriptionService? _subscriptionService;
     private DispatcherTimer? _subscriptionTimer;
+    private DispatcherTimer? _updateTimer;
     private DispatcherTimer? _themeTimer;
     private bool _isDarkTheme;
     private int _subscriptionRefreshRunning;
@@ -82,6 +83,9 @@ public partial class App : System.Windows.Application
             var subscriptionViewModel = new SubscriptionViewModel(subscriptionController);
             _subscriptionViewModel = subscriptionViewModel;
             var profileViewModel = new ProfileViewModel(profileController, subscriptionViewModel);
+            var updateViewModel = new UpdateViewModel(controller: new AppUpdateController(services.AppUpdateService, services.SettingsService),
+                installer: services.InstallerUpdateService, launcher: services.InstallerLaunchService,
+                settings: services.SettingsService, state: services.SettingsService.GetState(), exit: RequestExit);
             var settingsViewModel = new SettingsViewModel(
                 new ConnectionSettingsController(services.SettingsService),
                 new TunAppsController(services.PathPolicy, services.SettingsService),
@@ -89,10 +93,7 @@ public partial class App : System.Windows.Application
                 services.RuleSetFileService,
                 new TunAppsSelectionService(new CompositeInstalledAppsProvider(new RegistryUninstallAppsProvider(),new AppPathsRegistryProvider(),new StartMenuShortcutAppsProvider()),new RunningProcessesProvider()),
                 services.SettingsService,
-                services.SettingsService.GetState(),
-                new UpdateViewModel(controller: new AppUpdateController(services.AppUpdateService, services.SettingsService),
-                    installer: services.InstallerUpdateService, launcher: services.InstallerLaunchService,
-                    settings: services.SettingsService, state: services.SettingsService.GetState(), exit: RequestExit));
+                services.SettingsService.GetState(), updateViewModel);
 
             _viewModel = new MainViewModel(screenController, connectionController, profileViewModel, settingsViewModel,
                 new ConnectionDiagnosticController(services.DiagnosticsService), services.SharedLogStore, RequestExit);
@@ -109,6 +110,9 @@ public partial class App : System.Windows.Application
             }
             ShowStorageIssues(services.StorageHealthService);
             _ = settingsViewModel.Updates.CheckAtStartupAsync();
+            _updateTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(30) };
+            _updateTimer.Tick += async (_, _) => await updateViewModel.CheckIfDueAsync();
+            _updateTimer.Start();
             _ = _viewModel.ApplyStartupAsync(StartupOptions.Parse(e.Args));
 
             _subscriptionTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(15) };
@@ -138,6 +142,7 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(System.Windows.ExitEventArgs e)
     {
+        _updateTimer?.Stop();
         _themeTimer?.Stop();
         Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         base.OnExit(e);
@@ -264,6 +269,7 @@ public partial class App : System.Windows.Application
         catch { }
         finally
         {
+            _updateTimer?.Stop();
             _subscriptionTimer?.Stop();
             DisposeTrayIcon();
             _singleInstance?.Dispose();
