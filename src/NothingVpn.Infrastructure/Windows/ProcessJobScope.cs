@@ -20,7 +20,7 @@ internal sealed class ProcessJobScope : IDisposable
 
         try
         {
-            var jobHandle = CreateJobObjectW(null, null);
+            var jobHandle = CreateJobObjectW(IntPtr.Zero, null);
             if (jobHandle.IsInvalid)
                 return null;
 
@@ -105,7 +105,7 @@ internal sealed class ProcessJobScope : IDisposable
     }
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern SafeFileHandle CreateJobObjectW(IntPtr? lpJobAttributes, string? lpName);
+    private static extern SafeFileHandle CreateJobObjectW(IntPtr lpJobAttributes, string? lpName);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
