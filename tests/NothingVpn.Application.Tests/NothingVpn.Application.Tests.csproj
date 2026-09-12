@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
     <RollForward>LatestMajor</RollForward>
 
     <IsPackable>false</IsPackable>
@@ -20,6 +21,8 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Using Include="System.IO" />
+    <Using Include="System.Net.Http" />
   </ItemGroup>
 
   <ItemGroup>
@@ -27,6 +30,7 @@
     <ProjectReference Include="..\..\src\NothingVpn.Domain\NothingVpn.Domain.csproj" />
     <ProjectReference Include="..\..\src\NothingVpn.Infrastructure\NothingVpn.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\NothingVpn.Presentation\NothingVpn.Presentation.csproj" />
+    <ProjectReference Include="..\..\src\NothingVpn.Desktop.Wpf\NothingVpn.Desktop.Wpf.csproj" />
   </ItemGroup>
 
 </Project>

@@ -66,6 +66,22 @@ public sealed class ConnectionScreenControllerTests
     }
 
     [Fact]
+    public void SelectMode_DoesNotOverwriteSettingsSavedSinceTheScreenLoaded()
+    {
+        var settings = new FakeSettingsService
+        {
+            State = new AppStateModel { TunAppProcessPaths = [@"C:\Apps\saved.exe"], CloseBehavior = "exit", ActiveProfileId = "p2" }
+        };
+        var stale = new AppStateModel { ActiveProfileId = "p1" };
+        var controller = new ConnectionScreenController(new FakeProfileService("p1", "p2"), settings);
+        controller.SelectMode(stale, "tun_apps");
+        Assert.Equal("tun_apps", settings.State.Mode);
+        Assert.Equal(new[] { @"C:\Apps\saved.exe" }, settings.State.TunAppProcessPaths);
+        Assert.Equal("exit", settings.State.CloseBehavior);
+        Assert.Equal("p2", settings.State.ActiveProfileId);
+    }
+
+    [Fact]
     public void SelectProfile_UpdatesStateAndSaves()
     {
         var settings = new FakeSettingsService { State = new AppStateModel() };

@@ -81,9 +81,16 @@ public sealed class ProfileViewModel : INotifyPropertyChanged
     public void DeleteSelected()
     {
         if (SelectedProfile is null) return;
-        var snapshot = _controller.Delete(SelectedProfile.Id);
+        Delete(SelectedProfile.Id);
+    }
+
+    public void Delete(string profileId)
+    {
+        var snapshot = _controller.Delete(profileId);
         Reload(snapshot.ActiveProfileId);
-        ProfilesChanged?.Invoke(this, snapshot.ChangedActiveProfileId);
+        // Let the home screen resolve the current persisted selection; the profile
+        // manager's initial selection may predate a user change on the home screen.
+        ProfilesChanged?.Invoke(this, null);
     }
 
     public bool TryParse(string link, out VpnProfile profile) => _controller.TryParse(link, out profile);

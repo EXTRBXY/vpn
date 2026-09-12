@@ -24,6 +24,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private ConnectionViewState? _viewState;
     private string? _errorMessage;
     private Page _activePage = Page.Home;
+    private bool _loadingProfiles;
+    private bool _connectionBusy;
+    private TaskCompletionSource? _connectionIdle;
 
     public MainViewModel(
         IConnectionScreenController screenController,
@@ -106,10 +109,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => _selectedProfile;
         set
         {
+            if (_loadingProfiles || _connectionBusy || _connectionController.IsRunning) return;
             if (ReferenceEquals(_selectedProfile, value)) return;
-            _selectedProfile = value;
+            try { _screenController.SelectProfile(_state, value?.Id); _selectedProfile = value; }
+            catch (Exception ex) { ErrorMessage = ex.Message; }
             OnPropertyChanged();
-            _screenController.SelectProfile(_state, value?.Id);
             RefreshViewState();
         }
     }
@@ -119,26 +123,29 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => _selectedMode;
         set
         {
+            if (_connectionBusy || _connectionController.IsRunning || value is null) return;
             if (Equals(_selectedMode, value)) return;
-            _selectedMode = value;
-            OnPropertyChanged();
-            if (value is not null)
+            try
             {
-                _state.Mode = value.Id;
-                _screenController.Save(_state);
+                _screenController.SelectMode(_state, value.Id);
+                _selectedMode = value;
+                _state = _screenController.Load().State;
+                Settings.Reload();
             }
+            catch (Exception ex) { ErrorMessage = ex.Message; }
+            OnPropertyChanged();
             RefreshViewState();
         }
     }
 
-    public bool CanEdit => _viewState?.CanEditConnection ?? false;
-    public bool CanStart => _viewState?.CanStart ?? false;
-    public bool CanStop => _viewState?.CanStop ?? false;
+    public bool CanEdit => !_connectionBusy && (_viewState?.CanEditConnection ?? false);
+    public bool CanStart => !_connectionBusy && (_viewState?.CanStart ?? false);
+    public bool CanStop => !_connectionBusy && (_viewState?.CanStop ?? false);
     public string StatusText => _viewState?.IsRunning == true ? "VPN подключён" : "VPN отключён";
     public string StatusDetail => _viewState?.IsRunning == true
         ? $"{_viewState.ProfileText} · {_viewState.ModeText}"
         : "Ваш трафик сейчас не проходит через VPN";
-    public string ConnectionActionText => _viewState?.IsRunning == true ? "Отключить" : "Подключить";
+    public string ConnectionActionText => _connectionBusy ? "Подождите…" : _viewState?.IsRunning == true ? "Отключить" : "Подключить";
     public MediaBrush StatusBrush => _viewState?.IsRunning == true
         ? new SolidColorBrush(MediaColor.FromRgb(30, 158, 104))
         : new SolidColorBrush(MediaColor.FromRgb(152, 162, 179));
@@ -154,6 +161,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public async Task StopForExitAsync()
     {
+        if (_connectionIdle is { } pending) await pending.Task;
         if (_connectionController.IsRunning)
             await _connectionController.StopAsync();
     }
@@ -170,10 +178,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         var snapshot = _screenController.Load();
         _state = snapshot.State;
-        Profiles.Clear();
-        foreach (var profile in snapshot.Profiles)
-            Profiles.Add(profile);
-        _selectedProfile = snapshot.SelectedProfile;
+        ReplaceProfiles(snapshot);
         _selectedMode = Modes.FirstOrDefault(x => string.Equals(x.Id, _state.Mode, StringComparison.OrdinalIgnoreCase)) ?? Modes[0];
         OnPropertyChanged(nameof(SelectedProfile));
         OnPropertyChanged(nameof(SelectedMode));
@@ -190,15 +195,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
             snapshot = _screenController.Load();
             _state = snapshot.State;
         }
-        Profiles.Clear();
-        foreach (var profile in snapshot.Profiles) Profiles.Add(profile);
-        _selectedProfile = snapshot.SelectedProfile;
+        ReplaceProfiles(snapshot);
         OnPropertyChanged(nameof(SelectedProfile));
         RefreshViewState();
     }
 
     private async Task ToggleConnectionAsync()
     {
+        if (_connectionBusy) return;
+        _connectionBusy = true;
+        var idle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _connectionIdle = idle;
+        RefreshViewState();
         ErrorMessage = null;
         try
         {
@@ -221,8 +229,24 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         finally
         {
+            _connectionBusy = false;
+            _connectionIdle = null;
+            idle.TrySetResult();
             RefreshViewState();
         }
+    }
+
+    private void ReplaceProfiles(ConnectionScreenSnapshot snapshot)
+    {
+        // WPF clears SelectedItem synchronously during Clear(). This is not a user edit.
+        _loadingProfiles = true;
+        try
+        {
+            Profiles.Clear();
+            foreach (var profile in snapshot.Profiles) Profiles.Add(profile);
+            _selectedProfile = snapshot.SelectedProfile;
+        }
+        finally { _loadingProfiles = false; }
     }
 
     private void OnConnectionStateChanged(object? sender, bool connected)

@@ -16,7 +16,7 @@ internal static class TunAppPathPolicy
         return false;
     }
 
-    public static bool TryNormalizeExePath(string? rawPath, out string normalizedPath)
+    public static bool TryNormalizeExePath(string? rawPath, out string normalizedPath, bool requireExistingFile = true)
     {
         normalizedPath = string.Empty;
 
@@ -24,7 +24,7 @@ internal static class TunAppPathPolicy
         if (path.Length == 0)
             return false;
 
-        if (!Path.IsPathRooted(path))
+        if (!Path.IsPathFullyQualified(path))
             return false;
 
         if (!path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
@@ -33,7 +33,7 @@ internal static class TunAppPathPolicy
         try
         {
             var fullPath = Path.GetFullPath(path);
-            if (!File.Exists(fullPath))
+            if (requireExistingFile && !File.Exists(fullPath))
                 return false;
 
             normalizedPath = fullPath;
@@ -45,14 +45,14 @@ internal static class TunAppPathPolicy
         }
     }
 
-    public static List<string> NormalizeDistinctPaths(IEnumerable<string>? paths)
+    public static List<string> NormalizeDistinctPaths(IEnumerable<string>? paths, bool requireExistingFile = true)
     {
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var result = new List<string>();
 
         foreach (var raw in paths ?? Array.Empty<string>())
         {
-            if (!TryNormalizeExePath(raw, out var normalized))
+            if (!TryNormalizeExePath(raw, out var normalized, requireExistingFile))
                 continue;
             if (!set.Add(normalized))
                 continue;

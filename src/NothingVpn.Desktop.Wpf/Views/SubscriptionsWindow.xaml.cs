@@ -25,13 +25,16 @@ public partial class SubscriptionsWindow : Window
     {
         if (ViewModel.Selected is not { } item) return;
         if (System.Windows.MessageBox.Show(this, $"Удалить подписку «{item.Name}» и полученные из неё профили?", "Удаление подписки", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes)
-            ViewModel.DeleteSelected();
+        {
+            try { ViewModel.Delete(item.Model.Id); }
+            catch (Exception ex) { ShowResult(ex.Message); }
+        }
     }
     private async void OnRefreshSelected(object sender, RoutedEventArgs e) => ShowResult(await ViewModel.RefreshSelectedAsync());
     private async void OnRefreshAll(object sender, RoutedEventArgs e) => ShowResult(await ViewModel.RefreshAllAsync());
     private void ShowResult(string message)
     {
-        if (!string.IsNullOrWhiteSpace(message))
+        if (IsVisible && !string.IsNullOrWhiteSpace(message))
             System.Windows.MessageBox.Show(this, message, "Подписки", MessageBoxButton.OK, message.StartsWith("Готово", StringComparison.Ordinal) ? MessageBoxImage.Information : MessageBoxImage.Warning);
     }
 }

@@ -17,6 +17,7 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
     }
     public event PropertyChangedEventHandler? PropertyChanged; public ICommand RunCommand{get;} public ICommand ClearCommand{get;}
     public string Result { get=>_result; private set{_result=value;OnChanged();} } public string LogText { get=>_logText;private set{_logText=value;OnChanged();} }
-    private async Task RunAsync(){var r=await _controller.RunAsync(_mode(),_running());Result=r.Message;}
-    private void Refresh()=>LogText=_logs.SnapshotAll(); private void OnChanged([CallerMemberName]string? n=null)=>PropertyChanged?.Invoke(this,new PropertyChangedEventArgs(n));
+    public void ShowError(string message) => Result = message;
+    private async Task RunAsync(){try{Result="Проверка связности…";var r=await _controller.RunAsync(_mode(),_running());Result=r.Message;}catch(Exception ex){Result=ex.Message;}}
+    private void Refresh(){var text=_logs.SnapshotAll();if(text!=LogText)LogText=text;} private void OnChanged([CallerMemberName]string? n=null)=>PropertyChanged?.Invoke(this,new PropertyChangedEventArgs(n));
 }

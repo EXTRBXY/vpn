@@ -58,7 +58,12 @@ public sealed class SubscriptionViewModel : INotifyPropertyChanged
     public void DeleteSelected()
     {
         if (Selected is null) return;
-        _controller.Delete(Selected.Model.Id);
+        Delete(Selected.Model.Id);
+    }
+
+    public void Delete(string subscriptionId)
+    {
+        _controller.Delete(subscriptionId);
         Reload();
         ProfilesChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -73,10 +78,12 @@ public sealed class SubscriptionViewModel : INotifyPropertyChanged
 
     private async Task<string> RefreshAsync(IEnumerable<string> ids)
     {
+        if (Busy) return string.Empty;
+        var selectedIds = ids.ToArray();
         Busy = true;
         try
         {
-            var results = await _controller.RefreshAllAsync(ids);
+            var results = await _controller.RefreshAllAsync(selectedIds);
             Reload();
             ProfilesChanged?.Invoke(this, EventArgs.Empty);
             var failed = results.Where(x => !x.Success).ToList();
@@ -87,6 +94,7 @@ public sealed class SubscriptionViewModel : INotifyPropertyChanged
             var removed = results.Sum(x => x.Removed);
             return $"Готово. Добавлено: {added}, обновлено: {updated}, удалено: {removed}.";
         }
+        catch (Exception ex) { return "Не удалось обновить подписки: " + ex.Message; }
         finally { Busy = false; }
     }
 

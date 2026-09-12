@@ -73,7 +73,7 @@ public sealed class RuleSetFileService : IRuleSetFileService
         var result = await RuleSetRemoteDownloader.DownloadAsync(
             definition.DownloadUrl,
             destination,
-            useConditionalRequest ? ruleSet.RemoteEtag : null,
+            useConditionalRequest && File.Exists(destination) ? ruleSet.RemoteEtag : null,
             cancellationToken).ConfigureAwait(false);
         return new RuleSetDownloadResult(result.Ok, result.NotModified, result.NewEtag, result.Error);
     }

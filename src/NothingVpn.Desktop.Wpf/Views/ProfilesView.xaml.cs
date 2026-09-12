@@ -68,6 +68,12 @@ public partial class ProfilesView : System.Windows.Controls.UserControl
             MessageBoxImage.Warning,
             MessageBoxResult.No);
         if (result == MessageBoxResult.Yes)
-            ViewModel.DeleteSelected();
+        {
+            try { ViewModel.Delete(profile.Id); }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show(Window.GetWindow(this), ex.Message, "Удаление профиля", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
     }
 }

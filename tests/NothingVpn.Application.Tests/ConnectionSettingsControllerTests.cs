@@ -14,6 +14,7 @@ public sealed class ConnectionSettingsControllerTests
         var state = new AppStateModel { Mode = "tun" };
         var controller = new ConnectionSettingsController(settings);
 
+        settings.State = state;
         controller.Save(state, CreateDraft());
 
         Assert.Equal("localhost;127.*", state.ProxyOverride);
@@ -33,6 +34,7 @@ public sealed class ConnectionSettingsControllerTests
         var state = new AppStateModel { Mode = "tun_apps" };
         var controller = new ConnectionSettingsController(settings);
 
+        settings.State = state;
         controller.Save(state, CreateDraft());
 
         Assert.Equal("direct", state.DnsDetour);
@@ -91,7 +93,8 @@ public sealed class ConnectionSettingsControllerTests
         }
 
         public int SaveCalls { get; private set; }
-        public AppStateModel GetState() => throw new NotSupportedException();
+        public AppStateModel State { get; set; } = new();
+        public AppStateModel GetState() => State;
         public void SaveState(AppStateModel state) => SaveCalls++;
         public void UpdateMode(string mode) => throw new NotSupportedException();
         public void UpdateDns(string mode, string dohServer, string dohPath, string dohSni, string detour) => throw new NotSupportedException();

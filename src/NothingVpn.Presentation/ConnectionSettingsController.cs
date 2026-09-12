@@ -26,7 +26,6 @@ public sealed class ConnectionSettingsController : IConnectionSettingsController
 
         ProxyConnectionPolicy.Validate(proxy);
         TunSettingsPolicy.Validate(tun);
-        dns.Detour = DnsDetourPolicy.EffectiveDetour(state.Mode, dns.Detour);
         if (string.Equals(dns.Mode?.Trim(), "doh", StringComparison.OrdinalIgnoreCase))
         {
             if (string.IsNullOrWhiteSpace(dns.DohServer))
@@ -36,10 +35,25 @@ public sealed class ConnectionSettingsController : IConnectionSettingsController
         }
         DnsPolicy.Validate(dns);
 
-        ConnectionSettingsMapper.ApplyProxySettings(state, proxy);
-        ConnectionSettingsMapper.ApplyTunSettings(state, tun);
-        ConnectionSettingsMapper.ApplyDnsSettings(state, dns);
-        _settingsService.SaveState(state);
+        // Merge only the edited fields into the latest state under the settings lock.
+        // Background updates and connection recovery data must survive a UI save.
+        _settingsService.UpdateState(current =>
+        {
+            dns.Detour = DnsDetourPolicy.EffectiveDetour(current.Mode, dns.Detour);
+            Apply(current);
+        });
+        Apply(state);
+
+        void Apply(AppStateModel target)
+        {
+            ConnectionSettingsMapper.ApplyProxySettings(target, proxy);
+            ConnectionSettingsMapper.ApplyTunSettings(target, tun);
+            ConnectionSettingsMapper.ApplyDnsSettings(target, dns);
+            if (draft.TunAppPaths is not null) target.TunAppProcessPaths = draft.TunAppPaths.ToList();
+            if (draft.RuleSets is not null) target.UserRuleSets = draft.RuleSets.ToList();
+            if (draft.LogLevel is not null) target.SingBoxLogLevel = draft.LogLevel;
+            if (draft.CloseBehavior is not null) target.CloseBehavior = AppCloseBehavior.Normalize(draft.CloseBehavior);
+        }
     }
 
     private static ProxyConnectionSettings Clone(ProxyConnectionSettings source) => new()

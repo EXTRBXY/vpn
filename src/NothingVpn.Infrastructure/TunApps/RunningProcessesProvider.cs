@@ -18,7 +18,7 @@ public sealed class RunningProcessesProvider : IRunningAppsProvider
                 using (process)
                 {
                     // For MVP: current interactive user scope by session id.
-                    if (process.SessionId != currentSessionId)
+                    if (!IsInSession(process, currentSessionId))
                         continue;
 
                     var exePath = TryGetMainModulePath(process);
@@ -36,6 +36,13 @@ public sealed class RunningProcessesProvider : IRunningAppsProvider
 
             return result;
         }, cancellationToken);
+    }
+
+    private static bool IsInSession(Process process, int sessionId)
+    {
+        try { return process.SessionId == sessionId; }
+        catch (InvalidOperationException) { return false; }
+        catch (System.ComponentModel.Win32Exception) { return false; }
     }
 
     private static string? TryGetMainModulePath(Process process)

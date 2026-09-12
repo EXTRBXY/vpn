@@ -47,10 +47,19 @@ public sealed class ConnectionScreenController : IConnectionScreenController
         _settingsService.SaveState(state);
     }
 
+    public void SelectMode(AppStateModel state, string mode)
+    {
+        var normalized = ConnectionPolicy.NormalizeMode(mode);
+        _settingsService.UpdateState(current => current.Mode = normalized);
+        state.Mode = normalized;
+        state.DnsDetour = DnsDetourPolicy.EffectiveDetour(normalized, state.DnsDetour);
+    }
+
     public void SelectProfile(AppStateModel state, string? profileId)
     {
-        state.ActiveProfileId = profileId?.Trim() ?? string.Empty;
-        _settingsService.UpdateState(current => current.ActiveProfileId = state.ActiveProfileId);
+        var normalized = profileId?.Trim() ?? string.Empty;
+        _settingsService.UpdateState(current => current.ActiveProfileId = normalized);
+        state.ActiveProfileId = normalized;
     }
 
     private static void NormalizeCollections(AppStateModel state)
