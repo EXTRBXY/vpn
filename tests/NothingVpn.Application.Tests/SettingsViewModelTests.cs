@@ -213,6 +213,93 @@ public sealed class SettingsViewModelTests
         Assert.Empty(h.Files.Deleted);
     }
 
+    [Theory]
+    [InlineData("sing-geosite:category-ru")]
+    [InlineData("sing-geosite:category-ru-ads")]
+    [InlineData("sing-geoip:ru")]
+    public async Task EnableMissingBuiltin_DownloadsBeforeEnabling_AndPersistsOnSave(string builtinId)
+    {
+        var h = new Harness();
+        h.Files.FileExists = false;
+        h.Store.State.UserRuleSets[0].BuiltinId = builtinId;
+        h.Store.State.UserRuleSets[0].Enabled = false;
+        var vm = h.Create();
+        var rule = vm.BuiltinRuleSets[0];
+        rule.RemoteEtag = "stale-etag";
+        var download = vm.SetBuiltinEnabledAsync(rule, true);
+        Assert.Same(rule, Assert.Single(h.Files.Downloads));
+        Assert.False(h.Files.ConditionalRequest);
+        Assert.False(rule.Enabled);
+        Assert.False(vm.SaveCommand.CanExecute(null));
+        await vm.SetBuiltinEnabledAsync(rule, true);
+        Assert.Single(h.Files.Downloads);
+        h.Files.FileExists = true;
+        h.Files.Download.SetResult(new RuleSetDownloadResult(true, false, "new-etag", null));
+        await download;
+        Assert.True(vm.BuiltinRuleSets[0].Enabled);
+        Assert.NotNull(vm.BuiltinRuleSets[0].LastDownloadedUtc);
+        Assert.False(h.Store.State.UserRuleSets[0].Enabled);
+        vm.SaveCommand.Execute(null);
+        var saved = h.Create().BuiltinRuleSets[0];
+        Assert.True(saved.Enabled);
+        Assert.Equal("new-etag", saved.RemoteEtag);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EnableMissingBuiltin_FailureLeavesDisabled_AndAllowsRetry(bool throws)
+    {
+        var h = new Harness();
+        h.Files.FileExists = false;
+        h.Store.State.UserRuleSets[0].Enabled = false;
+        var vm = h.Create();
+        var download = vm.SetBuiltinEnabledAsync(vm.BuiltinRuleSets[0], true);
+        if (throws) h.Files.Download.SetException(new IOException("download failed"));
+        else h.Files.Download.SetResult(new RuleSetDownloadResult(false, false, null, "download failed"));
+        await download;
+        Assert.False(vm.BuiltinRuleSets[0].Enabled);
+        Assert.Null(vm.BuiltinRuleSets[0].LastDownloadedUtc);
+        Assert.True(vm.CanUseBuiltinRuleSet);
+        Assert.Contains("download failed", vm.Message);
+        vm.SaveCommand.Execute(null);
+        Assert.False(h.Create().BuiltinRuleSets[0].Enabled);
+    }
+
+    [Fact]
+    public async Task ReenableExistingBuiltin_CancelsPendingDeletion_WithoutDownloading()
+    {
+        var h = new Harness();
+        var vm = h.Create();
+        vm.SelectedBuiltinRuleSet = vm.BuiltinRuleSets[0];
+        vm.RemoveSelectedBuiltin();
+        await vm.SetBuiltinEnabledAsync(vm.BuiltinRuleSets[0], true);
+        vm.SaveCommand.Execute(null);
+        Assert.True(h.Create().BuiltinRuleSets[0].Enabled);
+        Assert.Empty(h.Files.Downloads);
+        Assert.Empty(h.Files.Deleted);
+        await vm.SetBuiltinEnabledAsync(vm.BuiltinRuleSets[0], false);
+        Assert.False(vm.BuiltinRuleSets[0].Enabled);
+        Assert.Empty(h.Files.Downloads);
+    }
+
+    [Fact]
+    public async Task UpdateBuiltin_NotModified_PreservesEtagAndSavesCheckTime()
+    {
+        var h = new Harness();
+        var vm = h.Create();
+        vm.SelectedBuiltinRuleSet = vm.BuiltinRuleSets[0];
+        vm.SelectedBuiltinRuleSet.RemoteEtag = "existing-etag";
+        var download = vm.DownloadSelectedBuiltinAsync();
+        Assert.True(h.Files.ConditionalRequest);
+        h.Files.Download.SetResult(new RuleSetDownloadResult(true, true, null, null));
+        await download;
+        Assert.Contains("актуален", vm.Message);
+        vm.SaveCommand.Execute(null);
+        Assert.Equal("existing-etag", h.Create().BuiltinRuleSets[0].RemoteEtag);
+        Assert.NotNull(h.Create().BuiltinRuleSets[0].LastDownloadedUtc);
+    }
+
     internal sealed class Harness
     {
         public MemoryStore Store { get; } = new();
@@ -254,11 +341,13 @@ public sealed class SettingsViewModelTests
         public TaskCompletionSource<RuleSetDownloadResult> Download { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool FileExists { get; set; } = true;
         public bool ConditionalRequest { get; private set; }
+        public List<UserRuleSetModel> Downloads { get; } = [];
         public bool Exists(UserRuleSetModel ruleSet) => FileExists;
         public RuleSetImportResult Import(string sourcePath) => new("Imported", "imported.srs");
         public void Delete(UserRuleSetModel ruleSet) => Deleted.Add(ruleSet.FileName);
         public Task<RuleSetDownloadResult> DownloadBuiltinAsync(UserRuleSetModel ruleSet, bool useConditionalRequest, CancellationToken cancellationToken = default)
         {
+            Downloads.Add(ruleSet);
             ConditionalRequest = useConditionalRequest;
             return Download.Task;
         }

@@ -27,6 +27,7 @@ public sealed class WpfSettingsBindingTests
             try
             {
                 var app = new System.Windows.Application();
+                SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext());
                 app.Resources.MergedDictionaries.Add(new ResourceDictionary
                 {
                     Source = new Uri("/NothingVpn.Desktop.Wpf;component/Themes/Theme.xaml", UriKind.Relative)
@@ -75,6 +76,8 @@ public sealed class WpfSettingsBindingTests
                 Assert.Equal(2, list.Items.Count);
                 Assert.Equal("block", h.Store.State.UserRuleSets[0].Action);
                 CheckHomeScreenBindings(h);
+                CheckBuiltinRuleSetDownloads();
+                CheckSettingsWheelScrolling();
                 app.Shutdown();
             }
             catch (Exception ex) { failure = ex; }
@@ -83,6 +86,125 @@ public sealed class WpfSettingsBindingTests
         thread.Start();
         Assert.True(thread.Join(TimeSpan.FromSeconds(30)), "WPF binding test timed out.");
         if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
+    }
+
+    private static void CheckSettingsWheelScrolling()
+    {
+        var vm = new SettingsViewModelTests.Harness().Create();
+        var view = new SettingsView { DataContext = vm };
+        view.Measure(new System.Windows.Size(850, 700));
+        view.Arrange(new Rect(0, 0, 850, 700));
+        Pump(view);
+        var page = (ScrollViewer)view.FindName("SettingsScroll");
+        var list = Descendants<ListBox>(view).Single(x => ReferenceEquals(x.ItemsSource, vm.TunApps));
+        var inner = Descendants<ScrollViewer>(list).Single();
+        list.SelectedIndex = 1;
+        list.BringIntoView();
+        Pump(view);
+        Assert.True(page.ScrollableHeight > 0);
+        Assert.Equal(0, inner.ScrollableHeight);
+        var before = page.VerticalOffset;
+        Wheel(-120);
+        Assert.True(page.VerticalOffset > before, "The page must scroll down over a short app list.");
+        before = page.VerticalOffset;
+        Wheel(120);
+        Assert.True(page.VerticalOffset < before, "The page must scroll up over a short app list.");
+        Assert.Same(vm.TunApps[1], vm.SelectedTunApp);
+
+        for (var i = 0; i < 30; i++) vm.TunApps.Add(TunAppListItem.FromPath($@"C:\Apps\scroll-{i}.exe"));
+        Pump(view);
+        Assert.True(inner.ScrollableHeight > 0);
+        inner.ScrollToTop();
+        Pump(view);
+        before = page.VerticalOffset;
+        Wheel(-120);
+        Assert.True(inner.VerticalOffset > 0, "A long list must retain its own scrolling.");
+        Assert.Equal(before, page.VerticalOffset);
+
+        inner.ScrollToBottom();
+        Pump(view);
+        before = page.VerticalOffset;
+        Wheel(-120);
+        Assert.True(page.VerticalOffset > before, "At the list's bottom, wheel input must reach the page.");
+        inner.ScrollToTop();
+        Pump(view);
+        before = page.VerticalOffset;
+        Wheel(120);
+        Assert.True(page.VerticalOffset < before, "At the list's top, wheel input must reach the page.");
+
+        void Wheel(int delta)
+        {
+            var source = Descendants<TextBlock>(list).First();
+            var args = new System.Windows.Input.MouseWheelEventArgs(System.Windows.Input.Mouse.PrimaryDevice, 0, delta)
+            {
+                RoutedEvent = System.Windows.Input.Mouse.PreviewMouseWheelEvent
+            };
+            source.RaiseEvent(args);
+            if (!args.Handled)
+            {
+                args.RoutedEvent = System.Windows.Input.Mouse.MouseWheelEvent;
+                source.RaiseEvent(args);
+            }
+            Pump(view);
+        }
+    }
+
+    private static void CheckBuiltinRuleSetDownloads()
+    {
+        var h = new SettingsViewModelTests.Harness();
+        h.Files.FileExists = false;
+        h.Store.State.UserRuleSets[0].Enabled = false;
+        var vm = h.Create();
+        var view = new SettingsView { DataContext = vm };
+        view.Measure(new System.Windows.Size(850, 700));
+        view.Arrange(new Rect(0, 0, 850, 700));
+        Pump(view);
+        var grid = Descendants<DataGrid>(view).Single(x => ReferenceEquals(x.ItemsSource, vm.BuiltinRuleSets));
+        var checkbox = Descendants<System.Windows.Controls.CheckBox>(grid).First();
+        checkbox.SetCurrentValue(ToggleButton.IsCheckedProperty, true);
+        checkbox.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        Pump(view);
+        Assert.Single(h.Files.Downloads);
+        Assert.False(h.Files.ConditionalRequest);
+        Assert.False(vm.BuiltinRuleSets[0].Enabled);
+        Assert.False(vm.SaveCommand.CanExecute(null));
+        h.Files.FileExists = true;
+        h.Files.Download.SetResult(new RuleSetDownloadResult(true, false, "download-etag", null));
+        Assert.True(SpinWait.SpinUntil(() => { Pump(view); return vm.CanEditRuleSets; }, TimeSpan.FromSeconds(5)));
+        Assert.True(vm.BuiltinRuleSets[0].Enabled);
+        Assert.True(Descendants<System.Windows.Controls.CheckBox>(grid).First().IsChecked);
+        Assert.Equal("download-etag", vm.BuiltinRuleSets[0].RemoteEtag);
+        vm.SaveCommand.Execute(null);
+        Assert.True(h.Create().BuiltinRuleSets[0].Enabled);
+
+        grid.SelectedIndex = 0;
+        grid.CurrentCell = new DataGridCellInfo(grid.Items[0], grid.Columns[1]);
+        grid.BeginEdit(); // A name cell may still be editing when the download button is used.
+        Pump(view);
+        var download = Descendants<Button>(view).Single(x => Equals(x.Content, "Скачать или обновить"));
+        Assert.True(download.IsEnabled);
+        download.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        Assert.True(SpinWait.SpinUntil(() => { Pump(view); return vm.CanEditRuleSets; }, TimeSpan.FromSeconds(5)));
+        Assert.Equal(2, h.Files.Downloads.Count);
+        Assert.True(h.Files.ConditionalRequest);
+        Assert.Contains("обновлён", vm.Message);
+
+        var failed = new SettingsViewModelTests.Harness();
+        failed.Files.FileExists = false;
+        failed.Store.State.UserRuleSets[0].Enabled = false;
+        failed.Files.Download.SetResult(new RuleSetDownloadResult(false, false, null, "HTTP 503"));
+        var failedVm = failed.Create();
+        view.DataContext = failedVm;
+        Pump(view);
+        grid = Descendants<DataGrid>(view).Single(x => ReferenceEquals(x.ItemsSource, failedVm.BuiltinRuleSets));
+        checkbox = Descendants<System.Windows.Controls.CheckBox>(grid).First();
+        checkbox.SetCurrentValue(ToggleButton.IsCheckedProperty, true);
+        checkbox.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        Pump(view);
+        Assert.Single(failed.Files.Downloads);
+        Assert.False(checkbox.IsChecked);
+        Assert.False(failedVm.BuiltinRuleSets[0].Enabled);
+        Assert.Contains("HTTP 503", failedVm.Message);
     }
 
     private static void CheckHomeScreenBindings(SettingsViewModelTests.Harness h)
