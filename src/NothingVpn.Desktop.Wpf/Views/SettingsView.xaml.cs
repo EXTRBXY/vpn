@@ -2,6 +2,29 @@ namespace NothingVpn.Desktop.Wpf;
 public partial class SettingsView : System.Windows.Controls.UserControl
 {
     public SettingsView() => InitializeComponent();
+    private void OnSettingsMouseWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
+    {
+        if (e.Handled || e.Delta == 0) return;
+        var source = e.OriginalSource as System.Windows.DependencyObject;
+        while (source is not null && source != SettingsScroll)
+        {
+            if (source is System.Windows.Controls.ScrollViewer inner)
+            {
+                // Keep normal scrolling inside long lists; pass the wheel to the page at their edges.
+                if (e.Delta > 0 ? inner.VerticalOffset > 0 : inner.VerticalOffset < inner.ScrollableHeight)
+                    return;
+                e.Handled = true;
+                SettingsScroll.RaiseEvent(new System.Windows.Input.MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta)
+                {
+                    RoutedEvent = System.Windows.Input.Mouse.MouseWheelEvent
+                });
+                return;
+            }
+            source = source is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D
+                ? System.Windows.Media.VisualTreeHelper.GetParent(source)
+                : System.Windows.LogicalTreeHelper.GetParent(source);
+        }
+    }
     private void RunAction(Action<SettingsViewModel> action)
     {
         if (DataContext is not SettingsViewModel vm) return;
@@ -30,6 +53,15 @@ public partial class SettingsView : System.Windows.Controls.UserControl
     }
     private void OnRemoveRuleSet(object sender, System.Windows.RoutedEventArgs e) => RunAction(vm => vm.RemoveSelectedRuleSet());
     private async void OnDownloadBuiltin(object sender, System.Windows.RoutedEventArgs e) { if (DataContext is SettingsViewModel vm) await vm.DownloadSelectedBuiltinAsync(); }
+    private async void OnBuiltinEnabledClick(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (DataContext is not SettingsViewModel vm ||
+            sender is not System.Windows.Controls.CheckBox checkbox ||
+            checkbox.DataContext is not NothingVpn.Application.Models.UserRuleSetModel ruleSet) return;
+        try { await vm.SetBuiltinEnabledAsync(ruleSet, checkbox.IsChecked == true); }
+        catch (Exception ex) { vm.ShowError(ex.Message); }
+        finally { checkbox.GetBindingExpression(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty)?.UpdateTarget(); }
+    }
     private void OnRemoveBuiltin(object sender, System.Windows.RoutedEventArgs e) => RunAction(vm => vm.RemoveSelectedBuiltin());
     private void OnOpenRuleCatalog(object sender, System.Windows.RoutedEventArgs e)
     {

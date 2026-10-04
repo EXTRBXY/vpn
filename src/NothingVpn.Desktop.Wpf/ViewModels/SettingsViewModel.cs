@@ -109,12 +109,33 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public async Task DownloadSelectedBuiltinAsync()
     {
         if (!CanUseBuiltinRuleSet) return;
-        var selected = SelectedBuiltinRuleSet!;
+        await DownloadBuiltinAsync(SelectedBuiltinRuleSet!);
+    }
+    public async Task SetBuiltinEnabledAsync(UserRuleSetModel ruleSet, bool enabled)
+    {
+        if (!CanEditRuleSets || !BuiltinRuleSets.Contains(ruleSet)) return;
+        SelectedBuiltinRuleSet = ruleSet;
+        if (enabled && !_ruleSetFiles.Exists(ruleSet))
+        {
+            await DownloadBuiltinAsync(ruleSet);
+            return;
+        }
+        var updated = CloneRuleSet(ruleSet);
+        updated.Enabled = enabled;
+        if (enabled) _pendingFileDeletes.RemoveAll(x => x.FileName == ruleSet.FileName);
+        BuiltinRuleSets[BuiltinRuleSets.IndexOf(ruleSet)] = updated;
+        SelectedBuiltinRuleSet = updated;
+        ShowMessage("Сохраните настройки, чтобы применить изменения списков.");
+    }
+    private async Task DownloadBuiltinAsync(UserRuleSetModel selected)
+    {
         SetRuleSetBusy(true);
+        _messageCancellation?.Cancel();
+        Message = $"Скачивание «{selected.Name}»…";
         try
         {
             var result = await _ruleSetFiles.DownloadBuiltinAsync(selected, _ruleSetFiles.Exists(selected));
-            if (!result.Success) { ShowError(result.Error ?? "Не удалось скачать список."); return; }
+            if (!result.Success) { ShowError($"Не удалось скачать «{selected.Name}»: {result.Error ?? "ошибка загрузки."}"); return; }
             var updated = CloneRuleSet(selected);
             updated.Enabled = true;
             updated.RemoteEtag = result.NotModified ? result.NewEtag ?? updated.RemoteEtag : result.NewEtag;
