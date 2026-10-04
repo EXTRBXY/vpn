@@ -1,4 +1,4 @@
-# Сборка NothingVpnSetup.exe и публикация в GitHub Releases при push тега v* (например v0.6.6).
+# Сборка NothingVpnSetup.exe и публикация в GitHub Releases при push тега v* (например v0.6.7).
 name: Release
 
 on:
@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Версия установщика без префикса v (например 0.6.6)'
+        description: 'Версия установщика без префикса v (например 0.6.7)'
         required: true
-        default: '0.6.6'
+        default: '0.6.7'
 
 permissions:
   contents: write
@@ -18,8 +18,8 @@ permissions:
 env:
   DOTNET_VERSION: '8.0.x'
   # Версия sing-box из https://github.com/SagerNet/sing-box/releases (имя архива sing-box-VERSION-windows-amd64.zip)
-  SING_BOX_VERSION: '1.13.12'
-  SING_BOX_SHA256: 'e93fc531134eb1beb4efa3c74990a24e48456098a31c03b60d5ddf17f223cf98'
+  SING_BOX_VERSION: '1.13.21'
+  SING_BOX_SHA256: 'a03291793d3a3c6e266447a58140657ac099ff278abf3b8ff678932356a62ced'
   WINTUN_VERSION: '0.14.1'
   WINTUN_SHA256: '07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51'
   INNO_SETUP_VERSION: '6.7.1'
