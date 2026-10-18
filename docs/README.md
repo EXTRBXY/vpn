@@ -7,6 +7,7 @@
 | [STORAGE.md](STORAGE.md) | Каталог данных, формат DPAPI-файлов, схемы `profiles.json` / `subscriptions.json` / `state.json` |
 | [SECURITY.md](SECURITY.md) | Защита секретов, валидация входных данных, привилегии, известные риски |
 | [TESTING.md](TESTING.md) | Состав тестов, запуск, smoke-test, что не покрыто, что добавить перед рефакторингом |
+| [adr/0001-privileged-service.md](adr/0001-privileged-service.md) | Решение: служба Windows вместо повышения клиента; протокол, установка, переход со старых версий |
 | [REFACTORING.md](REFACTORING.md) | Инварианты, найденные риски, технический долг и предлагаемый порядок рефакторинга |
 | [UPDATE-HANDOFF.md](UPDATE-HANDOFF.md) | Запуск установщика из повышенного клиента без наследования прав |
 | [UI-REGRESSION-CHECKLIST.md](UI-REGRESSION-CHECKLIST.md) | Исправления WPF UI и ручная проверка перед релизом |
