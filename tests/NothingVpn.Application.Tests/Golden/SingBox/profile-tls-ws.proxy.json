@@ -1,0 +1,80 @@
+{
+  "log": {
+    "level": "warn"
+  },
+  "dns": {
+    "servers": [
+      {
+        "type": "https",
+        "tag": "doh",
+        "server": "8.8.8.8",
+        "server_port": 443,
+        "path": "/dns-query",
+        "tls": {
+          "enabled": true,
+          "server_name": "dns.google"
+        }
+      }
+    ],
+    "final": "doh",
+    "reverse_mapping": false
+  },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen": "127.0.0.1",
+      "listen_port": 1080
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "proxy",
+      "server": "ws.example.net",
+      "server_port": 8443,
+      "uuid": "66666666-7777-8888-9999-aaaaaaaaaaaa",
+      "tls": {
+        "enabled": true,
+        "server_name": "cdn.example.net",
+        "alpn": [
+          "h2",
+          "http/1.1"
+        ],
+        "utls": {
+          "enabled": true,
+          "fingerprint": "firefox"
+        }
+      },
+      "transport": {
+        "type": "ws",
+        "path": "/ws-path",
+        "headers": {
+          "Host": "cdn.example.net"
+        }
+      }
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    },
+    {
+      "type": "block",
+      "tag": "block"
+    }
+  ],
+  "route": {
+    "final": "proxy",
+    "auto_detect_interface": false,
+    "default_domain_resolver": "doh",
+    "rules": [
+      {
+        "action": "sniff"
+      },
+      {
+        "protocol": "stun",
+        "action": "reject"
+      }
+    ]
+  }
+}

@@ -1,0 +1,107 @@
+{
+  "log": {
+    "level": "warn"
+  },
+  "dns": {
+    "servers": [
+      {
+        "type": "local",
+        "tag": "bootstrap-local",
+        "prefer_go": false
+      }
+    ],
+    "final": "bootstrap-local",
+    "reverse_mapping": true,
+    "strategy": "ipv4_only"
+  },
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "interface_name": "NothingVpn-00ff00",
+      "address": [
+        "198.18.44.1/30",
+        "fdfe:dcba:9876:13ee::1/126"
+      ],
+      "mtu": 1500,
+      "auto_route": true,
+      "strict_route": true,
+      "stack": "system"
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "proxy",
+      "server": "203.0.113.10",
+      "server_port": 2053,
+      "uuid": "bbbbbbbb-cccc-dddd-eeee-ffffffffffff",
+      "domain_resolver": "bootstrap-local",
+      "transport": {
+        "type": "grpc",
+        "service_name": "grpc-service"
+      }
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    },
+    {
+      "type": "block",
+      "tag": "block"
+    }
+  ],
+  "route": {
+    "final": "proxy",
+    "auto_detect_interface": true,
+    "default_domain_resolver": "bootstrap-local",
+    "rules": [
+      {
+        "action": "sniff"
+      },
+      {
+        "protocol": "dns",
+        "action": "hijack-dns"
+      },
+      {
+        "ip_is_private": true,
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "domain": [
+          "dns.google",
+          "dns.google.com",
+          "cloudflare-dns.com",
+          "security.cloudflare-dns.com",
+          "chrome.cloudflare-dns.com",
+          "mozilla.cloudflare-dns.com",
+          "dns.quad9.net",
+          "dns11.quad9.net",
+          "he.dns.opendns.com",
+          "doh.opendns.com",
+          "dns.nextdns.io",
+          "dns.adguard.com",
+          "unfiltered.adguard-dns.com",
+          "family.adguard-dns.com"
+        ],
+        "action": "route",
+        "outbound": "proxy"
+      },
+      {
+        "protocol": "stun",
+        "action": "reject"
+      },
+      {
+        "protocol": "quic",
+        "action": "route",
+        "outbound": "proxy"
+      },
+      {
+        "ip_version": 6,
+        "action": "route",
+        "outbound": "proxy"
+      }
+    ]
+  }
+}

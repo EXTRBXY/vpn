@@ -1,0 +1,47 @@
+{
+  "log": {
+    "level": "warn"
+  },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen": "127.0.0.1",
+      "listen_port": 1080
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "proxy",
+      "server": "203.0.113.10",
+      "server_port": 2053,
+      "uuid": "bbbbbbbb-cccc-dddd-eeee-ffffffffffff",
+      "transport": {
+        "type": "grpc",
+        "service_name": "grpc-service"
+      }
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    },
+    {
+      "type": "block",
+      "tag": "block"
+    }
+  ],
+  "route": {
+    "final": "proxy",
+    "auto_detect_interface": false,
+    "rules": [
+      {
+        "action": "sniff"
+      },
+      {
+        "protocol": "stun",
+        "action": "reject"
+      }
+    ]
+  }
+}
