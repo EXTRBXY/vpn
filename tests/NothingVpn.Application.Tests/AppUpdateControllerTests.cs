@@ -89,6 +89,76 @@ public sealed class AppUpdateControllerTests
         Assert.Equal(expected == InstalledVersionTransition.Unchanged ? 0 : 1, settings.SaveCalls);
     }
 
+    [Fact]
+    public async Task GetChangelogAsync_ReleaseWithBody_ReturnsBodyAsPlainText()
+    {
+        var release = Release("2.0.0") with { Body = "\r\n## Изменения\r\n- **исправлено** подключение\n" };
+        var controller = new AppUpdateController(new FakeUpdateService { Latest = release }, new FakeSettingsService());
+
+        var changelog = await controller.GetChangelogAsync("2.0.0");
+
+        Assert.False(changelog.LoadFailed);
+        Assert.Equal("2.0.0", changelog.Version);
+        Assert.Equal(ReleaseChangelog.TitleOk, changelog.Title);
+        Assert.Equal("Версия 2.0.0", changelog.Heading);
+        Assert.Equal(
+            $"## Изменения{Environment.NewLine}- **исправлено** подключение",
+            changelog.Body);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  \r\n ")]
+    public async Task GetChangelogAsync_ReleaseWithoutBody_ReturnsEmptyBodyMessage(string? body)
+    {
+        var release = Release("2.0.0") with { Body = body };
+        var controller = new AppUpdateController(new FakeUpdateService { Latest = release }, new FakeSettingsService());
+
+        var changelog = await controller.GetChangelogAsync("2.0.0");
+
+        Assert.False(changelog.LoadFailed);
+        Assert.Equal(ReleaseChangelog.EmptyBody, changelog.Body);
+    }
+
+    [Fact]
+    public async Task GetChangelogAsync_ReleaseNotFound_ReturnsFailedChangelog()
+    {
+        var controller = new AppUpdateController(new FakeUpdateService(), new FakeSettingsService());
+
+        var changelog = await controller.GetChangelogAsync("2.0.0");
+
+        Assert.True(changelog.LoadFailed);
+        Assert.Equal(ReleaseChangelog.TitleProblem, changelog.Title);
+        Assert.Contains("2.0.0", changelog.Heading);
+        Assert.Empty(changelog.Body);
+    }
+
+    [Fact]
+    public async Task GetChangelogAsync_ServiceFailure_ReturnsFailedChangelogInsteadOfThrowing()
+    {
+        var controller = new AppUpdateController(
+            new FakeUpdateService { Error = "offline" },
+            new FakeSettingsService());
+
+        var changelog = await controller.GetChangelogAsync("2.0.0");
+
+        Assert.True(changelog.LoadFailed);
+    }
+
+    [Fact]
+    public async Task GetChangelogAsync_Cancelled_Throws()
+    {
+        var controller = new AppUpdateController(
+            new FakeUpdateService { Cancel = true },
+            new FakeSettingsService());
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => controller.GetChangelogAsync("2.0.0", cts.Token));
+    }
+
     private static AppReleaseModel Release(string version) =>
         new($"v{version}", version, null, "https://github.com/example/setup.exe");
 
@@ -103,8 +173,14 @@ public sealed class AppUpdateControllerTests
             return Task.FromResult(Latest);
         }
 
-        public Task<AppReleaseModel?> GetByVersionAsync(string version, CancellationToken cancellationToken = default) =>
-            Task.FromResult(Latest);
+        public bool Cancel { get; init; }
+
+        public Task<AppReleaseModel?> GetByVersionAsync(string version, CancellationToken cancellationToken = default)
+        {
+            if (Cancel) cancellationToken.ThrowIfCancellationRequested();
+            if (Error is not null) throw new InvalidOperationException(Error);
+            return Task.FromResult(Latest);
+        }
     }
 
     private sealed class FakeSettingsService : ISettingsService
