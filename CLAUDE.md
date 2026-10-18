@@ -22,7 +22,7 @@ dotnet test NothingVpn.sln -c Release --no-build --filter "FullyQualifiedName~Si
 .\build\Test-UpdateHandoff.ps1           # desktop-тесты обновления; повторить с -RequireElevated из админ-терминала
 ```
 
-Базовая линия (18.10.2026): сборка без предупреждений, 228 тестов проходят, 3 desktop-теста пропущены намеренно.
+Базовая линия (18.10.2026): сборка без предупреждений, 274 теста проходят, 3 desktop-теста пропущены намеренно.
 Только Windows. `Publish` берёт `sing-box.exe`/`wintun.dll` из `-RuntimeAssetsDirectory` или из установленного
 клиента в `%LOCALAPPDATA%\Programs\NothingVpn`.
 

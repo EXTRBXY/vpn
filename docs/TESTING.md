@@ -7,7 +7,7 @@
 `InternalsVisibleTo` открывает тестам internal-типы Infrastructure (`SingBoxConfigGenerator`, `VlessLinkParser`,
 `DpapiJsonFile`, `AppPaths`, …).
 
-Состояние на 18.10.2026: 231 тест, 228 проходят, 3 desktop-теста пропускаются вне специального запуска. Сборка
+Состояние на 18.10.2026: 277 тестов, 274 проходят, 3 desktop-теста пропускаются вне специального запуска. Сборка
 Release — без предупреждений.
 
 | Область | Файлы |
@@ -18,6 +18,7 @@ Release — без предупреждений.
 | Presentation-контроллеры | `Connection*ControllerTests`, `ConnectionViewStateFactoryTests`, `ProfileManagementControllerTests`, `SubscriptionManagementControllerTests`, `RuleSetManagementControllerTests`, `TunAppsControllerTests`, `AppUpdateControllerTests` |
 | Infrastructure | `DpapiJsonFileTests`, `ProfileParserPortTests`, `RuleSetFileServiceTests`, `SubscriptionHttpFetcherTests`, `SingBoxRunnerTests`, `ProcessJobScopeTests`, `InstallerUpdateServiceTests`, `InstallerLaunchServiceTests` |
 | WPF | `SettingsViewModelTests` (реальные контроллеры, изолированное хранилище), `WpfSettingsBindingTests` (настоящие контролы на STA-потоке) |
+| Характеризационные | `SingBoxConfigGoldenTests` (эталоны в `Golden/SingBox`), `StorageRoundtripTests`, `StorageFormatCompatibilityTests`, `VlessStableIdTests` |
 | Desktop-only | `WindowsUpdateHandoffTests` — запускаются только через `build/Test-UpdateHandoff.ps1` |
 
 Фейки объявлены внутри каждого тестового класса (`private sealed class Fake…`); общей библиотеки тестовых двойников
@@ -64,13 +65,18 @@ Smoke-test работает с **настоящим** каталогом дан�
 
 Для этого есть ручной чек-лист: [UI-REGRESSION-CHECKLIST.md](UI-REGRESSION-CHECKLIST.md).
 
-## Рекомендации перед рефакторингом
+## Характеризационные тесты
 
-1. Добавить характеризационный тест генератора: для набора входов (каждый режим × DoH/system × detour × с rule-set и
-   без) сохранить эталонный JSON и сравнивать байт-в-байт. Текущие тесты проверяют отдельные свойства, а не весь
-   документ.
-2. Добавить roundtrip-тест хранения: заполнить каждое поле `AppStateModel`/`VpnProfile`/`SubscriptionModel`
-   уникальным значением, сохранить через порт, прочитать и сравнить. Тест должен падать, если новое поле не
-   проброшено через маппер.
-3. Добавить тест совместимости формата: зашифровать фиксированный JSON текущей схемы и прочитать его новым кодом.
-4. Зафиксировать `VlessLinkParser.StableId` на нескольких эталонных ссылках.
+Фиксируют текущее поведение перед рефакторингом. Если такой тест упал, изменилось поведение, видимое пользователю,
+или формат данных на диске. Это либо ошибка, либо осознанное решение, которому нужна миграция.
+
+- `SingBoxConfigGoldenTests` — итоговый JSON sing-box целиком: каждый режим × DoH/system × detour × с rule-set и
+  без, плюс профили tls+ws и grpc без TLS. Эталоны лежат в `Golden/SingBox/`. Чтобы осознанно их обновить,
+  запустите тесты с `NOTHINGVPN_UPDATE_GOLDEN=1` и проверьте изменения в diff.
+- `StorageRoundtripTests` — каждое поле `AppStateModel`/`VpnProfile`/`SubscriptionModel` проходит через порт,
+  маппер и DPAPI-файл без потерь. Падает, если новое поле не заполнено в тесте или не проброшено через маппер.
+  Также проверяет, что Application-модели и классы хранения совпадают по набору полей; при намеренном разделении
+  моделей этот тест нужно переписать.
+- `StorageFormatCompatibilityTests` — JSON текущей схемы (зашифрованный и legacy-открытый) читается с ожидаемыми
+  значениями, значения по умолчанию для отсутствующих полей, имена полей в сохранённых файлах.
+- `VlessStableIdTests` — Id профилей на эталонных ссылках.
