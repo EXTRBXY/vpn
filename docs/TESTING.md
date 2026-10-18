@@ -22,7 +22,9 @@ Release — без предупреждений.
 | Desktop-only | `WindowsUpdateHandoffTests` — запускаются только через `build/Test-UpdateHandoff.ps1` |
 
 Фейки объявлены внутри каждого тестового класса (`private sealed class Fake…`); общей библиотеки тестовых двойников
-нет. `ISettingsService` фейки часто реализуют без `UpdateState` и полагаются на default-реализацию интерфейса.
+нет. Фейки `ISettingsService` обязаны реализовать `UpdateState` (default-реализации в интерфейсе нет). Тесты гонок
+состояния — `VpnConnectionServiceTests` (сохранение настроек во время подключения, защита runtime-флагов, `GetStatus`
+без чтения стора) и `SettingsServiceTests`.
 
 ## Запуск
 

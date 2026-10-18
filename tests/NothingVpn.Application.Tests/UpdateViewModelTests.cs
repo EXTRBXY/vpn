@@ -179,7 +179,7 @@ public sealed class UpdateViewModelTests
         private readonly AppStateModel _state = new();
         public event EventHandler<AppStateModel>? StateChanged { add { } remove { } }
         public AppStateModel GetState() => _state;
-        public void SaveState(AppStateModel state) { }
+        public void UpdateState(Action<AppStateModel> update) => update(_state);
         public void UpdateMode(string mode) => throw new NotSupportedException();
         public void UpdateDns(string mode, string dohServer, string dohPath, string dohSni, string detour) => throw new NotSupportedException();
         public void UpdateTunSettings(TunSettings settings) => throw new NotSupportedException();

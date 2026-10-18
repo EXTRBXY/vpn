@@ -17,7 +17,7 @@ public static class ApplicationServicesFactory
         var pathPolicy = new PathPolicyPort();
         var profileStore = new ProfileStorePort(appPaths);
         var subscriptionStore = new SubscriptionStorePort(appPaths);
-        var stateStore = new StateStorePort(appPaths);
+        var stateStore = new AppStateStore(new StateStorePort(appPaths));
         var parser = new ProfileParserPort();
         var subscriptionFetcher = new SubscriptionHttpFetcher();
         var diagnosticsPort = new DiagnosticsPort();
@@ -52,6 +52,7 @@ public static class ApplicationServicesFactory
             appPaths,
             pathPolicy,
             logPort);
+        stateStore.SaveMissingBuiltinRuleSets();
         vpnService.RecoverStaleRuntimeState();
 
         return new ApplicationServiceBundle

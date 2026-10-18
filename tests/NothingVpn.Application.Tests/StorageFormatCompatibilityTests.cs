@@ -268,10 +268,38 @@ public sealed class StorageFormatCompatibilityTests : IDisposable
         Assert.Equal(["direct", "block", "direct", "direct"], state.UserRuleSets.Select(r => r.Action));
         Assert.All(state.UserRuleSets.Take(3), r => Assert.False(r.Enabled));
 
-        // Текущее поведение: чтение дописывает встроенные наборы и сразу сохраняет файл.
+        // Встроенные наборы добавляются только в модель: Load ничего не пишет (REFACTORING 2.3).
         var reread = new StateStorePort(paths).Load();
         Assert.Equal(4, reread.UserRuleSets.Count);
-        Assert.True(File.Exists(paths.Get().StateJsonPath + ".bak"));
+        Assert.False(File.Exists(paths.Get().StateJsonPath + ".bak"));
+    }
+
+    [Fact]
+    public void StateStorePort_SaveMissingBuiltinRuleSets_PersistsThemOnce()
+    {
+        var paths = new FakeAppPathsPort(_root);
+        var path = paths.Get().StateJsonPath;
+        WriteEncrypted(path, """
+            {
+              "userRuleSets": [
+                { "tag": "user-ruleset-0123456789ab", "name": "Custom", "fileName": "custom.srs", "enabled": true, "action": "direct" }
+              ]
+            }
+            """);
+        var port = new StateStorePort(paths);
+
+        Assert.True(port.SaveMissingBuiltinRuleSets());
+
+        Assert.True(File.Exists(path + ".bak"));
+        using var json = JsonDocument.Parse(ReadDecrypted(path));
+        Assert.Equal(
+            ["sing-geosite:category-ru", "sing-geosite:category-ru-ads", "sing-geoip:ru", null],
+            json.RootElement.GetProperty("userRuleSets").EnumerateArray()
+                .Select(r => r.GetProperty("builtinId").GetString()));
+
+        var persisted = File.ReadAllBytes(path);
+        Assert.False(port.SaveMissingBuiltinRuleSets());
+        Assert.Equal(persisted, File.ReadAllBytes(path));
     }
 
     [Fact]
@@ -451,6 +479,16 @@ public sealed class StorageFormatCompatibilityTests : IDisposable
             optionalEntropy: null,
             scope: DataProtectionScope.CurrentUser);
         File.WriteAllBytes(path, [.. "NV1"u8, .. protectedBytes]);
+    }
+
+    private static string ReadDecrypted(string path)
+    {
+        var bytes = File.ReadAllBytes(path);
+        Assert.Equal("NV1"u8.ToArray(), bytes[..3]);
+        return Encoding.UTF8.GetString(ProtectedData.Unprotect(
+            bytes[3..],
+            optionalEntropy: null,
+            scope: DataProtectionScope.CurrentUser));
     }
 
     private static string ReadEncrypted(string path)

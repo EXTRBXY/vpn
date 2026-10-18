@@ -107,8 +107,11 @@ public sealed class SettingsViewModelTests
         {
             state.UpdateDismissedModalForTag = "v9.9.9";
             state.ActiveProfileId = "changed-in-background";
-            state.ProxyWasEnabledByUs = true;
         });
+        // Runtime-флаг пишет только VpnConnectionService, в обход SettingsService.
+        var connected = h.Store.Load();
+        connected.ProxyWasEnabledByUs = true;
+        h.Store.Save(connected);
         var before = h.Store.SaveCalls;
         vm.SaveCommand.Execute(null);
         Assert.Equal(before + 1, h.Store.SaveCalls);
@@ -305,7 +308,7 @@ public sealed class SettingsViewModelTests
         public MemoryStore Store { get; } = new();
         public FakeFiles Files { get; } = new();
         public SettingsService Settings { get; }
-        public Harness() => Settings = new SettingsService(Store, new PathPolicyPort());
+        public Harness() => Settings = new SettingsService(new AppStateStore(Store), new PathPolicyPort());
         public SettingsViewModel Create() => new(
             new ConnectionSettingsController(Settings), new TunAppsController(new PathPolicyPort(), Settings),
             new RuleSetManagementController(Settings), Files, new TunAppsSelectionService(new EmptyApps(), new EmptyApps()),
@@ -323,6 +326,7 @@ public sealed class SettingsViewModelTests
                 new() { Tag = "user-one", FileName = "user.srs", Name = "User" }]
         };
         public bool FailWrites { get; set; }
+        public bool SaveMissingBuiltinRuleSets() => false;
         public int SaveCalls { get; private set; }
         public AppStateModel Load() => Clone(State);
         public void Save(AppStateModel state)

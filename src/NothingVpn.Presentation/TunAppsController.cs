@@ -24,8 +24,8 @@ public sealed class TunAppsController : ITunAppsController
     public IReadOnlyList<string> Save(AppStateModel state, IEnumerable<string>? paths)
     {
         var normalized = Normalize(paths);
+        _settingsService.UpdateState(current => current.TunAppProcessPaths = normalized.ToList());
         state.TunAppProcessPaths = normalized.ToList();
-        _settingsService.SaveState(state);
         return normalized;
     }
 

@@ -2,7 +2,7 @@ using NothingVpn.Application.Ports;
 
 namespace NothingVpn.Application.Services;
 
-public sealed class DiagnosticsService(IDiagnosticsPort diagnosticsPort, ILogPort logPort, IStateStorePort stateStore) : IDiagnosticsService
+public sealed class DiagnosticsService(IDiagnosticsPort diagnosticsPort, ILogPort logPort, AppStateStore stateStore) : IDiagnosticsService
 {
     public async Task<(bool Success, string? Error)> RunProxySmokeTestAsync(string targetHost, int targetPort, TimeSpan timeout, CancellationToken cancellationToken = default)
     {

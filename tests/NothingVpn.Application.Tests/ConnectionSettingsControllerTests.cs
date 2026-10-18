@@ -95,7 +95,7 @@ public sealed class ConnectionSettingsControllerTests
         public int SaveCalls { get; private set; }
         public AppStateModel State { get; set; } = new();
         public AppStateModel GetState() => State;
-        public void SaveState(AppStateModel state) => SaveCalls++;
+        public void UpdateState(Action<AppStateModel> update) { update(State); SaveCalls++; }
         public void UpdateMode(string mode) => throw new NotSupportedException();
         public void UpdateDns(string mode, string dohServer, string dohPath, string dohSni, string detour) => throw new NotSupportedException();
         public void UpdateTunSettings(TunSettings settings) => throw new NotSupportedException();

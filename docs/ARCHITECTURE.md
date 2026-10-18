@@ -39,9 +39,11 @@ Infrastructure используется только в composition root. **Фа
 ## Composition root
 
 `ApplicationServicesFactory.CreateDefault()` (`src/NothingVpn.Infrastructure/Composition/ApplicationServicesFactory.cs`)
-вручную создаёт все порты и сервисы и возвращает `ApplicationServiceBundle`. DI-контейнера нет. При создании сразу
-вызывается `VpnConnectionService.RecoverStaleRuntimeState()` — если предыдущий запуск оставил включённый системный
-прокси, он восстанавливается.
+вручную создаёт все порты и сервисы и возвращает `ApplicationServiceBundle`. DI-контейнера нет. Создаётся один
+`AppStateStore` на процесс — его делят `SettingsService`, `VpnConnectionService` и `DiagnosticsService`. При создании
+сразу вызываются `AppStateStore.SaveMissingBuiltinRuleSets()` (явная миграция: недостающие встроенные rule-set
+дописываются в `state.json`) и `VpnConnectionService.RecoverStaleRuntimeState()` — если предыдущий запуск оставил
+включённый системный прокси, он восстанавливается.
 
 Затем `App.OnStartup` (`src/NothingVpn.Desktop.Wpf/App.xaml.cs`) собирает контроллеры Presentation и view model'и,
 создаёт трей, таймеры и сервер single-instance. Это второй, UI-уровень композиции; он же содержит логику трея,
@@ -76,7 +78,8 @@ Infrastructure используется только в composition root. **Фа
 `MainViewModel.ToggleConnectionAsync` → `ConnectionController.StartAsync` → `VpnConnectionService.ConnectAsync`:
 
 1. Захват `_sessionLock` (один connect/disconnect одновременно), инкремент `_sessionGeneration`.
-2. Загрузка профиля и состояния напрямую из `IStateStorePort` (минуя `SettingsService`).
+2. Загрузка профиля и снимка состояния из `AppStateStore`. Снимок нужен только для генерации конфига и обратно
+   целиком не сохраняется — настройки, изменённые за время подключения, не теряются.
 3. Нормализация режима и путей приложений; `ConnectionPolicy.EnsureTunAppsHasTargets`; `RuleSetPolicyValidator.ValidateEnabled`
    (проверяет и наличие `.srs` на диске).
 4. TUN без прав администратора → `ConnectResult { RequiresElevation, ElevationArgs }` (см. «Повышение прав»).
@@ -84,17 +87,23 @@ Infrastructure используется только в composition root. **Фа
 6. `ISingBoxPort.WriteConfig` → `configs/{profileId}.{mode}.json`; `ValidateConfig` (`sing-box check`); `Start`;
    ожидание `IsRunning` до 3 с.
 7. Режим прокси: проверка, что `127.0.0.1:{LocalMixedPort}` слушает (2 с); снимок текущих настроек WinINET;
-   включение системного прокси; `ProxyWasEnabledByUs = true`.
-8. Любая ошибка → `RollbackFailedConnect` (stop, удаление конфига, восстановление прокси).
+   включение системного прокси; сразу же `AppStateStore.Update` записывает `ProxyWasEnabledByUs = true` и снимок.
+8. Любая ошибка → `RollbackFailedConnect` (stop, удаление конфига; если прокси включила эта попытка — восстановление
+   и сброс флагов).
 9. Если за время подключения началась другая сессия (generation изменился) — откат и `OperationCanceledException`.
-10. `ActiveProfileId` сохраняется, поднимается `ConnectionStateChanged(true)`.
+10. В состоянии меняется только `ActiveProfileId`; режим и профиль запоминаются как текущая сессия в памяти (их отдаёт
+    `GetStatus`), поднимается `ConnectionStateChanged(true)`.
+
+`GetStatus()` / `ConnectionController.IsRunning` диск не читают: процесс — `ISingBoxPort.IsRunning`, режим и профиль —
+сессия в памяти (без сессии — `proxy` и `null`).
 
 `ConnectionController.StartAsync` при любом исключении дополнительно вызывает `DisconnectAsync`.
 
 ### Отключение и восстановление
 
 `DisconnectCoreAsync`: `SingBoxRunner.Stop()` (kill всего дерева процессов, ожидание 2 с) → восстановление WinINET
-по снимку, если прокси включали мы → `ActiveProfileId = null` → удаление конфига → `ConnectionStateChanged(false)`.
+по снимку, если прокси включали мы → одним `AppStateStore.Update` сброс флагов и `ActiveProfileId = null` → удаление
+конфига → `ConnectionStateChanged(false)`.
 
 `RecoverStaleRuntimeState` вызывается при старте и по событию `ProcessExited` раннера (sing-box упал сам). Если
 `_sessionLock` занят — ничего не делает (идёт connect/disconnect).
@@ -151,12 +160,21 @@ TUN требует администратора. Клиент не повыша�
 
 ### Настройки
 
+Все чтения и записи `state.json` идут через общий `AppStateStore` (`Application/Services/AppStateStore.cs`):
+`Update(Action<AppStateModel>)` — load → изменить → save под одним локом процесса. Записи целого объекта, полученного
+раньше, нет: каждый писатель меняет только свои поля в свежей копии.
+
 `SettingsService` — единственная точка, через которую UI меняет `state.json`:
 
-- `UpdateState(Action<AppStateModel>)` — load → изменить → нормализовать → save под одним локом. Предпочтительный способ.
-- `SaveState(state)` — перезаписывает всё состояние переданным объектом. Опасно при конкурентных изменениях.
+- `UpdateState(Action<AppStateModel>)` — `AppStateStore.Update` + нормализация. Runtime-флаги подключения
+  (`ConnectionRuntimeState`: `ProxyWasEnabledByUs`, `PreviousProxySettings`) переносятся из свежей копии, поэтому
+  сохранение настроек их изменить не может. Их пишет только `VpnConnectionService`.
 - Нормализация всегда приводит режим, DNS detour (`DnsDetourPolicy`), `CloseBehavior`, пути TUN-приложений, DNS/TUN/
   proxy-настройки к допустимым значениям.
+- `ActiveProfileId` — общее поле: его выбирает UI (`SelectProfile`), выставляет/сбрасывает подключение и сбрасывает
+  синхронизация подписок; каждый пишет только его.
+- `ConnectionScreenController.Save(snapshot)` (нужен WinForms-клиенту) переносит из снимка только редактируемые
+  настройки; выбранный профиль, порт, метаданные обновлений и runtime-флаги берутся из актуального состояния.
 
 `SettingsViewModel` редактирует черновик и сохраняет всё одной операцией через `ConnectionSettingsController.Save`
 (валидация → `UpdateState` с merge только редактируемых полей). Файлы rule-set, помеченные на удаление, удаляются
@@ -166,7 +184,8 @@ TUN требует администратора. Клиент не повыша�
 
 - Сервисы Application не привязаны к UI-потоку (`ConfigureAwait(false)`). События `ConnectionStateChanged` могут
   прийти из пула; `MainViewModel` маршалит их через `Dispatcher.Invoke`.
-- Синхронные операции с диском и DPAPI (`IStateStorePort.Load/Save`) вызываются в том числе из UI-потока.
+- Синхронные операции с диском и DPAPI (`AppStateStore.Load/Update`) вызываются в том числе из UI-потока; частый
+  опрос статуса (`IsRunning`) диск не трогает.
 - `SingBoxRunner.ValidateConfig` синхронно ждёт `sing-box check` (`GetAwaiter().GetResult()`), тайм-аут 2 с.
 - Таймеры WPF (`DispatcherTimer`): тема — 1 с, обновление журнала в диагностике — 1 с, проверка обновлений — 30 мин,
   подписки — 15 мин.

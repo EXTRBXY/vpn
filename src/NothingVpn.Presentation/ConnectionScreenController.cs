@@ -23,20 +23,27 @@ public sealed class ConnectionScreenController : IConnectionScreenController
         var state = _settingsService.GetState();
         NormalizeCollections(state);
         var normalizedDetour = DnsDetourPolicy.EffectiveDetour(state.Mode, state.DnsDetour);
-        var settingsChanged = !string.Equals(state.DnsDetour, normalizedDetour, StringComparison.Ordinal);
+        var detourChanged = !string.Equals(state.DnsDetour, normalizedDetour, StringComparison.Ordinal);
         state.DnsDetour = normalizedDetour;
 
         var selected = profiles.FirstOrDefault(p =>
             string.Equals(p.Id, state.ActiveProfileId, StringComparison.OrdinalIgnoreCase))
             ?? profiles.FirstOrDefault();
         var selectedId = selected?.Id ?? string.Empty;
-        if (!string.Equals(state.ActiveProfileId ?? string.Empty, selectedId, StringComparison.OrdinalIgnoreCase))
-        {
+        var selectionChanged = !string.Equals(state.ActiveProfileId ?? string.Empty, selectedId, StringComparison.OrdinalIgnoreCase);
+        if (selectionChanged)
             state.ActiveProfileId = selectedId;
-            settingsChanged = true;
+
+        if (detourChanged || selectionChanged)
+        {
+            _settingsService.UpdateState(current =>
+            {
+                NormalizeCollections(current);
+                current.DnsDetour = DnsDetourPolicy.EffectiveDetour(current.Mode, current.DnsDetour);
+                if (selectionChanged)
+                    current.ActiveProfileId = selectedId;
+            });
         }
-        if (settingsChanged)
-            _settingsService.SaveState(state);
 
         return new ConnectionScreenSnapshot(state, profiles, selected);
     }
@@ -44,7 +51,34 @@ public sealed class ConnectionScreenController : IConnectionScreenController
     public void Save(AppStateModel state)
     {
         NormalizeCollections(state);
-        _settingsService.SaveState(state);
+        _settingsService.UpdateState(current => CopyEditableSettings(state, current));
+    }
+
+    /// <summary>
+    /// Переносит из снимка экрана только то, что пользователь редактирует в окне настроек. Выбранный профиль
+    /// (меняется через <see cref="SelectProfile"/>), порт mixed-inbound, метаданные обновлений и runtime-флаги
+    /// подключения берутся из актуального состояния, чтобы устаревший снимок их не затёр.
+    /// </summary>
+    private static void CopyEditableSettings(AppStateModel source, AppStateModel target)
+    {
+        target.Mode = source.Mode;
+        target.TunAppProcessPaths = source.TunAppProcessPaths.ToList();
+        target.UserRuleSets = source.UserRuleSets.ToList();
+        target.ProxyOverride = source.ProxyOverride;
+        target.TunInterfaceName = source.TunInterfaceName;
+        target.TunAddressCidr = source.TunAddressCidr;
+        target.TunMtu = source.TunMtu;
+        target.TunStack = source.TunStack;
+        target.TunAutoRoute = source.TunAutoRoute;
+        target.TunStrictRoute = source.TunStrictRoute;
+        target.DnsMode = source.DnsMode;
+        target.DohServer = source.DohServer;
+        target.DohPath = source.DohPath;
+        target.DohSni = source.DohSni;
+        target.DnsDetour = source.DnsDetour;
+        target.DebugLogs = source.DebugLogs;
+        target.SingBoxLogLevel = source.SingBoxLogLevel;
+        target.CloseBehavior = source.CloseBehavior;
     }
 
     public void SelectMode(AppStateModel state, string mode)

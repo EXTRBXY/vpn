@@ -237,12 +237,12 @@ public sealed class SubscriptionServiceSyncTests
     private sealed class InMemorySettingsService : ISettingsService
     {
         public event EventHandler<AppStateModel>? StateChanged;
-        private AppStateModel _state = new();
+        private readonly AppStateModel _state = new();
         public AppStateModel GetState() => _state;
-        public void SaveState(AppStateModel state)
+        public void UpdateState(Action<AppStateModel> update)
         {
-            _state = state;
-            StateChanged?.Invoke(this, state);
+            update(_state);
+            StateChanged?.Invoke(this, _state);
         }
         public void UpdateMode(string mode) => _state.Mode = mode;
         public void UpdateDns(string mode, string dohServer, string dohPath, string dohSni, string detour) { }
