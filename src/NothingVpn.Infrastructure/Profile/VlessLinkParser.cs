@@ -1,12 +1,13 @@
 ﻿using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using NothingVpn.Application.Models;
 
 namespace NothingVpn.Infrastructure.Profile;
 
 internal static class VlessLinkParser
 {
-    public static VlessProfile Parse(string link)
+    public static VpnProfile Parse(string link)
     {
         if (string.IsNullOrWhiteSpace(link))
             throw new ArgumentException("Empty link.", nameof(link));
@@ -36,7 +37,7 @@ internal static class VlessLinkParser
 
         var query = ParseQuery(uri.Query);
 
-        var profile = new VlessProfile
+        var profile = new VpnProfile
         {
             Uuid = guid.ToString(),
             Host = uri.Host,
@@ -80,7 +81,7 @@ internal static class VlessLinkParser
         return profile;
     }
 
-    private static void ValidateProfile(VlessProfile p)
+    private static void ValidateProfile(VpnProfile p)
     {
         if (!Guid.TryParse(p.Uuid, out _)) throw new ArgumentException("UUID invalid.");
         if (string.IsNullOrWhiteSpace(p.Host)) throw new ArgumentException("Host is required.");
@@ -110,7 +111,7 @@ internal static class VlessLinkParser
         }
     }
 
-    private static string StableId(VlessProfile p)
+    private static string StableId(VpnProfile p)
     {
         var key = $"{p.Uuid}|{p.Host}|{p.Port}|{p.Type}|{p.Security}|{p.Sni}|{p.Flow}|{p.RealityPublicKey}|{p.RealityShortId}|{p.WsPath}|{p.WsHost}|{p.GrpcServiceName}";
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(key));

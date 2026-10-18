@@ -4,6 +4,9 @@ namespace NothingVpn.Domain.Policies;
 
 public static class RuleSetPolicyValidator
 {
+    public const string DirectAction = "direct";
+    public const string BlockAction = "block";
+
     public static void ValidateEnabled(IEnumerable<UserRuleSetEntry> entries, string ruleSetsDir)
     {
         var missing = new List<string>();
@@ -24,8 +27,7 @@ public static class RuleSetPolicyValidator
             if (!seenTags.Add(tag))
                 duplicateTags.Add(tag);
 
-            var action = (rs.Action ?? string.Empty).Trim().ToLowerInvariant();
-            if (action is not ("direct" or "block"))
+            if (!IsSupportedAction(rs.Action))
             {
                 bad.Add(string.IsNullOrWhiteSpace(rs.Name) ? rs.Tag : rs.Name);
                 continue;
@@ -55,6 +57,10 @@ public static class RuleSetPolicyValidator
         if (missing.Count != 0)
             throw new InvalidOperationException("Не найдены файлы включённых rule-set (.srs).");
     }
+
+    public static string NormalizeAction(string? action) => (action ?? string.Empty).Trim().ToLowerInvariant();
+
+    public static bool IsSupportedAction(string? action) => NormalizeAction(action) is DirectAction or BlockAction;
 
     public static bool IsSafeRuleSetFileName(string fileName)
     {

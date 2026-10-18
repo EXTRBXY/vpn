@@ -6,6 +6,9 @@ public static class ConnectionPolicy
     public const string TunMode = "tun";
     public const string TunAppsMode = "tun_apps";
 
+    public const string DefaultMode = ProxyMode;
+    public const int DefaultLocalMixedPort = 1080;
+
     public static string NormalizeMode(string? mode)
     {
         var value = (mode ?? string.Empty).Trim().ToLowerInvariant();
@@ -13,7 +16,7 @@ public static class ConnectionPolicy
         {
             TunMode => TunMode,
             TunAppsMode => TunAppsMode,
-            _ => ProxyMode
+            _ => DefaultMode
         };
     }
 

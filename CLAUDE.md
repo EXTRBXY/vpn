@@ -22,7 +22,7 @@ dotnet test NothingVpn.sln -c Release --no-build --filter "FullyQualifiedName~Si
 .\build\Test-UpdateHandoff.ps1           # desktop-тесты обновления; повторить с -RequireElevated из админ-терминала
 ```
 
-Базовая линия (18.10.2026): сборка без предупреждений, 289 тестов проходят, 3 desktop-теста пропущены намеренно.
+Базовая линия (18.10.2026): сборка без предупреждений, 312 тестов проходят, 3 desktop-теста пропущены намеренно.
 Только Windows. `Publish` берёт `sing-box.exe`/`wintun.dll` из `-RuntimeAssetsDirectory` или из установленного
 клиента в `%LOCALAPPDATA%\Programs\NothingVpn`.
 
@@ -44,7 +44,8 @@ build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/Noth
 
 - `Application/Services/VpnConnectionService.cs` — подключение/отключение, откат, восстановление после падения.
 - `Infrastructure/SingBox/SingBoxConfigGenerator.cs` — вся генерация конфига; `SingBoxRunner.cs` — процесс sing-box.
-- `Domain/Policies/*` — правила маршрутизации, DNS, TUN; меняйте поведение здесь, а не в генераторе или UI.
+- `Domain/Policies/*` — правила маршрутизации, DNS, TUN, значения по умолчанию; меняйте поведение здесь, а не в
+  генераторе или UI. `Application/Services/AppStateNormalizer.cs` — единственная точка нормализации состояния.
 - `Application/Services/SettingsService.cs` — единственный путь записи `state.json` для UI.
 - `Infrastructure/Security/DpapiJsonFile.cs` — формат всех файлов данных.
 
@@ -63,8 +64,8 @@ build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/Noth
 ## Инварианты, которые нельзя ломать без миграции
 
 - Каталог данных `%LOCALAPPDATA%\NothingVpn.Tray` (историческое имя).
-- Имена свойств `AppState`, `VlessProfile`, `UserRuleSet`, `SubscriptionRecord`, `WinInetProxySettingsSnapshot`
-  в Infrastructure — это схема JSON на диске (camelCase).
+- Значения `[JsonPropertyName]` в `AppStateModel`, `UserRuleSetModel`, `ProxySettingsSnapshotModel`, `VpnProfile`
+  и имена свойств `SubscriptionRecord` — это схема JSON на диске (camelCase).
 - Строковые значения в состоянии: `proxy|tun|tun_apps`, `doh|system`, `direct|proxy|block`, `tray|exit`.
 - `VlessLinkParser.StableId` — Id профиля; на нём держатся активный профиль и синхронизация подписок.
 - Хеш profileId → адреса TUN; `BuiltinId`/`Tag` встроенных rule-set.
@@ -73,9 +74,11 @@ build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/Noth
 
 ## Подводные камни
 
-- Две модели данных: Application (`AppStateModel`, `VpnProfile`, …) и Infrastructure-legacy (`AppState`,
-  `VlessProfile`, …) с ручным `LegacyModelMapper`. Новое поле нужно добавить в обе модели и в оба направления
-  маппера (а для подписок — в `SubscriptionStorePort`), иначе оно молча не сохранится.
+- Одна модель данных: Application-модели сериализуются в `state.json`/`profiles.json` напрямую. Новое поле — свойство
+  с `[JsonPropertyName]` плюс заполнение в `StorageRoundtripTests`; для подписок — ещё `SubscriptionRecord` и оба
+  метода `SubscriptionStorePort`. Пропуск ловят тесты хранения.
+- Нормализация — только `AppStateNormalizer` (Domain-политики), значения по умолчанию — константы политик.
+  Генератор sing-box получает нормализованное состояние и не нормализует сам; не добавляйте туда исправление входов.
 - `state.json` пишется только через общий `AppStateStore` (один экземпляр на процесс, один лок): UI —
   `ISettingsService.UpdateState(s => s.Field = …)`, подключение — `AppStateStore.Update` с конкретными полями.
   Записи целого устаревшего объекта (`SaveState`) больше нет — не возвращайте её.

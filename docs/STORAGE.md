@@ -31,10 +31,12 @@
 
 ## Схемы
 
-Имена полей — это имена свойств **Infrastructure-классов** в camelCase. Переименование свойства в этих классах
-равносильно потере данных у пользователей.
+`state.json` и `profiles.json` сериализуют Application-модели напрямую; имена полей зафиксированы атрибутами
+`[JsonPropertyName]` на `AppStateModel`, `UserRuleSetModel`, `ProxySettingsSnapshotModel`, `VpnProfile`. Изменение
+значения атрибута равносильно потере данных у пользователей; переименование C#-свойства формат не меняет.
+`subscriptions.json` хранится через плоский DTO `SubscriptionRecord` (имена — camelCase свойств).
 
-### `profiles.json` — `List<VlessProfile>` (`Profile/VlessProfile.cs`)
+### `profiles.json` — `List<VpnProfile>` (`Application/Models/VpnProfile.cs`)
 
 `id`, `subscriptionId`, `name`, `uuid`, `host`, `port`, `type`, `security`, `encryption`, `sni`, `alpn[]`,
 `fingerprint`, `flow`, `realityPublicKey`, `realityShortId`, `wsPath`, `wsHost`, `grpcServiceName`, `extraQuery{}`.
@@ -53,7 +55,7 @@
 Профили из подписки помечаются `subscriptionId`; в UI их нельзя редактировать, они заменяются при обновлении.
 Удаление подписки удаляет и её профили.
 
-### `state.json` — `AppState` (`Store/AppState.cs`)
+### `state.json` — `AppStateModel` (`Application/Models/AppStateModel.cs`)
 
 | Поле | По умолчанию | Смысл |
 | --- | --- | --- |
@@ -92,10 +94,14 @@ Runtime-флаги `proxyWasEnabledByUs` / `previousProxySettings` пишет т
 свежей копии и изменить не может. Если бы их перетёрли старой копией состояния, после отключения системный прокси
 остался бы включённым или был бы восстановлен неверно.
 
-## Значения по умолчанию задаются в нескольких местах
+## Значения по умолчанию
 
-`AppState` (Infrastructure), `AppStateModel` (Application), `DnsSettings`/`TunSettings`/`ProxyConnectionSettings` и
-политики (Domain). Сейчас они совпадают; при изменении меняйте все или сведите к одному источнику.
+Один источник — константы Domain-политик (`ConnectionPolicy`, `DnsPolicy`, `TunSettingsPolicy`,
+`ProxyConnectionPolicy`, `SingBoxLogLevelPolicy`). `AppStateModel` и `DnsSettings`/`TunSettings`/
+`ProxyConnectionSettings` ссылаются на них. Отсутствующее в файле поле получает значение по умолчанию модели.
+
+Исключение — профиль: у `VpnProfile` пустые `id` и `name` по умолчанию (у удалённого legacy-класса были новый GUID и
+`Unnamed`). Клиент всегда записывает оба поля, поэтому для файлов, созданных клиентом, разницы нет.
 
 ## Каталог rule-set
 

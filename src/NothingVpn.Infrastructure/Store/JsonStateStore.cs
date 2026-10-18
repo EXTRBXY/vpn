@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using NothingVpn.Application.Models;
 using NothingVpn.Infrastructure.Security;
 
 namespace NothingVpn.Infrastructure.Store;
@@ -9,12 +10,12 @@ internal sealed class JsonStateStore
 
     public JsonStateStore(string path) => _path = path;
 
-    public AppState Load()
+    public AppStateModel Load()
     {
-        return DpapiJsonFile.LoadOrDefault(_path, defaultFactory: () => new AppState());
+        return DpapiJsonFile.LoadOrDefault(_path, defaultFactory: () => new AppStateModel());
     }
 
-    public void Save(AppState state)
+    public void Save(AppStateModel state)
     {
         DpapiJsonFile.Save(_path, state);
     }

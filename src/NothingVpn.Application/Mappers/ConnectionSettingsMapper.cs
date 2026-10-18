@@ -43,6 +43,16 @@ public static class ConnectionSettingsMapper
         state.TunStrictRoute = tun.StrictRoute;
     }
 
+    public static IEnumerable<UserRuleSetEntry> ToRuleSetEntries(IEnumerable<UserRuleSetModel> ruleSets) =>
+        ruleSets.Select(x => new UserRuleSetEntry
+        {
+            Tag = x.Tag,
+            Name = x.Name,
+            FileName = x.FileName,
+            Enabled = x.Enabled,
+            Action = x.Action
+        });
+
     public static ProxyConnectionSettings ToProxySettings(AppStateModel state) => new()
     {
         ProxyOverride = state.ProxyOverride

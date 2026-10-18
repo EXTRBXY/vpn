@@ -1,4 +1,5 @@
-﻿using NothingVpn.Infrastructure.Store;
+﻿using NothingVpn.Application.Models;
+using NothingVpn.Domain.Policies;
 
 namespace NothingVpn.Infrastructure.RuleSets;
 
@@ -50,9 +51,9 @@ internal static class BuiltinGeositeRuleSets
     /// <summary>
     /// Добавляет отсутствующие встроенные наборы перед первым пользовательским импортом.
     /// </summary>
-    internal static bool EnsureBuiltinGeositeRuleSets(AppState state)
+    internal static bool EnsureBuiltinGeositeRuleSets(AppStateModel state)
     {
-        var list = state.UserRuleSets ??= new List<UserRuleSet>();
+        var list = state.UserRuleSets ??= new List<UserRuleSetModel>();
         var changed = false;
 
         foreach (var def in All)
@@ -64,7 +65,7 @@ internal static class BuiltinGeositeRuleSets
             if (insertAt < 0)
                 insertAt = list.Count;
 
-            list.Insert(insertAt, new UserRuleSet
+            list.Insert(insertAt, new UserRuleSetModel
             {
                 BuiltinId = def.BuiltinId,
                 Tag = def.RouteTag,
@@ -72,8 +73,8 @@ internal static class BuiltinGeositeRuleSets
                 FileName = def.FileName,
                 Enabled = false,
                 Action = string.Equals(def.BuiltinId, "sing-geosite:category-ru-ads", StringComparison.Ordinal)
-                    ? "block"
-                    : "direct"
+                    ? RuleSetPolicyValidator.BlockAction
+                    : RuleSetPolicyValidator.DirectAction
             });
             changed = true;
         }

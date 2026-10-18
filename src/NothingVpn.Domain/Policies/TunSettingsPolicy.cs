@@ -6,6 +6,9 @@ namespace NothingVpn.Domain.Policies;
 
 public static class TunSettingsPolicy
 {
+    public const string DefaultInterfaceName = "NothingVpn";
+    public const string AutoAddressCidr = "auto";
+    public const string DefaultStack = "";
     public const int DefaultMtu = 1500;
     public const int LegacyMtuSentinel = 9000;
     public const int MinMtu = 576;
@@ -32,7 +35,7 @@ public static class TunSettingsPolicy
     public static bool IsValidAddressCidr(string? cidr)
     {
         var normalized = NormalizeAddressCidr(cidr);
-        if (normalized.Equals("auto", StringComparison.OrdinalIgnoreCase))
+        if (normalized == AutoAddressCidr)
             return true;
 
         var parts = normalized.Split('/', 2);
@@ -52,7 +55,7 @@ public static class TunSettingsPolicy
     {
         var trimmed = (name ?? string.Empty).Trim();
         if (trimmed.Length == 0 || InvalidInterfaceChars.IsMatch(trimmed))
-            return "NothingVpn";
+            return DefaultInterfaceName;
 
         return trimmed.Length > 64 ? trimmed[..64] : trimmed;
     }
@@ -63,7 +66,7 @@ public static class TunSettingsPolicy
         if (trimmed.Length == 0
             || trimmed.Equals("auto", StringComparison.OrdinalIgnoreCase)
             || trimmed.Equals("172.19.0.1/30", StringComparison.OrdinalIgnoreCase))
-            return "auto";
+            return AutoAddressCidr;
 
         return trimmed;
     }
@@ -84,7 +87,7 @@ public static class TunSettingsPolicy
             "system" => "system",
             "mixed" => "mixed",
             "gvisor" => "gvisor",
-            _ => ""
+            _ => DefaultStack
         };
     }
 

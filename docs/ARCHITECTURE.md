@@ -52,24 +52,42 @@ Infrastructure используется только в composition root. **Фа
 `LegacyRuntimeContext` — внутренний контейнер, который делят `SingBoxPort` и `LogPort`: пути, общий `InMemoryLogStore`
 и единственный экземпляр `SingBoxRunner`.
 
-## Две параллельные модели данных
+## Модель данных
 
-Важно для рефакторинга: одни и те же сущности описаны дважды.
+Одна модель на Application-уровне — она же формат хранения (шаг 3 рефакторинга, см. REFACTORING.md 3.1):
 
-| Application (публичный контракт) | Infrastructure (формат хранения) |
-| --- | --- |
-| `VpnProfile` | `Profile/VlessProfile` |
-| `AppStateModel` | `Store/AppState` |
-| `UserRuleSetModel` | `Store/UserRuleSet` |
-| `ProxySettingsSnapshotModel` | `WinInet/WinInetProxySettingsSnapshot` |
-| `SubscriptionModel` + `SubscriptionUserInfoModel` | `Store/SubscriptionRecord` (плоская) |
+| Application-модель | Файл на диске | Как сериализуется |
+| --- | --- | --- |
+| `AppStateModel` (+ `UserRuleSetModel`, `ProxySettingsSnapshotModel`) | `state.json` | напрямую, имена — `[JsonPropertyName]` |
+| `VpnProfile` | `profiles.json` | напрямую, имена — `[JsonPropertyName]` |
+| `SubscriptionModel` + `SubscriptionUserInfoModel` | `subscriptions.json` | через плоский DTO `Store/SubscriptionRecord` |
 
-Перекладывание полей — вручную в `Mappers/LegacyModelMapper.cs` и `Ports/SubscriptionStorePort.cs`.
-`SingBoxConfigGenerator` работает с **legacy**-типами: `SingBoxPort.WriteConfig` маппит модель обратно в `AppState`
-и `VlessProfile`. Новое поле настроек, не добавленное во все места, молча теряется при сохранении.
+Имена JSON-свойств зафиксированы атрибутами, поэтому переименование свойства в C# не меняет формат. Единственный
+ручной маппинг — `SubscriptionRecord` ↔ `SubscriptionModel` в `Ports/SubscriptionStorePort.cs` (формат на диске
+плоский, модель — вложенная). Пропуск поля ловят `StorageRoundtripTests` (roundtrip каждого поля и сверка набора полей
+модели и `SubscriptionRecord`) и `StorageFormatCompatibilityTests` (замороженные имена полей).
 
-Сверх этого Domain содержит третье представление настроек (`DnsSettings`, `TunSettings`, `ProxyConnectionSettings`),
-которое `ConnectionSettingsMapper` (Application) раскладывает в плоский `AppStateModel`.
+Новое поле состояния или профиля добавляется в одно место — Application-модель (с `[JsonPropertyName]`) — плюс
+заполнение в `StorageRoundtripTests`; поле подписки — ещё в `SubscriptionRecord` и оба метода `SubscriptionStorePort`.
+
+`SingBoxConfigGenerator`, `VlessLinkParser`, `WinInetProxyController` и `BuiltinGeositeRuleSets` работают с теми же
+Application-моделями; `SingBoxPort.WriteConfig` передаёт их генератору без преобразований.
+
+Domain содержит отдельное представление групп настроек (`DnsSettings`, `TunSettings`, `ProxyConnectionSettings`) для
+политик; `ConnectionSettingsMapper` (Application) раскладывает его в плоский `AppStateModel` и обратно.
+
+### Нормализация и значения по умолчанию
+
+- Значения по умолчанию — константы Domain-политик (`ConnectionPolicy.DefaultMode`, `DnsPolicy.Default*`,
+  `TunSettingsPolicy.Default*`, `ProxyConnectionPolicy.DefaultProxyOverride`, `SingBoxLogLevelPolicy.DefaultLevel`);
+  модели Application и Domain ссылаются на них.
+- Нормализация состояния — одна точка, `AppStateNormalizer` (Application): режим, DNS detour, `CloseBehavior`, уровень
+  журнала sing-box, пути TUN-приложений (`IPathPolicyPort`), DNS/TUN/proxy-настройки через Domain-политики. Её
+  вызывают `SettingsService.UpdateState` (каждая запись) и `VpnConnectionService.ConnectAsync` (снимок перед
+  генерацией конфига).
+- Генератор sing-box нормализованные значения не исправляет, только переводит в конфиг и проверяет то, без чего конфиг
+  некорректен (SNI для DoH, rule-set, `tun_apps` без приложений). Значения, производные от Id профиля (имя интерфейса,
+  адреса TUN) и «стек по умолчанию», — `TunInterfacePolicy` (Domain).
 
 ## Основные сценарии
 
@@ -80,7 +98,7 @@ Infrastructure используется только в composition root. **Фа
 1. Захват `_sessionLock` (один connect/disconnect одновременно), инкремент `_sessionGeneration`.
 2. Загрузка профиля и снимка состояния из `AppStateStore`. Снимок нужен только для генерации конфига и обратно
    целиком не сохраняется — настройки, изменённые за время подключения, не теряются.
-3. Нормализация режима и путей приложений; `ConnectionPolicy.EnsureTunAppsHasTargets`; `RuleSetPolicyValidator.ValidateEnabled`
+3. Нормализация снимка (`AppStateNormalizer`); `ConnectionPolicy.EnsureTunAppsHasTargets`; `RuleSetPolicyValidator.ValidateEnabled`
    (проверяет и наличие `.srs` на диске).
 4. TUN без прав администратора → `ConnectResult { RequiresElevation, ElevationArgs }` (см. «Повышение прав»).
 5. Если sing-box уже работает — полный disconnect.
@@ -169,8 +187,8 @@ TUN требует администратора. Клиент не повыша�
 - `UpdateState(Action<AppStateModel>)` — `AppStateStore.Update` + нормализация. Runtime-флаги подключения
   (`ConnectionRuntimeState`: `ProxyWasEnabledByUs`, `PreviousProxySettings`) переносятся из свежей копии, поэтому
   сохранение настроек их изменить не может. Их пишет только `VpnConnectionService`.
-- Нормализация всегда приводит режим, DNS detour (`DnsDetourPolicy`), `CloseBehavior`, пути TUN-приложений, DNS/TUN/
-  proxy-настройки к допустимым значениям.
+- Нормализация (`AppStateNormalizer`) всегда приводит режим, DNS detour (`DnsDetourPolicy`), `CloseBehavior`, уровень
+  журнала, пути TUN-приложений, DNS/TUN/proxy-настройки к допустимым значениям.
 - `ActiveProfileId` — общее поле: его выбирает UI (`SelectProfile`), выставляет/сбрасывает подключение и сбрасывает
   синхронизация подписок; каждый пишет только его.
 - `ConnectionScreenController.Save(snapshot)` (нужен WinForms-клиенту) переносит из снимка только редактируемые

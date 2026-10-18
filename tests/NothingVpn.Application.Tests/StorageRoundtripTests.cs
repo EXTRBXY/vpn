@@ -1,19 +1,18 @@
 using System.Collections;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
 using NothingVpn.Infrastructure.Ports;
-using NothingVpn.Infrastructure.Profile;
 using NothingVpn.Infrastructure.Store;
-using NothingVpn.Infrastructure.WinInet;
 
 namespace NothingVpn.Application.Tests;
 
 /// <summary>
-/// Характеризационные тесты хранения: каждое поле Application-модели проходит через LegacyModelMapper,
-/// DPAPI-файл и обратно без потерь. Новое свойство модели роняет тест покрытия, пока его не заполнят здесь;
-/// после этого roundtrip упадёт, если поле не проброшено через маппер или legacy-класс.
+/// Характеризационные тесты хранения: каждое поле Application-модели проходит через DPAPI-файл и обратно
+/// без потерь. Новое свойство модели роняет тест покрытия, пока его не заполнят здесь; после этого roundtrip
+/// упадёт, если поле не сохраняется (нет [JsonPropertyName] или не проброшено через SubscriptionRecord).
 /// </summary>
 public sealed class StorageRoundtripTests : IDisposable
 {
@@ -73,13 +72,22 @@ public sealed class StorageRoundtripTests : IDisposable
     }
 
     [Fact]
-    public void ApplicationModels_HaveSameFieldsAsStorageClasses()
+    public void StoredModels_DeclareJsonNamesExplicitly()
     {
-        AssertSameProperties<AppStateModel, AppState>();
-        AssertSameProperties<UserRuleSetModel, UserRuleSet>();
-        AssertSameProperties<ProxySettingsSnapshotModel, WinInetProxySettingsSnapshot>();
-        AssertSameProperties<VpnProfile, VlessProfile>();
+        // state.json и profiles.json сериализуют Application-модели напрямую: имя JSON-свойства должно
+        // быть зафиксировано атрибутом, чтобы переименование свойства в C# не меняло формат на диске.
+        var missing = new[] { typeof(AppStateModel), typeof(UserRuleSetModel), typeof(ProxySettingsSnapshotModel), typeof(VpnProfile) }
+            .SelectMany(type => PublicProperties(type)
+                .Where(p => p.GetCustomAttribute<JsonPropertyNameAttribute>() is null)
+                .Select(p => $"{type.Name}.{p.Name}"))
+            .ToList();
 
+        Assert.True(missing.Count == 0, "Add [JsonPropertyName] to: " + string.Join(", ", missing));
+    }
+
+    [Fact]
+    public void SubscriptionModel_HasSameFieldsAsSubscriptionRecord()
+    {
         // SubscriptionRecord хранит UserInfo плоско.
         var modelNames = PropertyNames(typeof(SubscriptionModel))
             .Where(n => n != nameof(SubscriptionModel.UserInfo))
@@ -262,11 +270,6 @@ public sealed class StorageRoundtripTests : IDisposable
         type.IsClass && type != typeof(string) && type.Namespace == typeof(AppStateModel).Namespace;
 
     private static bool IsSameValue(object? left, object? right) => Equals(left, right);
-
-    private static void AssertSameProperties<TModel, TStorage>() =>
-        Assert.Equal(
-            PropertyNames(typeof(TModel)).Order(StringComparer.Ordinal),
-            PropertyNames(typeof(TStorage)).Order(StringComparer.Ordinal));
 
     private static IEnumerable<string> PropertyNames(Type type) => PublicProperties(type).Select(p => p.Name);
 

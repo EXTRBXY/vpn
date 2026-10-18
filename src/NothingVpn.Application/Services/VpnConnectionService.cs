@@ -1,6 +1,6 @@
+using NothingVpn.Application.Mappers;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
-using NothingVpn.Domain.Models;
 using NothingVpn.Domain.Policies;
 
 namespace NothingVpn.Application.Services;
@@ -65,8 +65,7 @@ public sealed class VpnConnectionService : IVpnConnectionService
             // Снимок нужен только для генерации конфига и обратно целиком не сохраняется:
             // настройки, изменённые за время подключения, не теряются.
             var state = _stateStore.Load();
-            state.Mode = ConnectionPolicy.NormalizeMode(state.Mode);
-            state.TunAppProcessPaths = _pathPolicy.NormalizeDistinctExePaths(state.TunAppProcessPaths).ToList();
+            AppStateNormalizer.Normalize(state, _pathPolicy);
             ConnectionPolicy.EnsureTunAppsHasTargets(state.Mode, state.TunAppProcessPaths);
             ValidateRuleSets(state, _appPathsPort.Get().RuleSetsDir);
 
@@ -251,15 +250,7 @@ public sealed class VpnConnectionService : IVpnConnectionService
 
     private static void ValidateRuleSets(AppStateModel state, string ruleSetsDir)
     {
-        var entries = state.UserRuleSets.Select(x => new UserRuleSetEntry
-        {
-            Tag = x.Tag,
-            Name = x.Name,
-            FileName = x.FileName,
-            Enabled = x.Enabled,
-            Action = x.Action
-        });
-        RuleSetPolicyValidator.ValidateEnabled(entries, ruleSetsDir);
+        RuleSetPolicyValidator.ValidateEnabled(ConnectionSettingsMapper.ToRuleSetEntries(state.UserRuleSets), ruleSetsDir);
     }
 
     private string DescribeSingBoxStartupFailure()

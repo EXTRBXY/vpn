@@ -1,5 +1,5 @@
+using NothingVpn.Application.Models;
 using NothingVpn.Application.Services;
-using NothingVpn.Infrastructure.Mappers;
 using NothingVpn.Infrastructure.Profile;
 using NothingVpn.Infrastructure.SingBox;
 using NothingVpn.Infrastructure.Store;
@@ -24,7 +24,7 @@ public sealed class SecurityRegressionTests
         var current = original;
         for (var i = 0; i < 3; i++)
         {
-            current = VlessLinkParser.Parse(VlessLinkFormatter.Build(LegacyModelMapper.ToModel(current)));
+            current = VlessLinkParser.Parse(VlessLinkFormatter.Build(current));
             Assert.Equal(original.Security, current.Security);
             Assert.Equal(original.Type, current.Type);
             Assert.Equal(original.Sni, current.Sni);
@@ -45,12 +45,12 @@ public sealed class SecurityRegressionTests
     public void TunBootstrap_DoesNotGrantSniDirectRoutingOrLocalDns(string mode, string dnsMode, string host)
     {
         var paths = new AppPaths(".", ".", ".", ".", "profiles.json", "subscriptions.json", "state.json");
-        var profile = new VlessProfile
+        var profile = new VpnProfile
         {
             Host = host, Sni = "cover.example", Port = 443,
             Uuid = "11111111-1111-1111-1111-111111111111", Security = "tls", Type = "tcp"
         };
-        var state = new AppState
+        var state = new AppStateModel
         {
             Mode = mode, DnsMode = dnsMode, DohSni = "dns.google",
             TunAppProcessPaths = [@"C:\Apps\browser.exe"]

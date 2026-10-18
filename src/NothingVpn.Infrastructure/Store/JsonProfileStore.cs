@@ -1,5 +1,5 @@
 ﻿using System.Text.Json;
-using NothingVpn.Infrastructure.Profile;
+using NothingVpn.Application.Models;
 using NothingVpn.Infrastructure.Security;
 
 namespace NothingVpn.Infrastructure.Store;
@@ -10,12 +10,12 @@ internal sealed class JsonProfileStore
 
     public JsonProfileStore(string path) => _path = path;
 
-    public IReadOnlyList<VlessProfile> Load()
+    public IReadOnlyList<VpnProfile> Load()
     {
-        return DpapiJsonFile.LoadOrDefault(_path, defaultFactory: () => new List<VlessProfile>());
+        return DpapiJsonFile.LoadOrDefault(_path, defaultFactory: () => new List<VpnProfile>());
     }
 
-    public IReadOnlyList<VlessProfile> Upsert(VlessProfile profile)
+    public IReadOnlyList<VpnProfile> Upsert(VpnProfile profile)
     {
         var list = Load().ToList();
         var idx = list.FindIndex(p => string.Equals(p.Id, profile.Id, StringComparison.OrdinalIgnoreCase));
@@ -26,7 +26,7 @@ internal sealed class JsonProfileStore
         return list;
     }
 
-    public IReadOnlyList<VlessProfile> Delete(string profileId)
+    public IReadOnlyList<VpnProfile> Delete(string profileId)
     {
         var list = Load().ToList();
         list.RemoveAll(p => string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase));
@@ -34,9 +34,9 @@ internal sealed class JsonProfileStore
         return list;
     }
 
-    public (IReadOnlyList<VlessProfile> Profiles, int Added, int Updated, int Removed) SyncForSubscription(
+    public (IReadOnlyList<VpnProfile> Profiles, int Added, int Updated, int Removed) SyncForSubscription(
         string subscriptionId,
-        IReadOnlyList<VlessProfile> profilesFromSubscription)
+        IReadOnlyList<VpnProfile> profilesFromSubscription)
     {
         var list = Load().ToList();
         var existingForSub = list
@@ -75,7 +75,7 @@ internal sealed class JsonProfileStore
         return (list, added, updated, removed);
     }
 
-    public IReadOnlyList<VlessProfile> DeleteBySubscription(string subscriptionId)
+    public IReadOnlyList<VpnProfile> DeleteBySubscription(string subscriptionId)
     {
         var list = Load().ToList();
         list.RemoveAll(p => string.Equals(p.SubscriptionId, subscriptionId, StringComparison.OrdinalIgnoreCase));
@@ -83,7 +83,7 @@ internal sealed class JsonProfileStore
         return list;
     }
 
-    private void Save(List<VlessProfile> profiles)
+    private void Save(List<VpnProfile> profiles)
     {
         DpapiJsonFile.Save(_path, profiles);
     }

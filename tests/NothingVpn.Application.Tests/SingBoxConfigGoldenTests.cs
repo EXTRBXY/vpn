@@ -1,5 +1,7 @@
 using System.Runtime.CompilerServices;
-using NothingVpn.Infrastructure.Profile;
+using NothingVpn.Application.Models;
+using NothingVpn.Application.Services;
+using NothingVpn.Infrastructure.Ports;
 using NothingVpn.Infrastructure.SingBox;
 using NothingVpn.Infrastructure.Store;
 
@@ -62,8 +64,10 @@ public sealed class SingBoxConfigGoldenTests : IDisposable
         AssertMatchesGolden($"profile-grpc-none.{mode}", GrpcWithoutTlsProfile(), state);
     }
 
-    private void AssertMatchesGolden(string name, VlessProfile profile, AppState state)
+    private void AssertMatchesGolden(string name, VpnProfile profile, AppStateModel state)
     {
+        // Тот же путь, что при подключении: VpnConnectionService нормализует состояние перед генерацией.
+        AppStateNormalizer.Normalize(state, new PathPolicyPort());
         var actual = Normalize(File.ReadAllText(SingBoxConfigGenerator.WriteConfig(CreatePaths(), profile, state)));
 
         if (Environment.GetEnvironmentVariable(UpdateGoldenVariable) == "1")
@@ -94,7 +98,7 @@ public sealed class SingBoxConfigGoldenTests : IDisposable
             StateJsonPath: @"C:\NothingVpnGolden\state.json");
     }
 
-    private static AppState CreateState(string mode, string dnsMode, string detour, bool ruleSets) => new()
+    private static AppStateModel CreateState(string mode, string dnsMode, string detour, bool ruleSets) => new()
     {
         ActiveProfileId = "0123456789abcdef",
         Mode = mode,
@@ -105,7 +109,7 @@ public sealed class SingBoxConfigGoldenTests : IDisposable
         ],
         UserRuleSets =
         [
-            new UserRuleSet
+            new UserRuleSetModel
             {
                 BuiltinId = "sing-geosite:category-ru",
                 Tag = "geosite-category-ru",
@@ -114,7 +118,7 @@ public sealed class SingBoxConfigGoldenTests : IDisposable
                 Enabled = ruleSets,
                 Action = "direct"
             },
-            new UserRuleSet
+            new UserRuleSetModel
             {
                 BuiltinId = "sing-geosite:category-ru-ads",
                 Tag = "geosite-category-ru-ads",
@@ -123,7 +127,7 @@ public sealed class SingBoxConfigGoldenTests : IDisposable
                 Enabled = ruleSets,
                 Action = "block"
             },
-            new UserRuleSet
+            new UserRuleSetModel
             {
                 BuiltinId = "sing-geoip:ru",
                 Tag = "geoip-ru",
@@ -132,7 +136,7 @@ public sealed class SingBoxConfigGoldenTests : IDisposable
                 Enabled = ruleSets,
                 Action = "direct"
             },
-            new UserRuleSet
+            new UserRuleSetModel
             {
                 Tag = "user-ruleset-0123456789ab",
                 Name = "My list",
@@ -156,7 +160,7 @@ public sealed class SingBoxConfigGoldenTests : IDisposable
         SingBoxLogLevel = "warn"
     };
 
-    private static VlessProfile RealityProfile() => new()
+    private static VpnProfile RealityProfile() => new()
     {
         Id = "0123456789abcdef",
         Name = "Golden reality",
@@ -173,7 +177,7 @@ public sealed class SingBoxConfigGoldenTests : IDisposable
         RealityShortId = "a1b2c3d4"
     };
 
-    private static VlessProfile TlsWebSocketProfile() => new()
+    private static VpnProfile TlsWebSocketProfile() => new()
     {
         Id = "fedcba9876543210",
         Name = "Golden ws",
@@ -190,7 +194,7 @@ public sealed class SingBoxConfigGoldenTests : IDisposable
         WsHost = "cdn.example.net"
     };
 
-    private static VlessProfile GrpcWithoutTlsProfile() => new()
+    private static VpnProfile GrpcWithoutTlsProfile() => new()
     {
         Id = "00ff00ff00ff00ff",
         Name = "Golden grpc",

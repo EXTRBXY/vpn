@@ -19,19 +19,10 @@ public sealed class SettingsService(AppStateStore stateStore, IPathPolicyPort pa
         {
             var runtime = ConnectionRuntimeState.From(current);
             update(current);
-            NormalizeState(current);
+            AppStateNormalizer.Normalize(current, pathPolicy);
             runtime.ApplyTo(current);
         });
         StateChanged?.Invoke(this, state);
-    }
-
-    private void NormalizeState(AppStateModel state)
-    {
-        state.Mode = ConnectionPolicy.NormalizeMode(state.Mode);
-        state.DnsDetour = DnsDetourPolicy.EffectiveDetour(state.Mode, state.DnsDetour);
-        state.CloseBehavior = AppCloseBehavior.Normalize(state.CloseBehavior);
-        state.TunAppProcessPaths = pathPolicy.NormalizeDistinctExePaths(state.TunAppProcessPaths).ToList();
-        NormalizeConnectionSettings(state);
     }
 
     public void UpdateMode(string mode)
@@ -75,20 +66,4 @@ public sealed class SettingsService(AppStateStore stateStore, IPathPolicyPort pa
     {
         UpdateState(state => state.TunAppProcessPaths = pathPolicy.NormalizeDistinctExePaths(paths).ToList());
     }
-
-    private static void NormalizeConnectionSettings(AppStateModel state)
-    {
-        var dns = ConnectionSettingsMapper.ToDnsSettings(state);
-        DnsPolicy.Normalize(dns);
-        ConnectionSettingsMapper.ApplyDnsSettings(state, dns);
-
-        var tun = ConnectionSettingsMapper.ToTunSettings(state);
-        TunSettingsPolicy.Normalize(tun);
-        ConnectionSettingsMapper.ApplyTunSettings(state, tun);
-
-        var proxy = ConnectionSettingsMapper.ToProxySettings(state);
-        ProxyConnectionPolicy.Normalize(proxy);
-        ConnectionSettingsMapper.ApplyProxySettings(state, proxy);
-    }
 }
-

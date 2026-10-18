@@ -1,6 +1,5 @@
 ﻿using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
-using NothingVpn.Infrastructure.Mappers;
 using NothingVpn.Infrastructure.Runtime;
 using NothingVpn.Infrastructure.SingBox;
 
@@ -24,11 +23,7 @@ public sealed class SingBoxPort : ISingBoxPort
     public bool IsRunning => _context.Runner.IsRunning;
 
     public string WriteConfig(VpnProfile profile, AppStateModel state)
-    {
-        var legacyProfile = LegacyModelMapper.ToLegacy(profile);
-        var legacyState = LegacyModelMapper.ToLegacy(state);
-        return SingBoxConfigGenerator.WriteConfig(_context.Paths, legacyProfile, legacyState);
-    }
+        => SingBoxConfigGenerator.WriteConfig(_context.Paths, profile, state);
 
     public void Start(string configPath) => _context.Runner.Start(configPath);
 
