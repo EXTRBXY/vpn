@@ -36,10 +36,9 @@ public sealed class ConnectionScreenController : IConnectionScreenController
 
         if (detourChanged || selectionChanged)
         {
+            // DnsDetour приводит к допустимому значению сама запись (AppStateNormalizer).
             _settingsService.UpdateState(current =>
             {
-                NormalizeCollections(current);
-                current.DnsDetour = DnsDetourPolicy.EffectiveDetour(current.Mode, current.DnsDetour);
                 if (selectionChanged)
                     current.ActiveProfileId = selectedId;
             });
@@ -101,6 +100,6 @@ public sealed class ConnectionScreenController : IConnectionScreenController
         state.TunAppProcessPaths ??= new List<string>();
         state.UserRuleSets ??= new List<UserRuleSetModel>();
         if (string.IsNullOrWhiteSpace(state.DnsDetour))
-            state.DnsDetour = "direct";
+            state.DnsDetour = DnsPolicy.DefaultDetour;
     }
 }

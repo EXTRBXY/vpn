@@ -1,5 +1,6 @@
 ﻿using System.Runtime.InteropServices;
 using Microsoft.Win32;
+using NothingVpn.Application.Models;
 
 namespace NothingVpn.Infrastructure.WinInet;
 
@@ -7,14 +8,14 @@ internal sealed class WinInetProxyController
 {
     private const string InternetSettingsKey = @"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
 
-    public WinInetProxySettingsSnapshot ReadCurrent()
+    public ProxySettingsSnapshotModel ReadCurrent()
     {
         using var key = Registry.CurrentUser.OpenSubKey(InternetSettingsKey, writable: false);
         var enable = key?.GetValue("ProxyEnable") as int? ?? 0;
         var server = key?.GetValue("ProxyServer") as string;
         var bypass = key?.GetValue("ProxyOverride") as string;
 
-        return new WinInetProxySettingsSnapshot
+        return new ProxySettingsSnapshotModel
         {
             ProxyEnable = enable != 0,
             ProxyServer = server,
@@ -36,7 +37,7 @@ internal sealed class WinInetProxyController
         NotifyWinInetSettingsChanged();
     }
 
-    public void Restore(WinInetProxySettingsSnapshot? previous)
+    public void Restore(ProxySettingsSnapshotModel? previous)
     {
         // If we don't have a snapshot, safest behavior is to disable proxy.
         using var key = Registry.CurrentUser.OpenSubKey(InternetSettingsKey, writable: true)
@@ -70,11 +71,3 @@ internal sealed class WinInetProxyController
     [DllImport("wininet.dll", SetLastError = true)]
     private static extern bool InternetSetOption(IntPtr hInternet, int dwOption, IntPtr lpBuffer, int dwBufferLength);
 }
-
-internal sealed class WinInetProxySettingsSnapshot
-{
-    public bool ProxyEnable { get; set; }
-    public string? ProxyServer { get; set; }
-    public string? ProxyOverride { get; set; }
-}
-

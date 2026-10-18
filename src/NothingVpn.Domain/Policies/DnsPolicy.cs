@@ -4,6 +4,17 @@ namespace NothingVpn.Domain.Policies;
 
 public static class DnsPolicy
 {
+    public const string DohMode = "doh";
+    public const string SystemMode = "system";
+    public const string DirectDetour = "direct";
+    public const string ProxyDetour = "proxy";
+
+    public const string DefaultMode = DohMode;
+    public const string DefaultDohServer = "8.8.8.8";
+    public const string DefaultDohPath = "/dns-query";
+    public const string DefaultDohSni = "dns.google";
+    public const string DefaultDetour = DirectDetour;
+
     public static void Normalize(DnsSettings settings)
     {
         settings.Mode = NormalizeMode(settings.Mode);
@@ -85,18 +96,18 @@ public static class DnsPolicy
     private static string NormalizeMode(string? mode)
     {
         var normalized = (mode ?? string.Empty).Trim().ToLowerInvariant();
-        return normalized is "system" or "doh" ? normalized : "doh";
+        return normalized is SystemMode or DohMode ? normalized : DefaultMode;
     }
 
     private static string NormalizeDetour(string? detour)
     {
         var normalized = (detour ?? string.Empty).Trim().ToLowerInvariant();
-        return normalized == "proxy" ? "proxy" : "direct";
+        return normalized == ProxyDetour ? ProxyDetour : DirectDetour;
     }
 
     private static string NormalizePath(string? path)
     {
         var normalized = (path ?? string.Empty).Trim();
-        return normalized.Length == 0 ? "/dns-query" : normalized;
+        return normalized.Length == 0 ? DefaultDohPath : normalized;
     }
 }

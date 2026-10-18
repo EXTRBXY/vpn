@@ -2,12 +2,11 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
 using NothingVpn.Infrastructure.Ports;
-using NothingVpn.Infrastructure.Profile;
 using NothingVpn.Infrastructure.Store;
-using NothingVpn.Infrastructure.WinInet;
 
 namespace NothingVpn.Application.Tests;
 
@@ -431,11 +430,11 @@ public sealed class StorageFormatCompatibilityTests : IDisposable
     [Fact]
     public void StorageClasses_MatchCurrentSchema()
     {
-        Assert.Equal(StateSchema, CamelCaseProperties(typeof(AppState)));
-        Assert.Equal(UserRuleSetSchema, CamelCaseProperties(typeof(UserRuleSet)));
-        Assert.Equal(ProxySnapshotSchema, CamelCaseProperties(typeof(WinInetProxySettingsSnapshot)));
-        Assert.Equal(ProfileSchema, CamelCaseProperties(typeof(VlessProfile)));
-        Assert.Equal(SubscriptionSchema, CamelCaseProperties(typeof(SubscriptionRecord)));
+        Assert.Equal(StateSchema, JsonPropertyNames(typeof(AppStateModel)));
+        Assert.Equal(UserRuleSetSchema, JsonPropertyNames(typeof(UserRuleSetModel)));
+        Assert.Equal(ProxySnapshotSchema, JsonPropertyNames(typeof(ProxySettingsSnapshotModel)));
+        Assert.Equal(ProfileSchema, JsonPropertyNames(typeof(VpnProfile)));
+        Assert.Equal(SubscriptionSchema, JsonPropertyNames(typeof(SubscriptionRecord)));
     }
 
     private static readonly string[] StateSchema =
@@ -466,9 +465,10 @@ public sealed class StorageFormatCompatibilityTests : IDisposable
     private static string[] PropertyNames(JsonElement element) =>
         element.EnumerateObject().Select(p => p.Name).ToArray();
 
-    private static string[] CamelCaseProperties(Type type) =>
+    // Имя, под которым свойство попадает в файл: явный [JsonPropertyName] или camelCase из DpapiJsonFile.
+    private static string[] JsonPropertyNames(Type type) =>
         type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Select(p => JsonNamingPolicy.CamelCase.ConvertName(p.Name))
+            .Select(p => p.GetCustomAttribute<JsonPropertyNameAttribute>()?.Name ?? JsonNamingPolicy.CamelCase.ConvertName(p.Name))
             .ToArray();
 
     private static void WriteEncrypted(string path, string json)

@@ -1,6 +1,5 @@
 ﻿using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
-using NothingVpn.Infrastructure.Mappers;
 using NothingVpn.Infrastructure.RuleSets;
 using NothingVpn.Infrastructure.Store;
 
@@ -17,20 +16,20 @@ public sealed class StateStorePort : IStateStorePort
 
     public AppStateModel Load()
     {
-        var legacy = _store.Load();
-        BuiltinGeositeRuleSets.EnsureBuiltinGeositeRuleSets(legacy);
-        return LegacyModelMapper.ToModel(legacy);
+        var state = _store.Load();
+        BuiltinGeositeRuleSets.EnsureBuiltinGeositeRuleSets(state);
+        return state;
     }
 
-    public void Save(AppStateModel state) => _store.Save(LegacyModelMapper.ToLegacy(state));
+    public void Save(AppStateModel state) => _store.Save(state);
 
     public bool SaveMissingBuiltinRuleSets()
     {
-        var legacy = _store.Load();
-        if (!BuiltinGeositeRuleSets.EnsureBuiltinGeositeRuleSets(legacy))
+        var state = _store.Load();
+        if (!BuiltinGeositeRuleSets.EnsureBuiltinGeositeRuleSets(state))
             return false;
 
-        _store.Save(legacy);
+        _store.Save(state);
         return true;
     }
 }

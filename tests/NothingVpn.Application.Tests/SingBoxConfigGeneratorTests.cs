@@ -1,4 +1,4 @@
-﻿using NothingVpn.Infrastructure.Profile;
+﻿using NothingVpn.Application.Models;
 using NothingVpn.Infrastructure.SingBox;
 using NothingVpn.Infrastructure.Store;
 
@@ -24,7 +24,7 @@ public sealed class SingBoxConfigGeneratorTests
             SubscriptionsJsonPath: Path.Combine(baseDir, "subscriptions.json"),
             StateJsonPath: Path.Combine(baseDir, "state.json"));
 
-        var profile = new VlessProfile
+        var profile = new VpnProfile
         {
             Id = "abcdef123456",
             Host = "example.com",
@@ -35,7 +35,7 @@ public sealed class SingBoxConfigGeneratorTests
             Sni = "example.com"
         };
 
-        var state = new AppState
+        var state = new AppStateModel
         {
             Mode = "tun",
             DnsMode = "doh",
@@ -45,7 +45,7 @@ public sealed class SingBoxConfigGeneratorTests
             DnsDetour = "direct",
             UserRuleSets =
             [
-                new UserRuleSet
+                new UserRuleSetModel
                 {
                     Tag = "geosite-category-ru",
                     Name = "RU",
@@ -54,7 +54,7 @@ public sealed class SingBoxConfigGeneratorTests
                     Action = "direct",
                     BuiltinId = "sing-geosite:category-ru"
                 },
-                new UserRuleSet
+                new UserRuleSetModel
                 {
                     Tag = "geoip-ru",
                     Name = "GeoIP RU",
@@ -107,7 +107,7 @@ public sealed class SingBoxConfigGeneratorTests
     public void Build_TunModes_DefaultDomainResolverMatchesDnsServerTag(string mode)
     {
         var paths = AppPaths.CreateDefault();
-        var profile = new VlessProfile
+        var profile = new VpnProfile
         {
             Id = "testprof",
             Host = "node.example",
@@ -116,7 +116,7 @@ public sealed class SingBoxConfigGeneratorTests
             Security = "tls",
             Sni = "node.example"
         };
-        var state = new AppState
+        var state = new AppStateModel
         {
             Mode = mode,
             DnsMode = mode == "tun" ? "doh" : "doh",
@@ -147,7 +147,7 @@ public sealed class SingBoxConfigGeneratorTests
             SubscriptionsJsonPath: Path.Combine(baseDir, "subscriptions.json"),
             StateJsonPath: Path.Combine(baseDir, "state.json"));
 
-        var profile = new VlessProfile
+        var profile = new VpnProfile
         {
             Id = "proxyprofile",
             Host = "example.com",
@@ -158,7 +158,7 @@ public sealed class SingBoxConfigGeneratorTests
             Sni = "example.com"
         };
 
-        var state = new AppState
+        var state = new AppStateModel
         {
             Mode = "proxy",
             DnsMode = "system",
@@ -190,7 +190,7 @@ public sealed class SingBoxConfigGeneratorTests
             SubscriptionsJsonPath: Path.Combine(baseDir, "subscriptions.json"),
             StateJsonPath: Path.Combine(baseDir, "state.json"));
 
-        var profile = new VlessProfile
+        var profile = new VpnProfile
         {
             Id = "proxyrules",
             Host = "example.com",
@@ -201,13 +201,13 @@ public sealed class SingBoxConfigGeneratorTests
             Sni = "example.com"
         };
 
-        var state = new AppState
+        var state = new AppStateModel
         {
             Mode = "proxy",
             DnsMode = "system",
             UserRuleSets =
             [
-                new UserRuleSet
+                new UserRuleSetModel
                 {
                     Tag = "geosite-category-ru",
                     FileName = "geosite-category-ru.srs",
@@ -239,7 +239,7 @@ public sealed class SingBoxConfigGeneratorTests
             SubscriptionsJsonPath: Path.Combine(baseDir, "subscriptions.json"),
             StateJsonPath: Path.Combine(baseDir, "state.json"));
 
-        var profile = new VlessProfile
+        var profile = new VpnProfile
         {
             Id = "proxydoh",
             Host = "example.com",
@@ -250,7 +250,7 @@ public sealed class SingBoxConfigGeneratorTests
             Sni = "example.com"
         };
 
-        var state = new AppState
+        var state = new AppStateModel
         {
             Mode = "proxy",
             DnsMode = "doh",
@@ -285,7 +285,7 @@ public sealed class SingBoxConfigGeneratorTests
             SubscriptionsJsonPath: Path.Combine(baseDir, "subscriptions.json"),
             StateJsonPath: Path.Combine(baseDir, "state.json"));
 
-        var profile = new VlessProfile
+        var profile = new VpnProfile
         {
             Id = "tunappsdoh",
             Host = "example.com",
@@ -296,7 +296,7 @@ public sealed class SingBoxConfigGeneratorTests
             Sni = "example.com"
         };
 
-        var state = new AppState
+        var state = new AppStateModel
         {
             Mode = "tun_apps",
             DnsMode = "doh",
@@ -321,7 +321,7 @@ public sealed class SingBoxConfigGeneratorTests
     public void Build_TunApps_SplitTunnelRoutePolicy()
     {
         var paths = AppPaths.CreateDefault();
-        var profile = new VlessProfile
+        var profile = new VpnProfile
         {
             Id = "testprof",
             Host = "node.example",
@@ -330,7 +330,7 @@ public sealed class SingBoxConfigGeneratorTests
             Security = "tls",
             Sni = "node.example"
         };
-        var state = new AppState
+        var state = new AppStateModel
         {
             Mode = "tun_apps",
             DnsMode = "doh",
@@ -383,7 +383,7 @@ public sealed class SingBoxConfigGeneratorTests
             SubscriptionsJsonPath: Path.Combine(baseDir, "subscriptions.json"),
             StateJsonPath: Path.Combine(baseDir, "state.json"));
 
-        var profile = new VlessProfile
+        var profile = new VpnProfile
         {
             Id = "tunappsrules",
             Host = "example.com",
@@ -394,14 +394,14 @@ public sealed class SingBoxConfigGeneratorTests
             Sni = "example.com"
         };
 
-        var state = new AppState
+        var state = new AppStateModel
         {
             Mode = "tun_apps",
             DnsMode = "system",
             TunAppProcessPaths = [@"C:\Apps\browser.exe"],
             UserRuleSets =
             [
-                new UserRuleSet
+                new UserRuleSetModel
                 {
                     Tag = "geosite-category-ru",
                     FileName = "geosite-category-ru.srs",
@@ -425,7 +425,7 @@ public sealed class SingBoxConfigGeneratorTests
     public void Build_FullTun_RoutesIpv6AndQuicThroughProxy()
     {
         var paths = AppPaths.CreateDefault();
-        var profile = new VlessProfile
+        var profile = new VpnProfile
         {
             Id = "tunfull",
             Host = "node.example",
@@ -434,7 +434,7 @@ public sealed class SingBoxConfigGeneratorTests
             Security = "tls",
             Sni = "node.example"
         };
-        var state = new AppState { Mode = "tun", DnsMode = "doh", TunStrictRoute = true };
+        var state = new AppStateModel { Mode = "tun", DnsMode = "doh", TunStrictRoute = true };
 
         var config = SingBoxConfigGenerator.Build(paths, profile, state);
         var rules = config.Route.Rules ?? [];
@@ -463,7 +463,7 @@ public sealed class SingBoxConfigGeneratorTests
             ProfilesJsonPath: Path.Combine(baseDir, "profiles.json"),
             SubscriptionsJsonPath: Path.Combine(baseDir, "subscriptions.json"),
             StateJsonPath: Path.Combine(baseDir, "state.json"));
-        var profile = new VlessProfile
+        var profile = new VpnProfile
         {
             Id = "tunrulespriority",
             Host = "node.example",
@@ -472,13 +472,13 @@ public sealed class SingBoxConfigGeneratorTests
             Security = "tls",
             Sni = "node.example"
         };
-        var state = new AppState
+        var state = new AppStateModel
         {
             Mode = "tun",
             DnsMode = "system",
             UserRuleSets =
             [
-                new UserRuleSet
+                new UserRuleSetModel
                 {
                     Tag = "marketplaces",
                     FileName = "marketplaces.srs",
@@ -502,7 +502,7 @@ public sealed class SingBoxConfigGeneratorTests
     public void Build_ProxyMode_MixedInboundAndNoDnsBlock()
     {
         var paths = AppPaths.CreateDefault();
-        var profile = new VlessProfile
+        var profile = new VpnProfile
         {
             Id = "proxy1",
             Host = "node.example",
@@ -511,7 +511,7 @@ public sealed class SingBoxConfigGeneratorTests
             Security = "tls",
             Sni = "node.example"
         };
-        var state = new AppState
+        var state = new AppStateModel
         {
             Mode = "proxy",
             LocalMixedPort = 2080,
@@ -532,7 +532,7 @@ public sealed class SingBoxConfigGeneratorTests
     public void Build_TunMode_CustomMtuStackAndStrictRoute()
     {
         var paths = AppPaths.CreateDefault();
-        var profile = new VlessProfile
+        var profile = new VpnProfile
         {
             Id = "tuncustom",
             Host = "node.example",
@@ -541,7 +541,7 @@ public sealed class SingBoxConfigGeneratorTests
             Security = "tls",
             Sni = "node.example"
         };
-        var state = new AppState
+        var state = new AppStateModel
         {
             Mode = "tun",
             DnsMode = "doh",

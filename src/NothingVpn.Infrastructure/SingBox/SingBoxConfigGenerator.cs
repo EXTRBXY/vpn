@@ -1,27 +1,31 @@
 ﻿using System.Text.Json;
-using NothingVpn.Domain.Models;
+using NothingVpn.Application.Mappers;
+using NothingVpn.Application.Models;
 using NothingVpn.Domain.Policies;
-using NothingVpn.Infrastructure.Profile;
 using NothingVpn.Infrastructure.Store;
 
 namespace NothingVpn.Infrastructure.SingBox;
 
+/// <summary>
+/// Переводит профиль и состояние в конфиг sing-box. Состояние должно быть нормализовано
+/// AppStateNormalizer (так делает VpnConnectionService); значения здесь не нормализуются повторно,
+/// а только проверяются там, где ошибка дала бы некорректный конфиг.
+/// </summary>
 internal static class SingBoxConfigGenerator
 {
-    public static string WriteConfig(AppPaths paths, VlessProfile profile, AppState state)
+    public static string WriteConfig(AppPaths paths, VpnProfile profile, AppStateModel state)
     {
         var config = Build(paths, profile, state);
         var json = JsonSerializer.Serialize(config, JsonOptions());
 
-        var mode = ConnectionPolicy.NormalizeMode(state.Mode);
-        var path = Path.Combine(paths.ConfigsDir, $"{profile.Id}.{mode}.json");
+        var path = Path.Combine(paths.ConfigsDir, $"{profile.Id}.{state.Mode}.json");
         File.WriteAllText(path, json);
         return path;
     }
 
-    public static SingBoxConfig Build(AppPaths paths, VlessProfile profile, AppState state)
+    public static SingBoxConfig Build(AppPaths paths, VpnProfile profile, AppStateModel state)
     {
-        var mode = ConnectionPolicy.NormalizeMode(state.Mode);
+        var mode = state.Mode;
         var useTun = ConnectionPolicy.IsTunMode(mode);
         var inbounds = useTun
             ? new List<SingBoxInbound> { BuildTunInbound(state, profile, mode) }
@@ -41,14 +45,14 @@ internal static class SingBoxConfigGenerator
         outbound.Transport = BuildTransport(profile);
 
         var routing = EvaluateRoutingPolicy(state, useTun);
-        var useDohResolver = string.Equals(state.DnsMode, "doh", StringComparison.OrdinalIgnoreCase);
+        var useDohResolver = state.DnsMode == DnsPolicy.DohMode;
         var dnsDetour = ResolveDnsDetour(state, mode, useTun);
         if (dnsDetour == "proxy")
             outbound.DomainResolver = TunBootstrapPolicy.BootstrapLocalDnsTag;
 
         return new SingBoxConfig
         {
-            Log = new SingBoxLog { Level = NormalizeLogLevel(state.SingBoxLogLevel) },
+            Log = new SingBoxLog { Level = state.SingBoxLogLevel },
             Dns = BuildDns(state, useTun, profile, routing, dnsDetour),
             Inbounds = inbounds,
             Outbounds = new List<SingBoxOutbound>
@@ -61,20 +65,10 @@ internal static class SingBoxConfigGenerator
         };
     }
 
-    private static RuleSetRoutingDecision EvaluateRoutingPolicy(AppState state, bool useTun)
-    {
-        var entries = (state.UserRuleSets ?? []).Select(rs => new UserRuleSetEntry
-        {
-            Tag = rs.Tag ?? "",
-            Name = rs.Name ?? "",
-            FileName = rs.FileName ?? "",
-            Enabled = rs.Enabled,
-            Action = rs.Action ?? "direct"
-        });
-        return RuleSetRoutingPolicy.Evaluate(entries, state.DnsMode, useTun);
-    }
+    private static RuleSetRoutingDecision EvaluateRoutingPolicy(AppStateModel state, bool useTun) =>
+        RuleSetRoutingPolicy.Evaluate(ConnectionSettingsMapper.ToRuleSetEntries(state.UserRuleSets), state.DnsMode, useTun);
 
-    private static string? ResolveDnsDetour(AppState state, string mode, bool useTun)
+    private static string? ResolveDnsDetour(AppStateModel state, string mode, bool useTun)
     {
         if (!DnsDetourPolicy.AllowsProxyDetour(mode))
             return null;
@@ -89,7 +83,7 @@ internal static class SingBoxConfigGenerator
             requestedProxy ? "proxy" : "direct");
     }
 
-    private static List<SingBoxRouteRule> BuildTunHeadRules(VlessProfile profile, string mode)
+    private static List<SingBoxRouteRule> BuildTunHeadRules(VpnProfile profile, string mode)
     {
         var rules = new List<SingBoxRouteRule>
         {
@@ -158,8 +152,8 @@ internal static class SingBoxConfigGenerator
     private static SingBoxRoute BuildRoute(
         AppPaths paths,
         string mode,
-        AppState state,
-        VlessProfile profile,
+        AppStateModel state,
+        VpnProfile profile,
         bool useDohResolver)
     {
         var useTun = ConnectionPolicy.IsTunMode(mode);
@@ -195,7 +189,7 @@ internal static class SingBoxConfigGenerator
 
         if (string.Equals(mode, ConnectionPolicy.TunAppsMode, StringComparison.Ordinal))
         {
-            var procPaths = NormalizeProcessPaths(state.TunAppProcessPaths);
+            var procPaths = state.TunAppProcessPaths;
             if (procPaths.Count == 0)
                 throw new ArgumentException("tun_apps requires at least one process path.");
 
@@ -236,20 +230,22 @@ internal static class SingBoxConfigGenerator
         };
     }
 
-    private static (List<SingBoxRuleSet> RuleSets, List<SingBoxRouteRule> Rules) BuildUserRuleSetPolicy(AppPaths paths, AppState state)
+    private static (List<SingBoxRuleSet> RuleSets, List<SingBoxRouteRule> Rules) BuildUserRuleSetPolicy(AppPaths paths, AppStateModel state)
     {
         var ruleSets = new List<SingBoxRuleSet>();
         var rules = new List<SingBoxRouteRule>();
         var seenTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var rs in state.UserRuleSets ?? new List<UserRuleSet>())
+        foreach (var rs in state.UserRuleSets)
         {
             if (!rs.Enabled) continue;
-            var tag = (rs.Tag ?? "").Trim();
+            var tag = rs.Tag.Trim();
             if (tag.Length == 0) continue;
             if (!seenTags.Add(tag)) continue;
 
-            var fileName = NormalizeRuleSetFileName(rs.FileName);
+            var fileName = rs.FileName.Trim();
+            if (!RuleSetPolicyValidator.IsSafeRuleSetFileName(fileName))
+                throw new ArgumentException("User rule-set file name must be a plain file name.");
             if (!fileName.EndsWith(".srs", StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("User rule-set file must be .srs.");
 
@@ -263,10 +259,10 @@ internal static class SingBoxConfigGenerator
                 Format = "binary"
             });
 
-            var action = (rs.Action ?? "direct").Trim().ToLowerInvariant();
-            if (action != "direct" && action != "block")
+            var action = RuleSetPolicyValidator.NormalizeAction(rs.Action);
+            if (!RuleSetPolicyValidator.IsSupportedAction(action))
                 throw new ArgumentException("User rule-set action must be direct|block.");
-            var outbound = action == "block" ? "block" : "direct";
+            var outbound = action == RuleSetPolicyValidator.BlockAction ? "block" : "direct";
 
             rules.Add(new SingBoxRouteRule
             {
@@ -277,19 +273,6 @@ internal static class SingBoxConfigGenerator
         }
 
         return (ruleSets, rules);
-    }
-
-    internal static List<string> NormalizeProcessPaths(IEnumerable<string>? paths)
-    {
-        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var raw in paths ?? Array.Empty<string>())
-        {
-            var t = (raw ?? "").Trim();
-            if (t.Length == 0) continue;
-            set.Add(t);
-        }
-
-        return set.ToList();
     }
 
     internal static List<string> DeriveProcessNames(IEnumerable<string> processPaths)
@@ -305,23 +288,6 @@ internal static class SingBoxConfigGenerator
         return set.ToList();
     }
 
-    private static string NormalizeLogLevel(string? level)
-    {
-        var l = (level ?? "info").Trim().ToLowerInvariant();
-        return l switch
-        {
-            "trace" => "trace",
-            "debug" => "debug",
-            "info" => "info",
-            "warn" => "warn",
-            "warning" => "warn",
-            "error" => "error",
-            "fatal" => "fatal",
-            "panic" => "panic",
-            _ => "info"
-        };
-    }
-
     private static SingBoxInbound BuildMixedInbound(int localMixedPort) => new()
     {
         Type = "mixed",
@@ -330,87 +296,40 @@ internal static class SingBoxConfigGenerator
         ListenPort = localMixedPort
     };
 
-    private static SingBoxInbound BuildTunInbound(AppState state, VlessProfile profile, string mode)
+    private static SingBoxInbound BuildTunInbound(AppStateModel state, VpnProfile profile, string mode) => new()
     {
-        var addr = NormalizeTunCidr(state.TunAddressCidr, profile.Id);
-        var inet6 = NormalizeTunInet6(profile.Id);
-        var ifBase = string.IsNullOrWhiteSpace(state.TunInterfaceName) ? "NothingVpn" : state.TunInterfaceName.Trim();
-        var ifName = $"{ifBase}-{profile.Id[..Math.Min(6, profile.Id.Length)]}";
-        var mtu = TunSettingsPolicy.NormalizeMtu(state.TunMtu);
-        var stack = NormalizeTunStack(state.TunStack);
-
-        return new SingBoxInbound
+        Type = "tun",
+        Tag = "tun-in",
+        InterfaceName = TunInterfacePolicy.InterfaceName(state.TunInterfaceName, profile.Id),
+        Address = new List<string>
         {
-            Type = "tun",
-            Tag = "tun-in",
-            InterfaceName = ifName,
-            Address = new List<string> { addr, inet6 },
-            Mtu = mtu,
-            AutoRoute = state.TunAutoRoute,
-            StrictRoute = TunAppsPolicy.UseStrictRoute(mode, state.TunStrictRoute),
-            Stack = stack
-        };
-    }
-
-    private static string NormalizeTunInet6(string profileId)
-    {
-        var n = 0;
-        for (var i = 0; i < profileId.Length; i++)
-            n = unchecked(n * 31 + profileId[i]);
-        n = Math.Abs(n);
-        var hextet = (n % 0xFFFF).ToString("x4");
-        return $"fdfe:dcba:9876:{hextet}::1/126";
-    }
-
-    private static string NormalizeTunStack(string? stack)
-    {
-        var s = (stack ?? "").Trim().ToLowerInvariant();
-        if (s.Length == 0)
-            return OperatingSystem.IsWindows() ? "system" : "mixed";
-
-        return s switch
-        {
-            "system" => "system",
-            "mixed" => "mixed",
-            "gvisor" => "gvisor",
-            _ => OperatingSystem.IsWindows() ? "system" : "mixed"
-        };
-    }
-
-    private static string NormalizeTunCidr(string? configured, string profileId)
-    {
-        var c = (configured ?? "").Trim();
-        if (c.Length == 0 || c.Equals("auto", StringComparison.OrdinalIgnoreCase) || c.Equals("172.19.0.1/30", StringComparison.OrdinalIgnoreCase))
-        {
-            var n = 0;
-            for (var i = 0; i < profileId.Length; i++)
-                n = unchecked(n * 31 + profileId[i]);
-            n = Math.Abs(n);
-            var block = n % 32768;
-            var third = (block >> 6) & 0xFF;
-            var fourth = (block & 0x3F) * 4 + 1;
-            return $"198.18.{third}.{fourth}/30";
-        }
-
-        return c;
-    }
+            TunInterfacePolicy.Ipv4Address(state.TunAddressCidr, profile.Id),
+            TunInterfacePolicy.Ipv6Address(profile.Id)
+        },
+        Mtu = state.TunMtu,
+        AutoRoute = state.TunAutoRoute,
+        StrictRoute = TunAppsPolicy.UseStrictRoute(mode, state.TunStrictRoute),
+        Stack = TunInterfacePolicy.SingBoxStack(state.TunStack)
+    };
 
     private static SingBoxDns? BuildDns(
-        AppState state,
+        AppStateModel state,
         bool useTun,
-        VlessProfile profile,
+        VpnProfile profile,
         RuleSetRoutingDecision routing,
         string? dnsDetour)
     {
-        var mode = (state.DnsMode ?? "system").Trim().ToLowerInvariant();
-        var hasEnabledUserRuleSets = (state.UserRuleSets ?? []).Any(x => x.Enabled);
-        if (!useTun && mode != "doh" && !hasEnabledUserRuleSets) return null;
+        var useDoh = state.DnsMode == DnsPolicy.DohMode;
+        var hasEnabledUserRuleSets = state.UserRuleSets.Any(x => x.Enabled);
+        if (!useTun && !useDoh && !hasEnabledUserRuleSets) return null;
 
-        if (mode == "doh")
+        if (useDoh)
         {
-            var server = string.IsNullOrWhiteSpace(state.DohServer) ? "1.1.1.1" : state.DohServer.Trim();
-            var path = string.IsNullOrWhiteSpace(state.DohPath) ? "/dns-query" : state.DohPath.Trim();
-            var sni = (state.DohSni ?? "").Trim();
+            // Пустой сервер в нормализованном состоянии возможен только у файла, записанного не клиентом:
+            // UI не сохраняет DoH без сервера (DnsPolicy.Validate).
+            var server = state.DohServer.Length == 0 ? DnsPolicy.DefaultDohServer : state.DohServer;
+            var path = state.DohPath;
+            var sni = state.DohSni;
             if (sni.Length == 0)
                 throw new ArgumentException("DoH SNI is required.");
 
@@ -465,7 +384,7 @@ internal static class SingBoxConfigGenerator
         return BuildTunSystemDns(profile, reverseMapping: useTun);
     }
 
-    private static SingBoxDns BuildTunSystemDns(VlessProfile profile, bool reverseMapping)
+    private static SingBoxDns BuildTunSystemDns(VpnProfile profile, bool reverseMapping)
     {
         var bootstrapDomains = TunBootstrapPolicy.CollectEndpointDomains(profile.Host);
         const string tag = TunBootstrapPolicy.BootstrapLocalDnsTag;
@@ -494,27 +413,7 @@ internal static class SingBoxConfigGenerator
         };
     }
 
-    private static string NormalizeRuleSetFileName(string? fileName)
-    {
-        var raw = (fileName ?? "").Trim();
-        if (raw.Length == 0)
-            throw new ArgumentException("User rule-set file name is empty.");
-
-        if (Path.IsPathRooted(raw))
-            throw new ArgumentException("User rule-set file name must not be an absolute path.");
-
-        // Reject directory traversal and subdirectories; only a file name is allowed.
-        var safe = Path.GetFileName(raw);
-        if (!string.Equals(safe, raw, StringComparison.Ordinal))
-            throw new ArgumentException("User rule-set file name must not contain directories.");
-
-        if (safe.Contains("..", StringComparison.Ordinal))
-            throw new ArgumentException("User rule-set file name must not contain '..'.");
-
-        return safe;
-    }
-
-    private static SingBoxTls? BuildTls(VlessProfile p)
+    private static SingBoxTls? BuildTls(VpnProfile p)
     {
         if (p.Security == "none") return null;
 
@@ -551,7 +450,7 @@ internal static class SingBoxConfigGenerator
         throw new ArgumentException("Unsupported security.");
     }
 
-    private static SingBoxTransport? BuildTransport(VlessProfile p)
+    private static SingBoxTransport? BuildTransport(VpnProfile p)
     {
         return p.Type switch
         {

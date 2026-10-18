@@ -11,10 +11,10 @@
 | --- | --- | --- |
 | Каталог данных `%LOCALAPPDATA%\NothingVpn.Tray` | `Infrastructure/Store/AppPaths.cs`, `build/installer/NothingVpn.iss` | там профили и настройки всех пользователей |
 | Формат файлов: `NV1` + DPAPI CurrentUser + camelCase JSON | `Infrastructure/Security/DpapiJsonFile.cs` | старые файлы должны читаться |
-| Имена свойств `VlessProfile`, `AppState`, `UserRuleSet`, `SubscriptionRecord`, `WinInetProxySettingsSnapshot` | `Infrastructure/Store/*`, `Profile/VlessProfile.cs`, `WinInet/*` | это и есть схема JSON |
+| `[JsonPropertyName]` в `AppStateModel`, `UserRuleSetModel`, `ProxySettingsSnapshotModel`, `VpnProfile`; имена свойств `SubscriptionRecord` | `Application/Models/*`, `Infrastructure/Store/JsonSubscriptionStore.cs` | это и есть схема JSON |
 | Строковые значения в состоянии: `proxy`/`tun`/`tun_apps`, `doh`/`system`, `direct`/`proxy`/`block`, `tray`/`exit`, стеки TUN | Domain-политики | хранятся в `state.json` |
 | Формула Id профиля (SHA-256, 16 hex) | `Infrastructure/Profile/VlessLinkParser.cs` (`StableId`) | `activeProfileId`, синхронизация подписок |
-| Хеш profileId → адреса TUN `198.18.x.y/30` и `fdfe:dcba:9876:…/126` | `SingBoxConfigGenerator.NormalizeTunCidr/NormalizeTunInet6` | стабильность адресов интерфейса |
+| Хеш profileId → адреса TUN `198.18.x.y/30` и `fdfe:dcba:9876:…/126` | `Domain/Policies/TunInterfacePolicy.cs` | стабильность адресов интерфейса |
 | `BuiltinId`/`Tag`/`FileName` встроенных rule-set | `Infrastructure/RuleSets/BuiltinGeositeRuleSets.cs` | сопоставление с записями в состоянии и файлами на диске |
 | Аргументы `--takeover --start --mode --profile`, `--smoke-test` | `VpnConnectionService`, `AppLifecycleService`, `Desktop.Wpf/Platform/StartupOptions.cs` | перезапуск с UAC, CI smoke-test |
 | Мьютекс `Global\NothingVpn.Desktop.Wpf` и канал `NothingVpn.Desktop.Wpf.pipe` | `Desktop.Wpf/App.xaml.cs` (`AppId`) | установщик (`AppMutex`), второй экземпляр |
@@ -92,7 +92,8 @@ rule-set. Побочный эффект в операции чтения, к т�
 - `InstallerUpdateService` скачивает через системный прокси, остальные HTTP-клиенты — без прокси.
 - `SubscriptionService.ClearActiveProfileIfMissing` меняет локальную копию `state`, которая дальше не используется.
 - `TunBootstrapPolicy.ResolveDefaultDomainResolver` игнорирует параметр `useDohResolver`.
-- Генератор подставляет DoH-сервер `1.1.1.1` при пустом значении, тогда как значение по умолчанию везде `8.8.8.8`.
+- ~~Генератор подставляет DoH-сервер `1.1.1.1` при пустом значении, тогда как значение по умолчанию везде `8.8.8.8`.~~
+  Исправлено на шаге 3: подставляется `DnsPolicy.DefaultDohServer`.
 - Ограничения безопасности — см. [SECURITY.md](SECURITY.md) (файлы в пользовательском каталоге, отсутствие проверки
   подписи установщика).
 
@@ -100,7 +101,7 @@ rule-set. Побочный эффект в операции чтения, к т�
 
 ### 3.1. Дублирование моделей и маппинга
 
-Две иерархии моделей (см. [ARCHITECTURE.md](ARCHITECTURE.md#две-параллельные-модели-данных)) и ручной
+Две иерархии моделей (см. [ARCHITECTURE.md](ARCHITECTURE.md#модель-данных); до шага 3) и ручной
 `LegacyModelMapper`. Добавление поля настроек требует правок в `AppState`, `AppStateModel`, двух методах маппера и,
 возможно, в Domain-модели и `ConnectionSettingsMapper`. Пропуск любого места — тихая потеря данных.
 `SingBoxConfigGenerator` принимает legacy `AppState`/`VlessProfile`, поэтому Application-модель маппится обратно.
@@ -108,11 +109,26 @@ rule-set. Побочный эффект в операции чтения, к т�
 Направление: генератор и стора работают с одной моделью; отдельный DTO хранения допустим, но с тестом
 roundtrip-а всех полей.
 
+✅ **Исправлено (шаг 3).** Legacy-классы `AppState`, `UserRuleSet`, `VlessProfile`, `WinInetProxySettingsSnapshot` и
+`LegacyModelMapper` удалены. `state.json` и `profiles.json` сериализуют Application-модели напрямую, имена полей
+зафиксированы `[JsonPropertyName]` (тест требует атрибут на каждом свойстве). Подписки хранятся через плоский DTO
+`SubscriptionRecord` — единственный оставшийся маппинг, закрыт roundtrip-тестом и сверкой набора полей. Генератор,
+парсер ссылок, WinINET и встроенные rule-set работают с Application-моделями. Выбран путь «модели напрямую», а не
+«DTO + roundtrip»: новое поле состояния или профиля добавляется в одно место, а не в четыре.
+
 ### 3.2. Нормализация в нескольких местах
 
 Одно и то же нормализуется в Domain-политиках, `SettingsService.NormalizeState`, `ConnectionScreenController`,
 `VpnConnectionService.ConnectAsync` и повторно в `SingBoxConfigGenerator` (стек, CIDR, имя файла rule-set, пути
 процессов, уровень журнала, DNS). Значения по умолчанию заданы в 3–4 классах.
+
+✅ **Исправлено (шаг 3).** Одна точка нормализации — `AppStateNormalizer` (вызывают `SettingsService.UpdateState` и
+`VpnConnectionService.ConnectAsync`); генератор ничего не нормализует. Значения по умолчанию — константы
+Domain-политик; производные от Id профиля значения TUN — `TunInterfacePolicy`, уровень журнала —
+`SingBoxLogLevelPolicy`. На реальных состояниях итоговый JSON не изменился (golden-тесты); отличия на входах, которые
+клиент не записывает, перечислены в [SINGBOX-CONFIG.md](SINGBOX-CONFIG.md#что-генератор-делает-сам-а-что-должно-быть-в-политике).
+`ConnectionScreenController` по-прежнему готовит снимок для экрана (пустые списки, detour для отображения), но при
+записи полагается на нормализацию `UpdateState`.
 
 ### 3.3. Строковая типизация
 
@@ -151,7 +167,7 @@ composition root, трей, таймеры, single-instance, тему и вых�
 - `Application/Class1.cs` — пустой шаблонный класс.
 - `AppLifecycleService.BuildTakeoverArgs` дублирует формирование аргументов в `VpnConnectionService.ConnectAsync`.
 - `DiagnosticsService.ExportLogs`, `IAppUpdateController.GetCurrentReleaseAsync`, `AppPathsModel.LogsDir`,
-  `AppState.DebugLogs` в WPF не используются.
+  `AppStateModel.DebugLogs` в WPF не используются.
 - Часть WPF-файлов записана «в строку» (`StartupOptions`, `ThemeManager`, `DiagnosticsViewModel`, `UpdateViewModel`,
   `DiagnosticsView`, `SettingsView.xaml`, `Theme.xaml`): плохо читаются и дают огромные диффы.
 - `StorageIssueRegistry` — статическая глобальная очередь.
@@ -198,8 +214,9 @@ WinForms-клиент ещё в решении как эталон (`docs/WPF-MI
 2. **Модель состояния.** ✅ Готово: убрана перезапись целого состояния (2.1), runtime-флаги подключения отделены
    на уровне API (`ConnectionRuntimeState`), `IsRunning` не читает диск (2.2), запись при чтении убрана (2.3).
    Кэша состояния по-прежнему нет — чтения явные, через `AppStateStore`.
-3. **Одна модель данных.** Генератор и стора на одной модели; удалить `LegacyModelMapper` или закрыть его
-   roundtrip-тестом; одна точка нормализации и значений по умолчанию (3.1, 3.2).
+3. **Одна модель данных.** ✅ Готово: генератор и хранилища на Application-моделях, `LegacyModelMapper` удалён,
+   имена JSON зафиксированы атрибутами; одна точка нормализации (`AppStateNormalizer`) и значений по умолчанию
+   (константы Domain-политик) (3.1, 3.2).
 4. **Типизация.** Enum'ы для режимов/DNS/действий с сохранением строк в JSON (3.3); очистить Domain от UI (3.4).
 5. **Границы WPF.** Порты для журнала и поиска приложений, вынести composition root из `App`, разделить
    `SettingsViewModel`, глобальная обработка исключений (2.4, 3.5).
