@@ -10,10 +10,11 @@ namespace NothingVpn.Desktop.Wpf;
 public sealed class UpdateViewModel:INotifyPropertyChanged
 {
     private readonly IAppUpdateController _controller; private readonly IInstallerUpdateService _installer; private readonly IInstallerLaunchService _launcher; private AppStateModel _state; private readonly ISettingsService _settings; private readonly Action _exit; private readonly Action<AppReleaseModel>? _notifyAvailable;
+    private readonly Action<ReleaseChangelog>? _showChangelog;
     private AppReleaseModel? _release; private string _status=""; private int _progress;
     private int _operationRunning;
-    public UpdateViewModel(IAppUpdateController controller,IInstallerUpdateService installer,IInstallerLaunchService launcher,ISettingsService settings,AppStateModel state,Action exit,Action<AppReleaseModel>? notifyAvailable=null)
-    { _controller=controller;_installer=installer;_launcher=launcher;_settings=settings;_state=state;_exit=exit;_notifyAvailable=notifyAvailable;CheckCommand=new AsyncRelayCommand(CheckAsync,()=>_operationRunning == 0);InstallCommand=new AsyncRelayCommand(InstallAsync,()=>_release is not null && _operationRunning == 0); }
+    public UpdateViewModel(IAppUpdateController controller,IInstallerUpdateService installer,IInstallerLaunchService launcher,ISettingsService settings,AppStateModel state,Action exit,Action<AppReleaseModel>? notifyAvailable=null,Action<ReleaseChangelog>? showChangelog=null)
+    { _showChangelog=showChangelog;_controller=controller;_installer=installer;_launcher=launcher;_settings=settings;_state=state;_exit=exit;_notifyAvailable=notifyAvailable;CheckCommand=new AsyncRelayCommand(CheckAsync,()=>_operationRunning == 0);InstallCommand=new AsyncRelayCommand(InstallAsync,()=>_release is not null && _operationRunning == 0); }
     public event PropertyChangedEventHandler? PropertyChanged; public ICommand CheckCommand{get;} public ICommand InstallCommand{get;}
     public string CurrentVersion=>GetVersion(); public string Status{get=>_status;private set{_status=value;Changed();}} public int Progress{get=>_progress;private set{_progress=value;Changed();}}
     public async Task CheckAsync()
@@ -33,7 +34,39 @@ public sealed class UpdateViewModel:INotifyPropertyChanged
         finally { Interlocked.Exchange(ref _operationRunning, 0); RaiseCommands(); }
     }
     public async Task CheckIfDueAsync(){try{_state=_settings.GetState();if(_controller.IsPeriodicCheckDue(_state,DateTimeOffset.UtcNow))await CheckAsync();}catch(Exception ex){Status=ex.Message;}}
-    public async Task CheckAtStartupAsync(){try{_installer.CleanupOldInstallers();_state=_settings.GetState();_controller.RecordInstalledVersion(_state,GetVersion());await CheckIfDueAsync();}catch(Exception ex){Status=ex.Message;}}
+    public async Task CheckAtStartupAsync()
+    {
+        try
+        {
+            _installer.CleanupOldInstallers();
+            _state = _settings.GetState();
+            var version = GetVersion();
+            var transition = _controller.RecordInstalledVersion(_state, version);
+            if (transition == InstalledVersionTransition.Upgraded)
+                await ShowChangelogAsync(version);
+            await CheckIfDueAsync();
+        }
+        catch (Exception ex)
+        {
+            Status = ex.Message;
+        }
+    }
+
+    private async Task ShowChangelogAsync(string version)
+    {
+        if (_showChangelog is null)
+            return;
+
+        // Описание релиза — вспомогательная информация: сбой загрузки или показа не должен мешать проверке обновлений.
+        try
+        {
+            var changelog = await _controller.GetChangelogAsync(version);
+            _showChangelog(changelog);
+        }
+        catch (Exception)
+        {
+        }
+    }
     private async Task InstallAsync()
     {
         if (_release is null || Interlocked.Exchange(ref _operationRunning, 1) == 1) return;

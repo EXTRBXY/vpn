@@ -7,7 +7,7 @@
 `InternalsVisibleTo` открывает тестам internal-типы Infrastructure (`SingBoxConfigGenerator`, `VlessLinkParser`,
 `DpapiJsonFile`, `AppPaths`, …).
 
-Состояние на 18.10.2026: 277 тестов, 274 проходят, 3 desktop-теста пропускаются вне специального запуска. Сборка
+Состояние на 18.10.2026: 292 теста, 289 проходят, 3 desktop-теста пропускаются вне специального запуска. Сборка
 Release — без предупреждений.
 
 | Область | Файлы |
@@ -17,7 +17,7 @@ Release — без предупреждений.
 | Use-case сервисы | `VpnConnectionServiceTests`, `SubscriptionServiceSyncTests` |
 | Presentation-контроллеры | `Connection*ControllerTests`, `ConnectionViewStateFactoryTests`, `ProfileManagementControllerTests`, `SubscriptionManagementControllerTests`, `RuleSetManagementControllerTests`, `TunAppsControllerTests`, `AppUpdateControllerTests` |
 | Infrastructure | `DpapiJsonFileTests`, `ProfileParserPortTests`, `RuleSetFileServiceTests`, `SubscriptionHttpFetcherTests`, `SingBoxRunnerTests`, `ProcessJobScopeTests`, `InstallerUpdateServiceTests`, `InstallerLaunchServiceTests` |
-| WPF | `SettingsViewModelTests` (реальные контроллеры, изолированное хранилище), `WpfSettingsBindingTests` (настоящие контролы на STA-потоке) |
+| WPF | `SettingsViewModelTests` (реальные контроллеры, изолированное хранилище), `UpdateViewModelTests`, `WpfSettingsBindingTests` (настоящие контролы на STA-потоке) |
 | Характеризационные | `SingBoxConfigGoldenTests` (эталоны в `Golden/SingBox`), `StorageRoundtripTests`, `StorageFormatCompatibilityTests`, `VlessStableIdTests` |
 | Desktop-only | `WindowsUpdateHandoffTests` — запускаются только через `build/Test-UpdateHandoff.ps1` |
 
