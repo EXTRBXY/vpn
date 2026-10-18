@@ -11,7 +11,7 @@ public sealed class VpnConnectionService : IVpnConnectionService
     private static readonly TimeSpan LocalMixedListenTimeout = TimeSpan.FromSeconds(2);
 
     private readonly IProfileStorePort _profileStore;
-    private readonly IStateStorePort _stateStore;
+    private readonly AppStateStore _stateStore;
     private readonly ISingBoxPort _singBoxPort;
     private readonly IProxyPort _proxyPort;
     private readonly IDiagnosticsPort _diagnosticsPort;
@@ -21,10 +21,11 @@ public sealed class VpnConnectionService : IVpnConnectionService
     private readonly ILogPort _logPort;
     private readonly SemaphoreSlim _sessionLock = new(1, 1);
     private int _sessionGeneration;
+    private ConnectedSession? _session;
 
     public VpnConnectionService(
         IProfileStorePort profileStore,
-        IStateStorePort stateStore,
+        AppStateStore stateStore,
         ISingBoxPort singBoxPort,
         IProxyPort proxyPort,
         IDiagnosticsPort diagnosticsPort,
@@ -61,6 +62,8 @@ public sealed class VpnConnectionService : IVpnConnectionService
             var profile = profiles.FirstOrDefault(p => string.Equals(p.Id, request.ProfileId, StringComparison.OrdinalIgnoreCase))
                 ?? throw new InvalidOperationException("Профиль не найден.");
 
+            // Снимок нужен только для генерации конфига и обратно целиком не сохраняется:
+            // настройки, изменённые за время подключения, не теряются.
             var state = _stateStore.Load();
             state.Mode = ConnectionPolicy.NormalizeMode(state.Mode);
             state.TunAppProcessPaths = _pathPolicy.NormalizeDistinctExePaths(state.TunAppProcessPaths).ToList();
@@ -82,6 +85,8 @@ public sealed class VpnConnectionService : IVpnConnectionService
                 await DisconnectCoreAsync(cancellationToken).ConfigureAwait(false);
 
             var configPath = _singBoxPort.WriteConfig(profile, state);
+            ProxySettingsSnapshotModel? previousProxy = null;
+            var proxyEnabled = false;
 
             try
             {
@@ -102,26 +107,26 @@ public sealed class VpnConnectionService : IVpnConnectionService
                     if (!listen.Success)
                         throw new InvalidOperationException($"Локальный прокси не слушает порт {state.LocalMixedPort}: {listen.Error}");
 
-                    var previous = _proxyPort.ReadCurrent();
+                    previousProxy = _proxyPort.ReadCurrent();
                     _proxyPort.Enable($"127.0.0.1:{state.LocalMixedPort}", state.ProxyOverride);
-                    state.PreviousProxySettings = previous;
-                    state.ProxyWasEnabledByUs = true;
+                    proxyEnabled = true;
+                    _stateStore.Update(new ConnectionRuntimeState(ProxyWasEnabledByUs: true, previousProxy).ApplyTo);
                 }
             }
             catch
             {
-                RollbackFailedConnect(state);
+                RollbackFailedConnect(proxyEnabled, previousProxy);
                 throw;
             }
 
             if (Volatile.Read(ref _sessionGeneration) != generation)
             {
-                RollbackFailedConnect(state);
+                RollbackFailedConnect(proxyEnabled, previousProxy);
                 throw new OperationCanceledException("Сессия подключения устарела.");
             }
 
-            state.ActiveProfileId = profile.Id;
-            _stateStore.Save(state);
+            _stateStore.Update(current => current.ActiveProfileId = profile.Id);
+            Volatile.Write(ref _session, new ConnectedSession(state.Mode, profile.Id));
             ConnectionStateChanged?.Invoke(this, true);
 
             return new ConnectResult
@@ -152,13 +157,16 @@ public sealed class VpnConnectionService : IVpnConnectionService
 
     public VpnConnectionStatus GetStatus()
     {
-        var state = _stateStore.Load();
-        return new VpnConnectionStatus
-        {
-            IsRunning = _singBoxPort.IsRunning,
-            Mode = ConnectionPolicy.NormalizeMode(state.Mode),
-            ActiveProfileId = state.ActiveProfileId
-        };
+        var isRunning = _singBoxPort.IsRunning;
+        var session = Volatile.Read(ref _session);
+        return session is null
+            ? new VpnConnectionStatus { IsRunning = isRunning }
+            : new VpnConnectionStatus
+            {
+                IsRunning = isRunning,
+                Mode = session.Mode,
+                ActiveProfileId = session.ProfileId
+            };
     }
 
     public void RecoverStaleRuntimeState()
@@ -171,30 +179,25 @@ public sealed class VpnConnectionService : IVpnConnectionService
             if (_singBoxPort.IsRunning)
                 return;
 
+            Volatile.Write(ref _session, null);
             _singBoxPort.TryDeleteLastConfig();
             var state = _stateStore.Load();
-            var changed = false;
+            var proxyWasEnabled = state.ProxyWasEnabledByUs;
+            if (!proxyWasEnabled && string.IsNullOrWhiteSpace(state.ActiveProfileId))
+                return;
 
-            if (state.ProxyWasEnabledByUs)
+            if (proxyWasEnabled)
             {
                 try { _proxyPort.Restore(state.PreviousProxySettings); }
                 catch { }
-
-                state.ProxyWasEnabledByUs = false;
-                state.PreviousProxySettings = null;
-                changed = true;
             }
 
-            if (!string.IsNullOrWhiteSpace(state.ActiveProfileId))
+            _stateStore.Update(current =>
             {
-                state.ActiveProfileId = null;
-                changed = true;
-            }
-
-            if (!changed)
-                return;
-
-            _stateStore.Save(state);
+                if (proxyWasEnabled)
+                    ClearProxyFlags(current);
+                current.ActiveProfileId = null;
+            });
             ConnectionStateChanged?.Invoke(this, false);
         }
         finally
@@ -206,24 +209,25 @@ public sealed class VpnConnectionService : IVpnConnectionService
     private Task DisconnectCoreAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var state = _stateStore.Load();
+        var runtime = ConnectionRuntimeState.From(_stateStore.Load());
         try
         {
             _singBoxPort.Stop();
         }
         finally
         {
+            Volatile.Write(ref _session, null);
             try
             {
-                if (state.ProxyWasEnabledByUs)
-                {
-                    _proxyPort.Restore(state.PreviousProxySettings);
-                    state.ProxyWasEnabledByUs = false;
-                    state.PreviousProxySettings = null;
-                }
+                if (runtime.ProxyWasEnabledByUs)
+                    _proxyPort.Restore(runtime.PreviousProxySettings);
 
-                state.ActiveProfileId = null;
-                _stateStore.Save(state);
+                _stateStore.Update(current =>
+                {
+                    if (runtime.ProxyWasEnabledByUs)
+                        ClearProxyFlags(current);
+                    current.ActiveProfileId = null;
+                });
             }
             finally { _singBoxPort.TryDeleteLastConfig(); }
         }
@@ -266,21 +270,24 @@ public sealed class VpnConnectionService : IVpnConnectionService
             : $"sing-box завершился сразу после запуска: {detail}";
     }
 
-    private void RollbackFailedConnect(AppStateModel state)
+    private void RollbackFailedConnect(bool proxyEnabled, ProxySettingsSnapshotModel? previousProxy)
     {
         try { _singBoxPort.Stop(); }
         catch { }
         try { _singBoxPort.TryDeleteLastConfig(); }
         catch { }
 
-        if (!state.ProxyWasEnabledByUs)
+        if (!proxyEnabled)
             return;
 
-        try { _proxyPort.Restore(state.PreviousProxySettings); }
+        try { _proxyPort.Restore(previousProxy); }
         catch { }
 
-        state.ProxyWasEnabledByUs = false;
-        state.PreviousProxySettings = null;
-        _stateStore.Save(state);
+        _stateStore.Update(ClearProxyFlags);
     }
+
+    private static void ClearProxyFlags(AppStateModel state) =>
+        new ConnectionRuntimeState(ProxyWasEnabledByUs: false, PreviousProxySettings: null).ApplyTo(state);
+
+    private sealed record ConnectedSession(string Mode, string ProfileId);
 }

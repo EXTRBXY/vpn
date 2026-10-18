@@ -122,9 +122,9 @@ public sealed class ConnectionScreenControllerTests
 
         public AppStateModel GetState() => State;
 
-        public void SaveState(AppStateModel state)
+        public void UpdateState(Action<AppStateModel> update)
         {
-            State = state;
+            update(State);
             SaveCalls++;
         }
 

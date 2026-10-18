@@ -7,14 +7,12 @@ public interface ISettingsService
 {
     event EventHandler<AppStateModel>? StateChanged;
     AppStateModel GetState();
-    void SaveState(AppStateModel state);
-    void UpdateState(Action<AppStateModel> update)
-    {
-        ArgumentNullException.ThrowIfNull(update);
-        var state = GetState();
-        update(state);
-        SaveState(state);
-    }
+
+    /// <summary>
+    /// Атомарно меняет поля актуального состояния под локом стора. Runtime-флаги подключения
+    /// (<see cref="ConnectionRuntimeState"/>) через этот метод изменить нельзя — они сохраняются как есть.
+    /// </summary>
+    void UpdateState(Action<AppStateModel> update);
     void UpdateMode(string mode);
     void UpdateDns(string mode, string dohServer, string dohPath, string dohSni, string detour);
     void UpdateTunSettings(TunSettings settings);

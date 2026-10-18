@@ -256,7 +256,7 @@ public sealed class WpfSettingsBindingTests
         public VpnProfile Profile { get; } = new() { Id = "p1", Name = "Test" };
         public List<string?> SelectedIds { get; } = [];
         public ConnectionScreenSnapshot Load() => new(h.Settings.GetState(), [Profile], Profile);
-        public void Save(AppStateModel state) => h.Settings.SaveState(state);
+        public void Save(AppStateModel state) => throw new NotSupportedException();
         public void SelectProfile(AppStateModel state, string? profileId) => SelectedIds.Add(profileId);
         public void SelectMode(AppStateModel state, string mode) => h.Settings.UpdateMode(mode);
     }

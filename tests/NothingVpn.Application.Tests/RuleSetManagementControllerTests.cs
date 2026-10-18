@@ -94,7 +94,8 @@ public sealed class RuleSetManagementControllerTests
 
         public int SaveCalls { get; private set; }
         public AppStateModel GetState() => throw new NotSupportedException();
-        public void SaveState(AppStateModel state) => SaveCalls++;
+        public AppStateModel State { get; } = new();
+        public void UpdateState(Action<AppStateModel> update) { update(State); SaveCalls++; }
         public void UpdateMode(string mode) => throw new NotSupportedException();
         public void UpdateDns(string mode, string dohServer, string dohPath, string dohSni, string detour) => throw new NotSupportedException();
         public void UpdateTunSettings(TunSettings settings) => throw new NotSupportedException();

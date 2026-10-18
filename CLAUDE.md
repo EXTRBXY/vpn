@@ -76,10 +76,12 @@ build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/Noth
 - Две модели данных: Application (`AppStateModel`, `VpnProfile`, …) и Infrastructure-legacy (`AppState`,
   `VlessProfile`, …) с ручным `LegacyModelMapper`. Новое поле нужно добавить в обе модели и в оба направления
   маппера (а для подписок — в `SubscriptionStorePort`), иначе оно молча не сохранится.
-- Записывайте состояние через `ISettingsService.UpdateState(s => s.Field = …)`. `SaveState(wholeState)` с устаревшей
-  копией затирает runtime-флаги `ProxyWasEnabledByUs`/`PreviousProxySettings` и параллельные изменения.
-- `VpnConnectionService` пишет состояние через `IStateStorePort` напрямую, минуя `SettingsService`.
-- `ConnectionController.IsRunning` читает и расшифровывает `state.json` при каждом вызове.
+- `state.json` пишется только через общий `AppStateStore` (один экземпляр на процесс, один лок): UI —
+  `ISettingsService.UpdateState(s => s.Field = …)`, подключение — `AppStateStore.Update` с конкретными полями.
+  Записи целого устаревшего объекта (`SaveState`) больше нет — не возвращайте её.
+- Runtime-флаги `ProxyWasEnabledByUs`/`PreviousProxySettings` пишет только `VpnConnectionService`;
+  `SettingsService.UpdateState` их не меняет (`ConnectionRuntimeState`), даже если колбэк их присвоил.
+- `GetStatus`/`IsRunning` не читают диск: процесс — из `ISingBoxPort`, режим/профиль — из сессии в памяти.
 - Секреты в журнал — только через `InMemoryLogStore.AppendStructured` (маскирует `LogRedactor`). Никогда не логировать
   UUID, ключи, URL подписок.
 - Конфиг sing-box в `configs\` лежит открытым текстом; он обязан удаляться при остановке и откате.

@@ -6,37 +6,22 @@ using NothingVpn.Domain.Policies;
 
 namespace NothingVpn.Application.Services;
 
-public sealed class SettingsService(IStateStorePort stateStore, IPathPolicyPort pathPolicy) : ISettingsService
+public sealed class SettingsService(AppStateStore stateStore, IPathPolicyPort pathPolicy) : ISettingsService
 {
-    private readonly object _stateSync = new();
     public event EventHandler<AppStateModel>? StateChanged;
 
-    public AppStateModel GetState()
-    {
-        lock (_stateSync) return stateStore.Load();
-    }
-
-    public void SaveState(AppStateModel state)
-    {
-        lock (_stateSync)
-        {
-            NormalizeState(state);
-            stateStore.Save(state);
-        }
-        StateChanged?.Invoke(this, state);
-    }
+    public AppStateModel GetState() => stateStore.Load();
 
     public void UpdateState(Action<AppStateModel> update)
     {
         ArgumentNullException.ThrowIfNull(update);
-        AppStateModel state;
-        lock (_stateSync)
+        var state = stateStore.Update(current =>
         {
-            state = stateStore.Load();
-            update(state);
-            NormalizeState(state);
-            stateStore.Save(state);
-        }
+            var runtime = ConnectionRuntimeState.From(current);
+            update(current);
+            NormalizeState(current);
+            runtime.ApplyTo(current);
+        });
         StateChanged?.Invoke(this, state);
     }
 

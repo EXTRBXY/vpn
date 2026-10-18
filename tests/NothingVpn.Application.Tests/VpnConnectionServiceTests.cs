@@ -1,3 +1,4 @@
+using System.Text.Json;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
 using NothingVpn.Application.Services;
@@ -186,17 +187,120 @@ public sealed class VpnConnectionServiceTests
         Assert.True(disconnected);
     }
 
+    [Fact]
+    public async Task ConnectAsync_KeepsSettingsSavedWhileConnecting()
+    {
+        var stateStore = new FakeStateStorePort { State = new AppStateModel { Mode = "proxy", LocalMixedPort = 1080 } };
+        var appState = new AppStateStore(stateStore);
+        var settings = new SettingsService(appState, new FakePathPolicyPort());
+        var diagnostics = new FakeDiagnosticsPort { Gate = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+        var service = CreateService(
+            new FakeProfileStorePort(), stateStore, isAdmin: true,
+            diagnosticsPort: diagnostics, appStateStore: appState);
+
+        var connect = service.ConnectAsync(new ConnectRequest { ProfileId = "p1" });
+        await diagnostics.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        settings.UpdateState(s =>
+        {
+            s.DohServer = "1.1.1.1";
+            s.CloseBehavior = "exit";
+            s.UpdateDismissedModalForTag = "v9.9.9";
+        });
+        diagnostics.Gate!.SetResult();
+        var result = await connect;
+
+        Assert.True(result.Started);
+        var saved = stateStore.State;
+        Assert.Equal("1.1.1.1", saved.DohServer);
+        Assert.Equal("exit", saved.CloseBehavior);
+        Assert.Equal("v9.9.9", saved.UpdateDismissedModalForTag);
+        Assert.Equal("p1", saved.ActiveProfileId);
+        Assert.True(saved.ProxyWasEnabledByUs);
+    }
+
+    [Fact]
+    public async Task SettingsSavesFromUi_DoNotOverwriteProxyRuntimeFlags()
+    {
+        var stateStore = new FakeStateStorePort { State = new AppStateModel { Mode = "proxy", LocalMixedPort = 1080 } };
+        var appState = new AppStateStore(stateStore);
+        var settings = new SettingsService(appState, new FakePathPolicyPort());
+        var screen = new NothingVpn.Presentation.ConnectionScreenController(new FakeProfileService(), settings);
+        var staleSnapshot = settings.GetState();
+        var userProxy = new ProxySettingsSnapshotModel { ProxyEnable = true, ProxyServer = "corp:3128", ProxyOverride = "<local>" };
+        var proxy = new FakeProxyPort { Current = userProxy };
+        var singBox = new FakeSingBoxPort();
+        var service = CreateService(
+            new FakeProfileStorePort(), stateStore, isAdmin: true,
+            singBoxPort: singBox, proxyPort: proxy, appStateStore: appState);
+
+        await service.ConnectAsync(new ConnectRequest { ProfileId = "p1" });
+
+        // Устаревший снимок окна (до подключения) и прямая попытка сбросить флаги через настройки.
+        staleSnapshot.ProxyOverride = "localhost";
+        screen.Save(staleSnapshot);
+        settings.UpdateState(s =>
+        {
+            s.ProxyWasEnabledByUs = false;
+            s.PreviousProxySettings = null;
+        });
+
+        var saved = stateStore.State;
+        Assert.Equal("localhost", saved.ProxyOverride);
+        Assert.True(saved.ProxyWasEnabledByUs);
+        Assert.Equal("corp:3128", saved.PreviousProxySettings?.ProxyServer);
+        Assert.Equal("p1", saved.ActiveProfileId);
+
+        await service.DisconnectAsync();
+
+        Assert.Equal("corp:3128", proxy.RestoredWith?.ProxyServer);
+        Assert.False(stateStore.State.ProxyWasEnabledByUs);
+        Assert.Null(stateStore.State.PreviousProxySettings);
+    }
+
+    [Fact]
+    public async Task GetStatus_DoesNotReadStateStore()
+    {
+        var stateStore = new FakeStateStorePort { State = new AppStateModel { Mode = "proxy", LocalMixedPort = 1080 } };
+        var singBox = new FakeSingBoxPort();
+        var service = CreateService(new FakeProfileStorePort(), stateStore, isAdmin: true, singBoxPort: singBox);
+        var controller = new NothingVpn.Presentation.ConnectionController(service, new FakeAppLifecycleService());
+        var before = stateStore.LoadCalls;
+
+        Assert.False(controller.IsRunning);
+        Assert.Null(service.GetStatus().ActiveProfileId);
+        Assert.Equal(before, stateStore.LoadCalls);
+
+        await service.ConnectAsync(new ConnectRequest { ProfileId = "p1" });
+        before = stateStore.LoadCalls;
+
+        for (var i = 0; i < 10; i++)
+            Assert.True(controller.IsRunning);
+        var status = controller.GetStatus();
+
+        Assert.Equal(before, stateStore.LoadCalls);
+        Assert.Equal("proxy", status.Mode);
+        Assert.Equal("p1", status.ActiveProfileId);
+
+        await service.DisconnectAsync();
+        before = stateStore.LoadCalls;
+
+        Assert.False(controller.IsRunning);
+        Assert.Null(controller.GetStatus().ActiveProfileId);
+        Assert.Equal(before, stateStore.LoadCalls);
+    }
+
     private static VpnConnectionService CreateService(
         FakeProfileStorePort profileStore,
         FakeStateStorePort stateStore,
         bool isAdmin,
         FakeSingBoxPort? singBoxPort = null,
         FakeProxyPort? proxyPort = null,
-        FakeDiagnosticsPort? diagnosticsPort = null)
+        FakeDiagnosticsPort? diagnosticsPort = null,
+        AppStateStore? appStateStore = null)
     {
         return new VpnConnectionService(
             profileStore,
-            stateStore,
+            appStateStore ?? new AppStateStore(stateStore),
             singBoxPort ?? new FakeSingBoxPort(),
             proxyPort ?? new FakeProxyPort(),
             diagnosticsPort ?? new FakeDiagnosticsPort(),
@@ -237,9 +341,28 @@ public sealed class VpnConnectionServiceTests
 
     private sealed class FakeStateStorePort : IStateStorePort
     {
-        public AppStateModel State { get; set; } = new();
-        public AppStateModel Load() => State;
-        public void Save(AppStateModel state) => State = state;
+        private AppStateModel _state = new();
+
+        // Копии, как у настоящего стора: изменения объекта после Save не попадают «на диск».
+        public AppStateModel State
+        {
+            get => Clone(_state);
+            set => _state = Clone(value);
+        }
+
+        public int LoadCalls { get; private set; }
+
+        public AppStateModel Load()
+        {
+            LoadCalls++;
+            return Clone(_state);
+        }
+
+        public void Save(AppStateModel state) => _state = Clone(state);
+        public bool SaveMissingBuiltinRuleSets() => false;
+
+        private static AppStateModel Clone(AppStateModel state) =>
+            JsonSerializer.Deserialize<AppStateModel>(JsonSerializer.Serialize(state))!;
     }
 
     private sealed class FakeSingBoxPort : ISingBoxPort
@@ -289,22 +412,56 @@ public sealed class VpnConnectionServiceTests
     {
         public bool RestoreCalled { get; private set; }
         public bool EnableCalled { get; private set; }
+        public ProxySettingsSnapshotModel Current { get; init; } = new();
+        public ProxySettingsSnapshotModel? RestoredWith { get; private set; }
 
-        public ProxySettingsSnapshotModel ReadCurrent() => new();
+        public ProxySettingsSnapshotModel ReadCurrent() => Current;
         public void Enable(string proxyServer, string proxyOverride) => EnableCalled = true;
-        public void Restore(ProxySettingsSnapshotModel? previous) => RestoreCalled = true;
+
+        public void Restore(ProxySettingsSnapshotModel? previous)
+        {
+            RestoreCalled = true;
+            RestoredWith = previous;
+        }
     }
 
     private sealed class FakeDiagnosticsPort : IDiagnosticsPort
     {
-        public Task<(bool Success, string? Error)> CanReachTcpAsync(string host, int port, TimeSpan timeout, CancellationToken cancellationToken = default)
-            => Task.FromResult((true, (string?)null));
+        // Позволяет «заморозить» ConnectAsync на проверке локального порта и изменить состояние параллельно.
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource? Gate { get; init; }
+
+        public async Task<(bool Success, string? Error)> CanReachTcpAsync(string host, int port, TimeSpan timeout, CancellationToken cancellationToken = default)
+        {
+            Entered.TrySetResult();
+            if (Gate is not null)
+                await Gate.Task.WaitAsync(cancellationToken);
+            return (true, null);
+        }
 
         public Task<(bool Success, string? Error)> ProxySmokeTestAsync(string proxyHost, int proxyPort, string targetHost, int targetPort, TimeSpan timeout, CancellationToken cancellationToken = default)
             => Task.FromResult((true, (string?)null));
 
         public Task<(bool Success, string? Error)> TunSmokeTestAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
             => Task.FromResult((true, (string?)null));
+    }
+
+    private sealed class FakeProfileService : IProfileService
+    {
+        private readonly IReadOnlyList<VpnProfile> _profiles = [new() { Id = "p1", Name = "Main" }];
+
+        public IReadOnlyList<VpnProfile> GetProfiles() => _profiles;
+        public IReadOnlyList<VpnProfile> ImportFromVlessLink(string link) => throw new NotSupportedException();
+        public IReadOnlyList<VpnProfile> DeleteProfile(string profileId) => throw new NotSupportedException();
+        public bool TryParseVlessLink(string link, out VpnProfile profile) => throw new NotSupportedException();
+        public VpnProfile UpsertFromVlessLink(string link, string? nameOverride) => throw new NotSupportedException();
+    }
+
+    private sealed class FakeAppLifecycleService : IAppLifecycleService
+    {
+        public bool IsAdministrator() => true;
+        public bool RestartElevated(string arguments) => false;
+        public string BuildTakeoverArgs(string mode, string profileId) => string.Empty;
     }
 
     private sealed class FakeElevationPort(bool isAdmin) : IElevationPort

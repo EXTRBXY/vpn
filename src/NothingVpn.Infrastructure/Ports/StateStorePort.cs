@@ -18,11 +18,19 @@ public sealed class StateStorePort : IStateStorePort
     public AppStateModel Load()
     {
         var legacy = _store.Load();
-        if (BuiltinGeositeRuleSets.EnsureBuiltinGeositeRuleSets(legacy))
-            _store.Save(legacy);
+        BuiltinGeositeRuleSets.EnsureBuiltinGeositeRuleSets(legacy);
         return LegacyModelMapper.ToModel(legacy);
     }
 
     public void Save(AppStateModel state) => _store.Save(LegacyModelMapper.ToLegacy(state));
-}
 
+    public bool SaveMissingBuiltinRuleSets()
+    {
+        var legacy = _store.Load();
+        if (!BuiltinGeositeRuleSets.EnsureBuiltinGeositeRuleSets(legacy))
+            return false;
+
+        _store.Save(legacy);
+        return true;
+    }
+}
