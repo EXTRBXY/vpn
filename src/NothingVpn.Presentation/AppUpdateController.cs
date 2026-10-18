@@ -67,6 +67,27 @@ public sealed class AppUpdateController : IAppUpdateController
         CancellationToken cancellationToken = default) =>
         _updateService.GetByVersionAsync(currentVersion, cancellationToken);
 
+    public async Task<ReleaseChangelog> GetChangelogAsync(
+        string currentVersion,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var release = await GetCurrentReleaseAsync(currentVersion, cancellationToken).ConfigureAwait(false);
+            return release is null
+                ? ReleaseChangelog.Failed(currentVersion)
+                : ReleaseChangelog.FromRelease(currentVersion, release);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return ReleaseChangelog.Failed(currentVersion);
+        }
+    }
+
     public bool ShouldOffer(AppStateModel state, AppReleaseModel release) =>
         !string.Equals(state.UpdateDismissedModalForTag, release.TagName, StringComparison.OrdinalIgnoreCase);
 

@@ -86,7 +86,8 @@ public partial class App : System.Windows.Application
             var updateViewModel = new UpdateViewModel(controller: new AppUpdateController(services.AppUpdateService, services.SettingsService),
                 installer: services.InstallerUpdateService, launcher: services.InstallerLaunchService,
                 settings: services.SettingsService, state: services.SettingsService.GetState(), exit: RequestExit,
-                notifyAvailable: ShowUpdateNotification);
+                notifyAvailable: ShowUpdateNotification,
+                showChangelog: ShowReleaseChangelog);
             var settingsViewModel = new SettingsViewModel(
                 new ConnectionSettingsController(services.SettingsService),
                 new TunAppsController(services.PathPolicy, services.SettingsService),
@@ -211,6 +212,16 @@ public partial class App : System.Windows.Application
         _trayIcon.BalloonTipText = $"Версия {release.Semver} готова к загрузке. Нажмите, чтобы открыть приложение.";
         _trayIcon.BalloonTipIcon = Forms.ToolTipIcon.Info;
         _trayIcon.ShowBalloonTip(8000);
+    }
+
+    private void ShowReleaseChangelog(ReleaseChangelog changelog)
+    {
+        var dialog = new ReleaseChangelogWindow(changelog);
+        if (_window is { IsVisible: true })
+            dialog.Owner = _window;
+        else
+            dialog.WindowStartupLocation = System.Windows.WindowStartupLocation.CenterScreen;
+        dialog.ShowDialog();
     }
 
     private void UpdateTrayState(bool connected)
