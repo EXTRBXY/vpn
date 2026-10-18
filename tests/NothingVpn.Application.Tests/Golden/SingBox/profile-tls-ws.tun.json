@@ -1,0 +1,149 @@
+{
+  "log": {
+    "level": "warn"
+  },
+  "dns": {
+    "servers": [
+      {
+        "type": "local",
+        "tag": "bootstrap-local",
+        "prefer_go": false
+      },
+      {
+        "type": "https",
+        "tag": "doh",
+        "server": "8.8.8.8",
+        "server_port": 443,
+        "path": "/dns-query",
+        "tls": {
+          "enabled": true,
+          "server_name": "dns.google"
+        },
+        "detour": "proxy"
+      }
+    ],
+    "rules": [
+      {
+        "domain": [
+          "ws.example.net"
+        ],
+        "server": "bootstrap-local"
+      }
+    ],
+    "final": "doh",
+    "reverse_mapping": true,
+    "strategy": "ipv4_only"
+  },
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "interface_name": "NothingVpn-fedcba",
+      "address": [
+        "198.18.201.161/30",
+        "fdfe:dcba:9876:6018::1/126"
+      ],
+      "mtu": 1500,
+      "auto_route": true,
+      "strict_route": true,
+      "stack": "system"
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "proxy",
+      "server": "ws.example.net",
+      "server_port": 8443,
+      "uuid": "66666666-7777-8888-9999-aaaaaaaaaaaa",
+      "domain_resolver": "bootstrap-local",
+      "tls": {
+        "enabled": true,
+        "server_name": "cdn.example.net",
+        "alpn": [
+          "h2",
+          "http/1.1"
+        ],
+        "utls": {
+          "enabled": true,
+          "fingerprint": "firefox"
+        }
+      },
+      "transport": {
+        "type": "ws",
+        "path": "/ws-path",
+        "headers": {
+          "Host": "cdn.example.net"
+        }
+      }
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    },
+    {
+      "type": "block",
+      "tag": "block"
+    }
+  ],
+  "route": {
+    "final": "proxy",
+    "auto_detect_interface": true,
+    "default_domain_resolver": "bootstrap-local",
+    "rules": [
+      {
+        "action": "sniff"
+      },
+      {
+        "protocol": "dns",
+        "action": "hijack-dns"
+      },
+      {
+        "ip_is_private": true,
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "domain": [
+          "ws.example.net"
+        ],
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "domain": [
+          "dns.google",
+          "dns.google.com",
+          "cloudflare-dns.com",
+          "security.cloudflare-dns.com",
+          "chrome.cloudflare-dns.com",
+          "mozilla.cloudflare-dns.com",
+          "dns.quad9.net",
+          "dns11.quad9.net",
+          "he.dns.opendns.com",
+          "doh.opendns.com",
+          "dns.nextdns.io",
+          "dns.adguard.com",
+          "unfiltered.adguard-dns.com",
+          "family.adguard-dns.com"
+        ],
+        "action": "route",
+        "outbound": "proxy"
+      },
+      {
+        "protocol": "stun",
+        "action": "reject"
+      },
+      {
+        "protocol": "quic",
+        "action": "route",
+        "outbound": "proxy"
+      },
+      {
+        "ip_version": 6,
+        "action": "route",
+        "outbound": "proxy"
+      }
+    ]
+  }
+}

@@ -1,0 +1,171 @@
+{
+  "log": {
+    "level": "warn"
+  },
+  "dns": {
+    "servers": [
+      {
+        "type": "local",
+        "tag": "bootstrap-local",
+        "prefer_go": false
+      }
+    ],
+    "rules": [
+      {
+        "domain": [
+          "node.example.com"
+        ],
+        "server": "bootstrap-local"
+      }
+    ],
+    "final": "bootstrap-local",
+    "reverse_mapping": true,
+    "strategy": "ipv4_only"
+  },
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "interface_name": "NothingVpn-012345",
+      "address": [
+        "198.18.26.161/30",
+        "fdfe:dcba:9876:97ab::1/126"
+      ],
+      "mtu": 1500,
+      "auto_route": true,
+      "strict_route": false,
+      "stack": "system"
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "proxy",
+      "server": "node.example.com",
+      "server_port": 443,
+      "uuid": "11111111-2222-3333-4444-555555555555",
+      "flow": "xtls-rprx-vision",
+      "tls": {
+        "enabled": true,
+        "server_name": "www.example.org",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "pUbLiCkEyAbCdEfGhIjKlMnOpQrStUvWxYz0123456",
+          "short_id": "a1b2c3d4"
+        }
+      }
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    },
+    {
+      "type": "block",
+      "tag": "block"
+    }
+  ],
+  "route": {
+    "final": "direct",
+    "auto_detect_interface": true,
+    "default_domain_resolver": "bootstrap-local",
+    "rules": [
+      {
+        "action": "sniff"
+      },
+      {
+        "protocol": "dns",
+        "action": "hijack-dns"
+      },
+      {
+        "ip_is_private": true,
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "domain": [
+          "node.example.com"
+        ],
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "protocol": "stun",
+        "action": "reject"
+      },
+      {
+        "rule_set": [
+          "geosite-category-ru"
+        ],
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "rule_set": [
+          "geosite-category-ru-ads"
+        ],
+        "action": "route",
+        "outbound": "block"
+      },
+      {
+        "rule_set": [
+          "geoip-ru"
+        ],
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "rule_set": [
+          "user-ruleset-0123456789ab"
+        ],
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "process_path": [
+          "C:\\Program Files\\Browser\\browser.exe",
+          "D:\\Games\\Client\\game.exe"
+        ],
+        "action": "route",
+        "outbound": "proxy"
+      },
+      {
+        "process_name": [
+          "browser.exe",
+          "game.exe"
+        ],
+        "action": "route",
+        "outbound": "proxy"
+      }
+    ],
+    "rule_set": [
+      {
+        "type": "local",
+        "tag": "geosite-category-ru",
+        "path": "C:\\NothingVpnGolden\\rulesets\\geosite-category-ru.srs",
+        "format": "binary"
+      },
+      {
+        "type": "local",
+        "tag": "geosite-category-ru-ads",
+        "path": "C:\\NothingVpnGolden\\rulesets\\geosite-category-ru@ads.srs",
+        "format": "binary"
+      },
+      {
+        "type": "local",
+        "tag": "geoip-ru",
+        "path": "C:\\NothingVpnGolden\\rulesets\\geoip-ru.srs",
+        "format": "binary"
+      },
+      {
+        "type": "local",
+        "tag": "user-ruleset-0123456789ab",
+        "path": "C:\\NothingVpnGolden\\rulesets\\my-list.srs",
+        "format": "binary"
+      }
+    ]
+  }
+}

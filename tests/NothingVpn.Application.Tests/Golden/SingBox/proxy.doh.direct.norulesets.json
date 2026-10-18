@@ -1,0 +1,75 @@
+{
+  "log": {
+    "level": "warn"
+  },
+  "dns": {
+    "servers": [
+      {
+        "type": "https",
+        "tag": "doh",
+        "server": "8.8.8.8",
+        "server_port": 443,
+        "path": "/dns-query",
+        "tls": {
+          "enabled": true,
+          "server_name": "dns.google"
+        }
+      }
+    ],
+    "final": "doh",
+    "reverse_mapping": false
+  },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen": "127.0.0.1",
+      "listen_port": 1080
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "proxy",
+      "server": "node.example.com",
+      "server_port": 443,
+      "uuid": "11111111-2222-3333-4444-555555555555",
+      "flow": "xtls-rprx-vision",
+      "tls": {
+        "enabled": true,
+        "server_name": "www.example.org",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "pUbLiCkEyAbCdEfGhIjKlMnOpQrStUvWxYz0123456",
+          "short_id": "a1b2c3d4"
+        }
+      }
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    },
+    {
+      "type": "block",
+      "tag": "block"
+    }
+  ],
+  "route": {
+    "final": "proxy",
+    "auto_detect_interface": false,
+    "default_domain_resolver": "doh",
+    "rules": [
+      {
+        "action": "sniff"
+      },
+      {
+        "protocol": "stun",
+        "action": "reject"
+      }
+    ]
+  }
+}
