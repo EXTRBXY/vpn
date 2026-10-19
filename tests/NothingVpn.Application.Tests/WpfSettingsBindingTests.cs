@@ -285,8 +285,8 @@ public sealed class WpfSettingsBindingTests
         public int Starts { get; private set; }
         public int Stops { get; private set; }
         public VpnConnectionStatus GetStatus() => new() { IsRunning = IsRunning };
-        public Task<ConnectionStartOutcome> StartAsync(string profileId, ConnectionMode mode, CancellationToken cancellationToken = default) { Starts++; return _start.Task; }
-        public void CompleteStart() { IsRunning = true; ConnectionStateChanged?.Invoke(this, true); _start.SetResult(new ConnectionStartOutcome(true, false)); }
+        public Task<ConnectionStartOutcome> StartAsync(string profileId, CancellationToken cancellationToken = default) { Starts++; return _start.Task; }
+        public void CompleteStart() { IsRunning = true; ConnectionStateChanged?.Invoke(this, true); _start.SetResult(new ConnectionStartOutcome(true)); }
         public Task StopAsync(CancellationToken cancellationToken = default) { Stops++; IsRunning = false; ConnectionStateChanged?.Invoke(this, false); return Task.CompletedTask; }
     }
 

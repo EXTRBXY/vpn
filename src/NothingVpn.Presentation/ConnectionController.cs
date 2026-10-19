@@ -1,20 +1,20 @@
 using NothingVpn.Application.Models;
+using NothingVpn.Application.Ports;
 using NothingVpn.Application.Services;
-using NothingVpn.Domain.Models;
 
 namespace NothingVpn.Presentation;
 
 public sealed class ConnectionController : IConnectionController
 {
     private readonly IVpnConnectionService _vpnConnectionService;
-    private readonly IAppLifecycleService _appLifecycleService;
+    private readonly IElevationPort _elevationPort;
 
     public ConnectionController(
         IVpnConnectionService vpnConnectionService,
-        IAppLifecycleService appLifecycleService)
+        IElevationPort elevationPort)
     {
         _vpnConnectionService = vpnConnectionService;
-        _appLifecycleService = appLifecycleService;
+        _elevationPort = elevationPort;
     }
 
     public event EventHandler<bool>? ConnectionStateChanged
@@ -25,13 +25,12 @@ public sealed class ConnectionController : IConnectionController
 
     public bool IsRunning => _vpnConnectionService.GetStatus().IsRunning;
 
-    public bool IsAdministrator => _appLifecycleService.IsAdministrator();
+    public bool IsAdministrator => _elevationPort.IsAdministrator();
 
     public VpnConnectionStatus GetStatus() => _vpnConnectionService.GetStatus();
 
     public async Task<ConnectionStartOutcome> StartAsync(
         string profileId,
-        ConnectionMode mode,
         CancellationToken cancellationToken = default)
     {
         try
@@ -39,16 +38,7 @@ public sealed class ConnectionController : IConnectionController
             var result = await _vpnConnectionService.ConnectAsync(
                 new ConnectRequest { ProfileId = profileId },
                 cancellationToken).ConfigureAwait(false);
-
-            if (!result.RequiresElevation)
-                return new ConnectionStartOutcome(result.Started, ExitCurrentProcess: false);
-
-            var arguments = result.ElevationArgs
-                ?? _appLifecycleService.BuildTakeoverArgs(mode, profileId);
-            if (!_appLifecycleService.RestartElevated(arguments))
-                throw new InvalidOperationException("TUN требует прав администратора (запрос UAC был отменён).");
-
-            return new ConnectionStartOutcome(Connected: false, ExitCurrentProcess: true);
+            return new ConnectionStartOutcome(result.Started);
         }
         catch
         {

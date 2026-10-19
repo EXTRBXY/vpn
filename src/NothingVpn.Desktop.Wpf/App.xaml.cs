@@ -32,10 +32,7 @@ public partial class App : System.Windows.Application
             catch { }
         }
 
-        _singleInstance = SingleInstance.Acquire(
-            AppId,
-            e.Args,
-            takeover: StartupOptions.HasSwitch(e.Args, StartupOptions.TakeoverSwitch));
+        _singleInstance = SingleInstance.Acquire(AppId, e.Args);
         if (_singleInstance is null)
         {
             Shutdown();
@@ -46,6 +43,7 @@ public partial class App : System.Windows.Application
         {
             var composition = DesktopCompositionRoot.Create(new DesktopShell(
                 RequestExit,
+                ExitThenLaunch,
                 release => _tray?.ShowUpdateAvailable(release),
                 changelog => AppDialogs.ShowReleaseChangelog(_window, changelog)));
             var exceptions = new GlobalExceptionHandler(
@@ -127,7 +125,14 @@ public partial class App : System.Windows.Application
         Shutdown(0);
     }
 
-    private async void RequestExit()
+    private void RequestExit() => ExitThenLaunch(null);
+
+    /// <summary>
+    /// Штатный выход. <paramref name="launchAfterRelease"/> (запуск установщика обновления) выполняется после
+    /// отключения VPN и освобождения мьютекса: установщик Inno с <c>AppMutex</c> в тихом режиме не ждёт, а
+    /// прерывается, если застаёт интерфейс работающим.
+    /// </summary>
+    private async void ExitThenLaunch(Action? launchAfterRelease)
     {
         if (_exitInProgress) return;
         _exitInProgress = true;
@@ -147,8 +152,25 @@ public partial class App : System.Windows.Application
             _subscriptionRefresh?.Stop();
             _tray?.Dispose();
             _singleInstance?.Dispose();
+            if (launchAfterRelease is not null)
+                LaunchAfterRelease(launchAfterRelease);
             _window?.Close();
             Shutdown();
+        }
+    }
+
+    private void LaunchAfterRelease(Action launch)
+    {
+        try
+        {
+            launch();
+        }
+        catch (Exception ex)
+        {
+            _exceptions?.Report(ex, "Не удалось запустить установщик обновления");
+            AppDialogs.ShowUnexpectedError(
+                _window,
+                $"Не удалось запустить установщик обновления: {ex.Message}\nVPN отключён. Запустите Nothing VPN снова.");
         }
     }
 }

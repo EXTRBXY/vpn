@@ -6,7 +6,6 @@ namespace NothingVpn.Desktop.Wpf;
 /// </summary>
 internal sealed record StartupOptions(bool Start, string? Mode, string? ProfileId)
 {
-    public const string TakeoverSwitch = "--takeover";
     public const string SmokeTestSwitch = "--smoke-test";
 
     public static bool HasSwitch(string[] args, string name) =>

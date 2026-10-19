@@ -14,8 +14,8 @@ public static class ApplicationServicesFactory
 {
     /// <summary>
     /// Переменная окружения выбора ядра. По умолчанию (шаг 7б) — служба через канал (<see cref="PipeVpnEngine"/>).
-    /// <c>inprocess</c> — ядро внутри процесса интерфейса: только для разработки без установленной службы; TUN тогда
-    /// снова требует UAC-перезапуска (<c>--takeover</c>). Другие значения — служба: опечатка не должна молча
+    /// <c>inprocess</c> — ядро внутри процесса интерфейса: только для разработки без установленной службы; для TUN
+    /// клиент нужно самому запустить от имени администратора. Другие значения — служба: опечатка не должна молча
     /// переводить ядро в процесс интерфейса.
     /// </summary>
     public const string EngineVariable = "NOTHINGVPN_ENGINE";
@@ -50,7 +50,6 @@ public static class ApplicationServicesFactory
             parser,
             settingsService);
         var diagnosticsService = new DiagnosticsService(diagnosticsPort, logPort, stateStore);
-        var appLifecycleService = new AppLifecycleService(elevationPort);
         var storageHealthService = new StorageHealthService(storageHealthPort);
         var ruleSetFileService = new RuleSetFileService(appPaths);
         var appUpdateService = new GitHubAppUpdateService();
@@ -75,7 +74,7 @@ public static class ApplicationServicesFactory
             SettingsService = settingsService,
             VpnConnectionService = vpnService,
             DiagnosticsService = diagnosticsService,
-            AppLifecycleService = appLifecycleService,
+            ElevationPort = elevationPort,
             StorageHealthService = storageHealthService,
             RuleSetFileService = ruleSetFileService,
             AppUpdateService = appUpdateService,

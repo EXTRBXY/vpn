@@ -11,7 +11,7 @@ namespace NothingVpn.Application.Tests;
 public sealed class VpnConnectionServiceTests
 {
     [Fact]
-    public async Task ConnectAsync_ReturnsElevation_WhenTunAndNotAdmin()
+    public async Task ConnectAsync_InProcessEngineTunWithoutAdmin_FailsWithoutStartingOrRestarting()
     {
         var profileStore = new FakeProfileStorePort();
         var stateStore = new FakeStateStorePort
@@ -22,13 +22,16 @@ public sealed class VpnConnectionServiceTests
                 ActiveProfileId = "p1"
             }
         };
-        var service = CreateService(profileStore, stateStore, isAdmin: false);
+        var singBox = new FakeSingBoxPort();
+        var service = CreateService(profileStore, stateStore, isAdmin: false, singBoxPort: singBox);
 
-        var result = await service.ConnectAsync(new ConnectRequest { ProfileId = "p1" });
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ConnectAsync(new ConnectRequest { ProfileId = "p1" }));
 
-        Assert.False(result.Started);
-        Assert.True(result.RequiresElevation);
-        Assert.Contains("--takeover", result.ElevationArgs, StringComparison.Ordinal);
+        Assert.Equal(VpnConnectionService.InProcessTunRequiresAdministratorMessage, error.Message);
+        Assert.Equal("Ядро в процессе: для TUN запустите клиент от имени администратора.", error.Message);
+        Assert.False(service.GetStatus().IsRunning);
+        Assert.False(singBox.StartCalled);
     }
 
     [Fact]
@@ -332,7 +335,7 @@ public sealed class VpnConnectionServiceTests
         var stateStore = new FakeStateStorePort { State = new AppStateModel { Mode = ConnectionMode.Proxy, LocalMixedPort = 1080 } };
         var singBox = new FakeSingBoxPort();
         var service = CreateService(new FakeProfileStorePort(), stateStore, isAdmin: true, singBoxPort: singBox);
-        var controller = new NothingVpn.Presentation.ConnectionController(service, new FakeAppLifecycleService());
+        var controller = new NothingVpn.Presentation.ConnectionController(service, new FakeElevationPort(isAdmin: true));
         var before = stateStore.LoadCalls;
 
         Assert.False(controller.IsRunning);
@@ -368,7 +371,6 @@ public sealed class VpnConnectionServiceTests
         var result = await service.ConnectAsync(new ConnectRequest { ProfileId = "p1" });
 
         Assert.True(result.Started);
-        Assert.False(result.RequiresElevation);
         Assert.Equal(1, engine.ConnectCalls);
         Assert.Equal("p1", stateStore.State.ActiveProfileId);
     }
@@ -666,17 +668,9 @@ public sealed class VpnConnectionServiceTests
         public VpnProfile UpsertFromVlessLink(string link, string? nameOverride) => throw new NotSupportedException();
     }
 
-    private sealed class FakeAppLifecycleService : IAppLifecycleService
-    {
-        public bool IsAdministrator() => true;
-        public bool RestartElevated(string arguments) => false;
-        public string BuildTakeoverArgs(ConnectionMode mode, string profileId) => string.Empty;
-    }
-
     private sealed class FakeElevationPort(bool isAdmin) : IElevationPort
     {
         public bool IsAdministrator() => isAdmin;
-        public bool RestartElevated(string arguments) => true;
     }
 
     private sealed class FakeRuleSetFileService : IRuleSetFileService

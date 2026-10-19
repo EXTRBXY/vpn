@@ -1,5 +1,5 @@
-using NothingVpn.Domain.Models;
 using NothingVpn.Application.Models;
+using NothingVpn.Application.Ports;
 using NothingVpn.Application.Services;
 using NothingVpn.Presentation;
 
@@ -14,52 +14,12 @@ public sealed class ConnectionControllerTests
         {
             ConnectResult = new ConnectResult { Started = true }
         };
-        var controller = new ConnectionController(vpn, new FakeAppLifecycleService());
+        var controller = new ConnectionController(vpn, new FakeElevationPort());
 
-        var outcome = await controller.StartAsync("profile-1", ConnectionMode.Proxy);
+        var outcome = await controller.StartAsync("profile-1");
 
         Assert.True(outcome.Connected);
-        Assert.False(outcome.ExitCurrentProcess);
         Assert.Equal("profile-1", vpn.LastProfileId);
-    }
-
-    [Fact]
-    public async Task StartAsync_ElevationRequired_RestartsAndRequestsCurrentProcessExit()
-    {
-        var vpn = new FakeVpnConnectionService
-        {
-            ConnectResult = new ConnectResult
-            {
-                RequiresElevation = true,
-                ElevationArgs = "--takeover --start"
-            }
-        };
-        var lifecycle = new FakeAppLifecycleService { RestartResult = true };
-        var controller = new ConnectionController(vpn, lifecycle);
-
-        var outcome = await controller.StartAsync("profile-1", ConnectionMode.Tun);
-
-        Assert.False(outcome.Connected);
-        Assert.True(outcome.ExitCurrentProcess);
-        Assert.Equal("--takeover --start", lifecycle.RestartArguments);
-    }
-
-    [Fact]
-    public async Task StartAsync_CancelledElevation_RollsBackAndThrows()
-    {
-        var vpn = new FakeVpnConnectionService
-        {
-            ConnectResult = new ConnectResult { RequiresElevation = true }
-        };
-        var lifecycle = new FakeAppLifecycleService { RestartResult = false };
-        var controller = new ConnectionController(vpn, lifecycle);
-
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            controller.StartAsync("profile-1", ConnectionMode.Tun));
-
-        Assert.Contains("UAC", error.Message, StringComparison.Ordinal);
-        Assert.Equal(1, vpn.DisconnectCalls);
-        Assert.Contains("--mode tun", lifecycle.RestartArguments, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -67,10 +27,10 @@ public sealed class ConnectionControllerTests
     {
         var expected = new InvalidOperationException("connect failed");
         var vpn = new FakeVpnConnectionService { ConnectError = expected };
-        var controller = new ConnectionController(vpn, new FakeAppLifecycleService());
+        var controller = new ConnectionController(vpn, new FakeElevationPort());
 
         var actual = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            controller.StartAsync("profile-1", ConnectionMode.Proxy));
+            controller.StartAsync("profile-1"));
 
         Assert.Same(expected, actual);
         Assert.Equal(1, vpn.DisconnectCalls);
@@ -80,11 +40,19 @@ public sealed class ConnectionControllerTests
     public async Task StopAsync_DelegatesToVpnService()
     {
         var vpn = new FakeVpnConnectionService();
-        var controller = new ConnectionController(vpn, new FakeAppLifecycleService());
+        var controller = new ConnectionController(vpn, new FakeElevationPort());
 
         await controller.StopAsync();
 
         Assert.Equal(1, vpn.DisconnectCalls);
+    }
+
+    [Fact]
+    public void IsAdministrator_ComesFromElevationPort()
+    {
+        var controller = new ConnectionController(new FakeVpnConnectionService(), new FakeElevationPort { IsAdmin = true });
+
+        Assert.True(controller.IsAdministrator);
     }
 
     private sealed class FakeVpnConnectionService : IVpnConnectionService
@@ -119,20 +87,9 @@ public sealed class ConnectionControllerTests
         public void RecoverStaleRuntimeState() { }
     }
 
-    private sealed class FakeAppLifecycleService : IAppLifecycleService
+    private sealed class FakeElevationPort : IElevationPort
     {
-        public bool RestartResult { get; set; }
-        public string RestartArguments { get; private set; } = string.Empty;
-
-        public bool IsAdministrator() => false;
-
-        public bool RestartElevated(string arguments)
-        {
-            RestartArguments = arguments;
-            return RestartResult;
-        }
-
-        public string BuildTakeoverArgs(ConnectionMode mode, string profileId) =>
-            StartupArguments.Takeover(mode, profileId);
+        public bool IsAdmin { get; init; }
+        public bool IsAdministrator() => IsAdmin;
     }
 }

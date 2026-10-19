@@ -9,7 +9,7 @@ namespace NothingVpn.Application.Services;
 
 /// <summary>
 /// Клиентская оркестрация подключения: профиль и настройки из хранилищ, запрос к ядру (<see cref="IVpnEngine"/>),
-/// UAC-перезапуск для TUN (только если ядро в процессе интерфейса), системный прокси WinINET и его runtime-флаги
+/// проверка прав для TUN (только если ядро в процессе интерфейса), системный прокси WinINET и его runtime-флаги
 /// в state.json, восстановление после остановки ядра и откат. Всё это остаётся на стороне интерфейса и с ядром
 /// в службе: прокси хранится в HKCU пользователя (ADR-0001).
 /// <para>
@@ -20,6 +20,9 @@ namespace NothingVpn.Application.Services;
 /// </summary>
 public sealed class VpnConnectionService : IVpnConnectionService
 {
+    public const string InProcessTunRequiresAdministratorMessage =
+        "Ядро в процессе: для TUN запустите клиент от имени администратора.";
+
     private readonly IProfileStorePort _profileStore;
     private readonly AppStateStore _stateStore;
     private readonly IVpnEngine _engine;
@@ -82,16 +85,9 @@ public sealed class VpnConnectionService : IVpnConnectionService
             ConnectionPolicy.EnsureTunAppsHasTargets(state.Mode, state.TunAppProcessPaths);
             ValidateRuleSets(state);
 
+            // Только ядро в процессе (разработка): интерфейс не перезапускает себя с повышением прав.
             if (ConnectionPolicy.IsTunMode(state.Mode) && _engine.TunRequiresElevatedCaller && !_elevationPort.IsAdministrator())
-            {
-                var args = StartupArguments.Takeover(state.Mode, profile.Id);
-                return new ConnectResult
-                {
-                    Started = false,
-                    RequiresElevation = true,
-                    ElevationArgs = args
-                };
-            }
+                throw new InvalidOperationException(InProcessTunRequiresAdministratorMessage);
 
             if (_engine.GetStatus().IsRunning)
                 await DisconnectCoreAsync(cancellationToken).ConfigureAwait(false);
@@ -126,11 +122,7 @@ public sealed class VpnConnectionService : IVpnConnectionService
             Volatile.Write(ref _session, new ConnectedSession(state.Mode, profile.Id));
             ConnectionStateChanged?.Invoke(this, true);
 
-            return new ConnectResult
-            {
-                Started = true,
-                RequiresElevation = false
-            };
+            return new ConnectResult { Started = true };
         }
         finally
         {
