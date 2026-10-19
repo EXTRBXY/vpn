@@ -7,6 +7,7 @@ using System.Windows.Media;
 using MediaBrush = System.Windows.Media.Brush;
 using MediaColor = System.Windows.Media.Color;
 using NothingVpn.Application.Models;
+using NothingVpn.Application.Ports;
 using NothingVpn.Domain.Models;
 using NothingVpn.Domain.Policies;
 using NothingVpn.Presentation;
@@ -35,7 +36,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ProfileViewModel profileManager,
         SettingsViewModel settings,
         IConnectionDiagnosticController diagnosticController,
-        NothingVpn.Infrastructure.Diagnostics.InMemoryLogStore logStore,
+        ILogPort log,
         Action requestExit)
     {
         _screenController = screenController;
@@ -44,7 +45,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ProfileManager = profileManager;
         Settings = settings;
         Settings.SettingsChanged += (_, _) => Load();
-        Diagnostics = new DiagnosticsViewModel(diagnosticController, logStore, () => _state.Mode, () => _connectionController.IsRunning);
+        Diagnostics = new DiagnosticsViewModel(diagnosticController, log, () => _state.Mode, () => _connectionController.IsRunning);
         Modes =
         [
             new ModeOption(ConnectionMode.Proxy, "Прокси"),
@@ -101,8 +102,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
     private void RaisePage()
     {
-        foreach (var name in new[] { nameof(ShowProfiles), nameof(IsHomeActive), nameof(IsProfilesActive), nameof(IsSettingsActive), nameof(IsDiagnosticsActive), nameof(HomeVisibility), nameof(ProfilesVisibility), nameof(SettingsVisibility), nameof(DiagnosticsVisibility) })
-            OnPropertyChanged(name);
+        foreach (var name in new[]
+        {
+            nameof(ShowProfiles), nameof(IsHomeActive), nameof(IsProfilesActive), nameof(IsSettingsActive),
+            nameof(IsDiagnosticsActive), nameof(HomeVisibility), nameof(ProfilesVisibility), nameof(SettingsVisibility),
+            nameof(DiagnosticsVisibility)
+        }) OnPropertyChanged(name);
     }
 
     public VpnProfile? SelectedProfile
@@ -157,7 +162,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string ModeDetail => _viewState?.ModeText ?? "—";
     public string DnsDetail => _viewState?.DnsText ?? "—";
     public string RuleSetsDetail => _viewState?.RuleSetsText ?? "—";
-    public string? ErrorMessage { get => _errorMessage; private set { _errorMessage = value; OnPropertyChanged(); OnPropertyChanged(nameof(ErrorVisibility)); } }
+    public string? ErrorMessage
+    {
+        get => _errorMessage;
+        private set
+        {
+            _errorMessage = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ErrorVisibility));
+        }
+    }
     public Visibility ErrorVisibility => string.IsNullOrWhiteSpace(ErrorMessage) ? Visibility.Collapsed : Visibility.Visible;
 
     public async Task StopForExitAsync()
@@ -166,14 +180,23 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (_connectionController.IsRunning)
             await _connectionController.StopAsync();
     }
+
     internal async Task ApplyStartupAsync(StartupOptions options)
     {
-        if (ConnectionPolicy.Modes.TryParse(options.Mode, out var mode)) SelectedMode=Modes.FirstOrDefault(x=>x.Id==mode)??SelectedMode;
-        if (!string.IsNullOrWhiteSpace(options.ProfileId)) SelectedProfile=Profiles.FirstOrDefault(x=>string.Equals(x.Id,options.ProfileId,StringComparison.OrdinalIgnoreCase))??SelectedProfile;
-        if(options.Start&&!_connectionController.IsRunning) await ToggleConnectionAsync();
+        if (ConnectionPolicy.Modes.TryParse(options.Mode, out var mode))
+            SelectedMode = Modes.FirstOrDefault(x => x.Id == mode) ?? SelectedMode;
+        if (!string.IsNullOrWhiteSpace(options.ProfileId))
+            SelectedProfile = Profiles.FirstOrDefault(x =>
+                string.Equals(x.Id, options.ProfileId, StringComparison.OrdinalIgnoreCase)) ?? SelectedProfile;
+        if (options.Start && !_connectionController.IsRunning)
+            await ToggleConnectionAsync();
     }
-    public Task ConnectFromTrayAsync()=>_connectionController.IsRunning?Task.CompletedTask:ToggleConnectionAsync();
-    public Task DisconnectFromTrayAsync()=>!_connectionController.IsRunning?Task.CompletedTask:ToggleConnectionAsync();
+
+    public Task ConnectFromTrayAsync() =>
+        _connectionController.IsRunning ? Task.CompletedTask : ToggleConnectionAsync();
+
+    public Task DisconnectFromTrayAsync() =>
+        !_connectionController.IsRunning ? Task.CompletedTask : ToggleConnectionAsync();
 
     private void Load()
     {

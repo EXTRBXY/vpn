@@ -1,6 +1,9 @@
-﻿namespace NothingVpn.Infrastructure.TunApps;
+﻿using NothingVpn.Application.Models;
+using NothingVpn.Application.Ports;
 
-public sealed class TunAppsSelectionService
+namespace NothingVpn.Infrastructure.TunApps;
+
+public sealed class TunAppsSelectionService : IAppDiscoveryPort
 {
     private readonly IInstalledAppsProvider _installedAppsProvider;
     private readonly IRunningAppsProvider _runningAppsProvider;

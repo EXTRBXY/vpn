@@ -7,7 +7,8 @@
 `InternalsVisibleTo` открывает тестам internal-типы Infrastructure (`SingBoxConfigGenerator`, `VlessLinkParser`,
 `DpapiJsonFile`, `AppPaths`, …).
 
-Состояние на 19.10.2026: 329 тестов, 326 проходят, 3 desktop-теста пропускаются вне специального запуска. Сборка
+Состояние на 19.10.2026 (после шага 5): 345 тестов, 342 проходят, 3 desktop-теста пропускаются вне специального
+запуска. Сборка
 Release — без предупреждений.
 
 | Область | Файлы |
@@ -17,7 +18,8 @@ Release — без предупреждений.
 | Use-case сервисы | `VpnConnectionServiceTests`, `SubscriptionServiceSyncTests` |
 | Presentation-контроллеры | `Connection*ControllerTests`, `ConnectionViewStateFactoryTests`, `ProfileManagementControllerTests`, `SubscriptionManagementControllerTests`, `RuleSetManagementControllerTests`, `TunAppsControllerTests`, `AppUpdateControllerTests` |
 | Infrastructure | `DpapiJsonFileTests`, `ProfileParserPortTests`, `RuleSetFileServiceTests`, `SubscriptionHttpFetcherTests`, `SingBoxRunnerTests`, `ProcessJobScopeTests`, `InstallerUpdateServiceTests`, `InstallerLaunchServiceTests` |
-| WPF | `SettingsViewModelTests` (реальные контроллеры, изолированное хранилище), `UpdateViewModelTests`, `WpfSettingsBindingTests` (настоящие контролы на STA-потоке) |
+| WPF | `SettingsViewModelTests` (реальные контроллеры, изолированное хранилище; разделы настроек и одно сохранение), `UpdateViewModelTests`, `WpfSettingsBindingTests` (настоящие контролы на STA-потоке), `AsyncRelayCommandTests`, `GlobalExceptionHandlerTests` (журнал с маскированием, сообщение, аварийная остановка VPN — без настоящего падения процесса) |
+| Архитектура | `WpfLayerBoundaryTests` — сборка WPF не ссылается на Infrastructure вне `Composition/` (сигнатуры, IL методов, XAML) |
 | Характеризационные | `SingBoxConfigGoldenTests` (эталоны в `Golden/SingBox`), `StorageRoundtripTests`, `StorageFormatCompatibilityTests`, `VlessStableIdTests` |
 | Desktop-only | `WindowsUpdateHandoffTests` — запускаются только через `build/Test-UpdateHandoff.ps1` |
 
@@ -62,7 +64,8 @@ Smoke-test работает с **настоящим** каталогом дан�
 - Реальная установка обновления.
 - `WinInetProxyController` (пишет в реестр текущего пользователя).
 - Провайдеры поиска установленных/запущенных приложений.
-- Трей, single-instance, пересылка аргументов, тема.
+- Трей, single-instance, пересылка аргументов, тема, таймеры подписок и обновлений.
+- Подключение глобального обработчика исключений к настоящим событиям WPF/`AppDomain` (сам обработчик покрыт).
 
 Для этого есть ручной чек-лист: [UI-REGRESSION-CHECKLIST.md](UI-REGRESSION-CHECKLIST.md).
 

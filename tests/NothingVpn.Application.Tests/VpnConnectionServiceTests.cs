@@ -546,7 +546,10 @@ public sealed class VpnConnectionServiceTests
     }
     private sealed class FakeLogPort : ILogPort
     {
+        public int Version => 0;
         public string SnapshotText(LogLevel minLevel) => string.Empty;
         public string? TryGetLatestMessage(LogLevel minLevel) => "FATAL test";
+        public void Append(LogLevel level, string source, string message) { }
+        public void Clear() { }
     }
 }

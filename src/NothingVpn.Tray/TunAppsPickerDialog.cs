@@ -1,4 +1,5 @@
-﻿using NothingVpn.Infrastructure.TunApps;
+﻿using NothingVpn.Application.Models;
+using NothingVpn.Infrastructure.TunApps;
 using NothingVpn.Tray.Internal.UI;
 
 namespace NothingVpn.Tray;

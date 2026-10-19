@@ -2,9 +2,10 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 
-namespace NothingVpn.Infrastructure.Windows;
+namespace NothingVpn.Desktop.Wpf;
 
-public static class TrayStatusIconBuilder
+/// <summary>Иконка приложения с цветной точкой состояния подключения для трея.</summary>
+internal static class TrayStatusIconBuilder
 {
     private const int SizePx = 32;
 

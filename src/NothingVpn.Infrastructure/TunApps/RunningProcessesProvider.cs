@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using NothingVpn.Application.Models;
 
 namespace NothingVpn.Infrastructure.TunApps;
 

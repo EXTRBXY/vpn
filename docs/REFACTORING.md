@@ -83,6 +83,14 @@ rule-set. Побочный эффект в операции чтения, к т�
 `SettingsView.xaml.cs`, `SubscriptionsWindow.xaml.cs`). Сейчас большинство обработчиков ловят исключения сами,
 но любое пропущенное исключение завершит процесс без сообщения — и с включённым системным прокси до следующего старта.
 
+✅ **Исправлено (шаг 5).** `Platform/GlobalExceptionHandler` подписан на `DispatcherUnhandledException`,
+`AppDomain.UnhandledException` и `TaskScheduler.UnobservedTaskException`. Ошибка UI-потока пишется в журнал через
+`ILogPort` (с маскированием) и показывается сообщением, приложение продолжает работу; фатальная — пишется, и VPN
+один раз пытается остановиться (не дольше 5 с), чтобы вернуть системный прокси. `AsyncRelayCommand.Execute` и
+`async void`-обработчики отдают исключение диспетчеру, т. е. тому же обработчику; `_ = task` заменены на
+`task.Forget()` с тем же эффектом; молчаливые `catch { }` при выходе и в фоновом обновлении подписок теперь пишут в
+журнал. Тесты: `GlobalExceptionHandlerTests`, `AsyncRelayCommandTests`.
+
 ### 2.5. Прочее
 
 - `VpnConnectionService.DisconnectCoreAsync` синхронный под `Task`; `SingBoxRunner.ValidateConfig` блокирует поток
@@ -164,18 +172,31 @@ WPF использует Infrastructure напрямую (лог, поиск п�
 composition root, трей, таймеры, single-instance, тему и выход. `SettingsViewModel` получает 8 зависимостей и
 отвечает за DNS, TUN, приложения, rule-set, прокси, журнал и поведение окна одновременно.
 
+✅ **Исправлено (шаг 5).** Порты Application: `ILogPort` (версия, снимок с фильтром по уровню, запись с
+маскированием, очистка) и `IAppDiscoveryPort` (установленные и запущенные приложения; `AppCandidate` перенесён в
+Application.Models); реализации — `LogPort` и `TunAppsSelectionService`, создаёт их `ApplicationServicesFactory`.
+`TrayStatusIconBuilder` — UI-код — перенесён в WPF (`Platform/`), у WinForms-клиента копия. Сборка зависимостей —
+`Composition/DesktopCompositionRoot`, единственное место WPF с Infrastructure (`WpfLayerBoundaryTests` проверяет IL
+всех типов и XAML); трей, таймеры подписок и обновлений, тема, single-instance и диалоги — небольшие классы в
+`Platform/`, `App.xaml.cs` только запускает, связывает и завершает. `SettingsViewModel` разделён на разделы
+(`ViewModels/Settings/`: DNS, TUN, приложения, rule-set, прокси, поведение окна и журнал) с одним сохранением;
+гарантии UI-REGRESSION-CHECKLIST.md сохранены, `SettingsViewModelTests`/`WpfSettingsBindingTests` проверяют то же
+через разделы. Порядок старта, интервалы таймеров, трей и аргументы командной строки не изменились.
+
 ### 3.6. Infrastructure зависит от WinForms
 
 `UseWindowsForms` в `NothingVpn.Infrastructure.csproj` нужен ради `TunAppIconCache` (используется только Tray),
 `Elevation.RestartElevated` (`System.Windows.Forms.Application.ExecutablePath`; можно заменить на
 `Environment.ProcessPath`) и `System.Drawing` в `TrayStatusIconBuilder` (UI-код в Infrastructure).
 
+Шаг 5: `TrayStatusIconBuilder` из Infrastructure убран (WPF и Tray держат свои копии); остальное — по-прежнему.
+
 ### 3.7. Дублирование между WinForms и WPF
 
 `SingleInstance` и разбор аргументов (`StartupOptions` / `StartupArgs`) существуют в двух копиях. После удаления
 `NothingVpn.Tray` уходят вместе с ним, но `InternalsVisibleTo("NothingVpn.Tray")`, `AppMutex` для Tray в `.iss`
 и `[InstallDelete]` для `NothingVpn.Tray.exe` нужно пересмотреть осознанно (последние два защищают обновление со
-старых версий).
+старых версий). С шага 5 в двух копиях ещё и `TrayStatusIconBuilder` (`Desktop.Wpf/Platform`, `Tray/Internal/UI`).
 
 ### 3.8. Мелочи
 
@@ -183,8 +204,10 @@ composition root, трей, таймеры, single-instance, тему и вых�
 - `AppLifecycleService.BuildTakeoverArgs` дублирует формирование аргументов в `VpnConnectionService.ConnectAsync`.
 - `DiagnosticsService.ExportLogs`, `IAppUpdateController.GetCurrentReleaseAsync`, `AppPathsModel.LogsDir`,
   `AppStateModel.DebugLogs` в WPF не используются.
-- Часть WPF-файлов записана «в строку» (`StartupOptions`, `ThemeManager`, `DiagnosticsViewModel`, `UpdateViewModel`,
-  `DiagnosticsView`, `SettingsView.xaml`, `Theme.xaml`): плохо читаются и дают огромные диффы.
+- ~~Часть WPF-файлов записана «в строку» (`StartupOptions`, `ThemeManager`, `DiagnosticsViewModel`, `UpdateViewModel`,
+  `DiagnosticsView`, `SettingsView.xaml`, `Theme.xaml`): плохо читаются и дают огромные диффы.~~ Исправлено на шаге 5
+  для WPF-проекта (также `TunAppPickerWindow`, окна подписок, длинные строки `MainWindow`); разметка до и после
+  сверена поэлементно. Остальные пункты этого списка не трогались.
 - `StorageIssueRegistry` — статическая глобальная очередь.
 - Каждый вызов стора — полная загрузка и расшифровка файла; кэша нет.
 - Фейки в тестах продублированы по классам; общего набора тестовых двойников нет.
@@ -193,8 +216,10 @@ composition root, трей, таймеры, single-instance, тему и вых�
 
 WinForms-клиент ещё в решении как эталон (`docs/WPF-MIGRATION.md`). В WPF отсутствуют:
 
-- переключатель отладочного журнала и фильтр уровня в диагностике (WPF показывает весь буфер);
-- журнал событий самого приложения (`AppLogger`) — в WPF в журнал пишет только sing-box;
+- переключатель отладочного журнала и фильтр уровня в диагностике (WPF показывает весь буфер; порт `ILogPort`
+  фильтр по уровню уже поддерживает);
+- журнал событий самого приложения (`AppLogger`) — в WPF в журнал пишут sing-box и, с шага 5, только обработчик
+  необработанных исключений и фоновое обновление подписок (через `ILogPort.Append`);
 - отдельное окно прогресса загрузки обновления (в WPF — прогресс-бар в настройках).
 
 Решение (18.10.2026): окно «Что нового» переносится в WPF обязательно (уже сделано, см. ниже). Остальные пункты не решены — вернуться к
@@ -234,8 +259,9 @@ WinForms-клиент ещё в решении как эталон (`docs/WPF-MI
    (константы Domain-политик) (3.1, 3.2).
 4. **Типизация.** ✅ Готово: enum'ы для режимов/DNS/действий/стека/уровней журнала с прежними строками в JSON и
    толерантным чтением (3.3); Domain очищен от UI-подписей, индексов комбобоксов и файловой системы (3.4).
-5. **Границы WPF.** Порты для журнала и поиска приложений, вынести composition root из `App`, разделить
-   `SettingsViewModel`, глобальная обработка исключений (2.4, 3.5).
+5. **Границы WPF.** ✅ Готово: порты для журнала и поиска приложений, composition root вынесен из `App`,
+   `SettingsViewModel` разделён по разделам, глобальная обработка исключений (2.4, 3.5), WPF-файлы «в строку»
+   переписаны (3.8, часть).
 6. **Граница «интерфейс ↔ ядро».** Порт с командами `Connect`/`Disconnect`/`GetStatus` и потоком журнала;
    запрос `Connect` — типизированный (не готовый JSON). Первая реализация — внутри процесса, поверх текущих
    `VpnConnectionService`/`SingBoxRunner`. См. [ADR-0001](adr/0001-privileged-service.md).

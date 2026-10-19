@@ -20,7 +20,8 @@
                                   Style="{StaticResource NavigationToggleButtonStyle}" />
                     <ToggleButton Content="Настройки" Command="{Binding ShowSettingsCommand}" IsChecked="{Binding IsSettingsActive, Mode=OneWay}"
                                   Style="{StaticResource NavigationToggleButtonStyle}" Margin="0,6,0,0" />
-                    <ToggleButton Content="Диагностика" Command="{Binding ShowDiagnosticsCommand}" IsChecked="{Binding IsDiagnosticsActive, Mode=OneWay}" Style="{StaticResource NavigationToggleButtonStyle}" Margin="0,6,0,0" />
+                    <ToggleButton Content="Диагностика" Command="{Binding ShowDiagnosticsCommand}" IsChecked="{Binding IsDiagnosticsActive, Mode=OneWay}"
+                                  Style="{StaticResource NavigationToggleButtonStyle}" Margin="0,6,0,0" />
                 </StackPanel>
             </DockPanel>
         </Border>
@@ -57,13 +58,25 @@
                     <Border Grid.Column="0" Style="{StaticResource CardStyle}">
                         <StackPanel>
                             <TextBlock Text="Профиль" Foreground="{DynamicResource MutedBrush}" FontSize="12" />
-                            <ComboBox Margin="0,9,0,0" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" IsEnabled="{Binding CanEdit}"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+                            <ComboBox Margin="0,9,0,0" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" IsEnabled="{Binding CanEdit}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Name}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
                         </StackPanel>
                     </Border>
                     <Border Grid.Column="2" Style="{StaticResource CardStyle}">
                         <StackPanel>
                             <TextBlock Text="Режим" Foreground="{DynamicResource MutedBrush}" FontSize="12" />
-                            <ComboBox Margin="0,9,0,0" ItemsSource="{Binding Modes}" SelectedItem="{Binding SelectedMode}" IsEnabled="{Binding CanEdit}"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+                            <ComboBox Margin="0,9,0,0" ItemsSource="{Binding Modes}" SelectedItem="{Binding SelectedMode}" IsEnabled="{Binding CanEdit}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Name}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
                         </StackPanel>
                     </Border>
                 </Grid>
@@ -100,6 +113,8 @@
         <local:SettingsView xmlns:local="clr-namespace:NothingVpn.Desktop.Wpf" Grid.Column="2"
                             DataContext="{Binding Settings}"
                             Visibility="{Binding DataContext.SettingsVisibility, RelativeSource={RelativeSource AncestorType=Window}}" />
-        <local:DiagnosticsView xmlns:local="clr-namespace:NothingVpn.Desktop.Wpf" Grid.Column="2" DataContext="{Binding Diagnostics}" Visibility="{Binding DataContext.DiagnosticsVisibility, RelativeSource={RelativeSource AncestorType=Window}}" />
+        <local:DiagnosticsView xmlns:local="clr-namespace:NothingVpn.Desktop.Wpf" Grid.Column="2"
+                               DataContext="{Binding Diagnostics}"
+                               Visibility="{Binding DataContext.DiagnosticsVisibility, RelativeSource={RelativeSource AncestorType=Window}}" />
     </Grid>
 </Window>

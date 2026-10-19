@@ -1,4 +1,5 @@
 ﻿using Microsoft.Win32;
+using NothingVpn.Application.Models;
 
 namespace NothingVpn.Infrastructure.TunApps;
 

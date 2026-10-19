@@ -63,6 +63,15 @@ public sealed class InMemoryLogStore
         }
     }
 
+    public int Version
+    {
+        get
+        {
+            lock (_gate)
+                return _version;
+        }
+    }
+
     public bool TryGetVersion(out int version)
     {
         lock (_gate)

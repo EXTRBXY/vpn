@@ -1,4 +1,5 @@
 ﻿using System.Runtime.InteropServices;
+using NothingVpn.Application.Models;
 
 namespace NothingVpn.Infrastructure.TunApps;
 

@@ -7,7 +7,11 @@ public sealed class SubscriptionItemViewModel
     public SubscriptionItemViewModel(SubscriptionModel model) => Model = model;
     public SubscriptionModel Model { get; }
     public string Name => Model.Name;
-    public string State => !Model.Enabled ? "Отключена" : !string.IsNullOrWhiteSpace(Model.LastError) ? "Ошибка обновления" : Model.LastSyncUtc is null ? "Не обновлялась" : "Обновлена";
+    public string State => !Model.Enabled
+        ? "Отключена"
+        : !string.IsNullOrWhiteSpace(Model.LastError)
+            ? "Ошибка обновления"
+            : Model.LastSyncUtc is null ? "Не обновлялась" : "Обновлена";
     public string LastSync => Model.LastSyncUtc?.ToLocalTime().ToString("dd.MM.yyyy HH:mm") ?? "—";
     public string Traffic => $"↑ {FormatBytes(Model.UserInfo.Upload)}   ↓ {FormatBytes(Model.UserInfo.Download)}";
     public string Expires => Model.UserInfo.ExpireUtc is { } expires && expires.ToUnixTimeSeconds() > 0
