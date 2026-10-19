@@ -80,6 +80,7 @@ public sealed class WpfSettingsBindingTests
                 CheckHomeScreenBindings(h);
                 CheckBuiltinRuleSetDownloads();
                 CheckSettingsWheelScrolling();
+                CheckViewsLoad();
                 app.Shutdown();
             }
             catch (Exception ex) { failure = ex; }
@@ -216,6 +217,8 @@ public sealed class WpfSettingsBindingTests
         var settings = h.Create();
         var profiles = new ProfileViewModel(new FakeProfiles(screen), new SubscriptionViewModel(new EmptySubscriptions()));
         var main = new MainViewModel(screen, connection, profiles, settings, null!, new EmptyLog(), () => { });
+        var window = new MainWindow(main); // Разметка главного окна загружается и привязывается без показа.
+        Assert.Same(main, window.DataContext);
         var combo = new ComboBox { DataContext = main };
         combo.SetBinding(ItemsControl.ItemsSourceProperty, new System.Windows.Data.Binding(nameof(MainViewModel.Profiles)));
         combo.SetBinding(Selector.SelectedItemProperty, new System.Windows.Data.Binding(nameof(MainViewModel.SelectedProfile)) { Mode = System.Windows.Data.BindingMode.TwoWay });
@@ -251,6 +254,16 @@ public sealed class WpfSettingsBindingTests
         Assert.Equal(1, connection.Stops);
         Assert.False(connection.IsRunning);
         Assert.True(main.CanEdit);
+    }
+
+    private static void CheckViewsLoad()
+    {
+        // Переформатированная разметка остальных окон должна загружаться из BAML.
+        Assert.NotNull(new DiagnosticsView().Content);
+        Assert.NotNull(new TunAppPickerWindow().Content);
+        Assert.NotNull(new SubscriptionsWindow(new SubscriptionViewModel(new EmptySubscriptions())).Content);
+        Assert.NotNull(new SubscriptionEditorWindow(new SubscriptionViewModel(new EmptySubscriptions()), null).Content);
+        Assert.NotNull(new ReleaseChangelogWindow(ReleaseChangelog.Failed("1.0.0")).Content);
     }
 
     private sealed class FakeScreen(SettingsViewModelTests.Harness h) : IConnectionScreenController
