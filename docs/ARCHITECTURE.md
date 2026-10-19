@@ -12,7 +12,7 @@ Nothing VPN — Windows-клиент VLESS. Приложение не реали
 | Проект | TFM | Назначение |
 | --- | --- | --- |
 | `NothingVpn.Domain` | `net8.0` | Модели настроек и чистые политики: режимы, DNS, TUN, rule-set, подписки, версии и файлы обновлений. Зависимостей нет. |
-| `NothingVpn.Application` | `net8.0` | Use-case сервисы (`VpnConnectionService`, `SettingsService`, `SubscriptionService`, …), DTO-модели и **порты** (`I*Port`) — интерфейсы к внешнему миру. |
+| `NothingVpn.Application` | `net8.0` | Use-case сервисы (`VpnConnectionService`, `SettingsService`, `SubscriptionService`, …), DTO-модели, **порты** (`I*Port`) — интерфейсы к внешнему миру — и граница ядра (`Engine/`: `IVpnEngine`, контракт запроса, `SingBoxVpnEngine`). |
 | `NothingVpn.Presentation` | `net8.0` | UI-независимые контроллеры экранов (`*Controller`) и снимки состояния для любого фронтенда. |
 | `NothingVpn.Infrastructure` | `net8.0-windows` | Реализации портов: sing-box (генератор + раннер), DPAPI-хранилище, WinINET, UAC, GitHub-обновления, поиск приложений. Содержит composition root `ApplicationServicesFactory`. |
 | `NothingVpn.Desktop.Wpf` | `net8.0-windows` | Упаковываемый клиент: окна, view model'и, трей, single-instance, тема, обработка исключений. UI-композиция — `Composition/DesktopCompositionRoot`. |
@@ -35,11 +35,46 @@ TUN — через `IAppDiscoveryPort` (`AppCandidate` — модель Applicat
 
 WinForms-клиент (`NothingVpn.Tray`) по-прежнему обращается к Infrastructure напрямую; он уходит на шаге 9.
 
+## Граница «интерфейс ↔ ядро»
+
+Запуск sing-box отделён от остального клиента портом `IVpnEngine` (`Application/Engine/`, шаг 6 рефакторинга,
+[ADR-0001](adr/0001-privileged-service.md)). Это будущий контракт канала привилегированной службы:
+
+```text
+UI / Presentation ──► VpnConnectionService (оркестрация, процесс интерфейса) ──► IVpnEngine
+                       профиль и state.json, UAC (--takeover),                    │
+                       WinINET и runtime-флаги, откат,                            ├─ SingBoxVpnEngine (сейчас, в процессе)
+                       восстановление после остановки ядра                        └─ клиент канала службы (шаг 7)
+```
+
+- **Команды**: `ConnectAsync(EngineConnectRequest)`, `DisconnectAsync`, `GetStatus`; событие `StatusChanged(EngineStatus)`.
+- **`EngineConnectRequest`** — типизированный и сериализуемый (System.Text.Json, явные camelCase-имена, строки enum'ов
+  те же, что в state.json): параметры VLESS-профиля (`EngineProfile`), режим, уровень журнала, порт mixed-inbound,
+  DNS (`EngineDnsSettings`), TUN (`EngineTunSettings`), пути `.exe` для `tun_apps`, включённые rule-set
+  (`EngineRuleSet`: tag, простое имя `.srs`, действие). Ни готового JSON sing-box, ни путей, куда ядро пишет.
+  `ProxyOverride` не передаётся: это настройка WinINET, её применяет интерфейс.
+- **Версия контракта** — `EngineContract.Version` (сейчас 1) в каждом запросе и статусе; ядро отклоняет чужую версию
+  ошибкой «Обновите приложение».
+- **Rule-set пока по ссылке**: имя файла в каталоге rule-set ядра; внутри процесса это общий `rulesets\`. Передача
+  содержимого (ADR-0001) — на шаге 7 вместе со службой, с ростом версии контракта.
+- **Журнал** отдельной подпиской в порте не передаётся: ядро пишет в `ILogPort`, который читает интерфейс. Внутри
+  процесса это общий `InMemoryLogStore`; клиент канала на шаге 7 будет записывать в тот же порт строки, полученные
+  по `SubscribeLog` (уже замаскированные службой). Ни view model'и, ни оркестрация от этого не меняются.
+
+`SingBoxVpnEngine` работает поверх `ISingBoxPort` и не доверяет нормализации интерфейса: переводит запрос в
+`VpnProfile`/`AppStateModel` (`EngineRequestMapper`), прогоняет через `AppStateNormalizer` и Domain-политики
+(`VlessEndpointPolicy`, `ConnectionPolicy.EnsureTunAppsHasTargets`, `RuleSetPolicyValidator`), строит конфиг тем же
+`SingBoxConfigGenerator`, делает `sing-box check`, запускает и ждёт процесс, в режиме proxy проверяет порт
+mixed-inbound. При ошибке сам останавливает sing-box и удаляет конфиг. О state.json, WinINET и UAC ядро не знает.
+Нормализация идемпотентна, поэтому конфиг из запроса совпадает с конфигом из состояния напрямую
+(`EngineContractTests` прогоняет матрицу эталонов генератора через JSON запроса).
+
 ## Composition root
 
 `ApplicationServicesFactory.CreateDefault()` (`src/NothingVpn.Infrastructure/Composition/ApplicationServicesFactory.cs`)
 вручную создаёт все порты и сервисы и возвращает `ApplicationServiceBundle`. DI-контейнера нет. Создаётся один
-`AppStateStore` на процесс — его делят `SettingsService`, `VpnConnectionService` и `DiagnosticsService`. При создании
+`AppStateStore` на процесс — его делят `SettingsService`, `VpnConnectionService` и `DiagnosticsService`. Ядро —
+`SingBoxVpnEngine` поверх `SingBoxPort` — передаётся в `VpnConnectionService` как `IVpnEngine`. При создании
 сразу вызываются `AppStateStore.SaveMissingBuiltinRuleSets()` (явная миграция: недостающие встроенные rule-set
 дописываются в `state.json`) и `VpnConnectionService.RecoverStaleRuntimeState()` — если предыдущий запуск оставил
 включённый системный прокси, он восстанавливается.
@@ -111,8 +146,8 @@ Domain не содержит UI: подписи значений — `Presentati
   модели Application и Domain ссылаются на них.
 - Нормализация состояния — одна точка, `AppStateNormalizer` (Application): режим, DNS detour, `CloseBehavior`, уровень
   журнала sing-box, пути TUN-приложений (`IPathPolicyPort`), DNS/TUN/proxy-настройки через Domain-политики. Её
-  вызывают `SettingsService.UpdateState` (каждая запись) и `VpnConnectionService.ConnectAsync` (снимок перед
-  генерацией конфига).
+  вызывают `SettingsService.UpdateState` (каждая запись), `VpnConnectionService.ConnectAsync` (снимок перед
+  запросом к ядру) и `SingBoxVpnEngine` (повторно, при приёме запроса — ядро не доверяет интерфейсу).
 - Генератор sing-box нормализованные значения не исправляет, только переводит в конфиг и проверяет то, без чего конфиг
   некорректен (SNI для DoH, rule-set, `tun_apps` без приложений). Значения, производные от Id профиля (имя интерфейса,
   адреса TUN) и «стек по умолчанию», — `TunInterfacePolicy` (Domain).
@@ -121,39 +156,48 @@ Domain не содержит UI: подписи значений — `Presentati
 
 ### Подключение
 
-`MainViewModel.ToggleConnectionAsync` → `ConnectionController.StartAsync` → `VpnConnectionService.ConnectAsync`:
+`MainViewModel.ToggleConnectionAsync` → `ConnectionController.StartAsync` → `VpnConnectionService.ConnectAsync`
+(оркестрация) → `IVpnEngine.ConnectAsync` (ядро):
 
 1. Захват `_sessionLock` (один connect/disconnect одновременно), инкремент `_sessionGeneration`.
-2. Загрузка профиля и снимка состояния из `AppStateStore`. Снимок нужен только для генерации конфига и обратно
+2. Загрузка профиля и снимка состояния из `AppStateStore`. Снимок нужен только для запроса к ядру и обратно
    целиком не сохраняется — настройки, изменённые за время подключения, не теряются.
 3. Нормализация снимка (`AppStateNormalizer`); `ConnectionPolicy.EnsureTunAppsHasTargets`; `RuleSetPolicyValidator.ValidateEnabled`
    (теги, имена файлов, действия); наличие `.srs` на диске — через `IRuleSetFileService.Exists` (Domain файловую систему
    не трогает).
 4. TUN без прав администратора → `ConnectResult { RequiresElevation, ElevationArgs }` (см. «Повышение прав»).
-5. Если sing-box уже работает — полный disconnect.
-6. `ISingBoxPort.WriteConfig` → `configs/{profileId}.{mode}.json`; `ValidateConfig` (`sing-box check`); `Start`;
-   ожидание `IsRunning` до 3 с.
-7. Режим прокси: проверка, что `127.0.0.1:{LocalMixedPort}` слушает (2 с); снимок текущих настроек WinINET;
-   включение системного прокси; сразу же `AppStateStore.Update` записывает `ProxyWasEnabledByUs = true` и снимок.
-8. Любая ошибка → `RollbackFailedConnect` (stop, удаление конфига; если прокси включила эта попытка — восстановление
-   и сброс флагов).
+5. Если ядро уже работает — полный disconnect (с восстановлением прокси).
+6. `EngineRequestMapper.CreateRequest(profile, state)` → `IVpnEngine.ConnectAsync`. Ядро (`SingBoxVpnEngine`):
+   проверка версии контракта и запроса Domain-политиками, нормализация, `ISingBoxPort.WriteConfig` →
+   `configs/{profileId}.{mode}.json`; `ValidateConfig` (`sing-box check`); `Start`; ожидание `IsRunning` до 3 с;
+   в режиме прокси — проверка, что `127.0.0.1:{LocalMixedPort}` слушает (2 с). Любая ошибка внутри ядра — stop и
+   удаление конфига там же, исключение уходит в оркестрацию.
+7. Режим прокси: снимок текущих настроек WinINET; включение системного прокси; сразу же `AppStateStore.Update`
+   записывает `ProxyWasEnabledByUs = true` и снимок.
+8. Ошибка на шаге 7 → `RollbackFailedConnectAsync` (`IVpnEngine.DisconnectAsync`; если прокси включила эта попытка —
+   восстановление и сброс флагов).
 9. Если за время подключения началась другая сессия (generation изменился) — откат и `OperationCanceledException`.
 10. В состоянии меняется только `ActiveProfileId`; режим и профиль запоминаются как текущая сессия в памяти (их отдаёт
     `GetStatus`), поднимается `ConnectionStateChanged(true)`.
 
-`GetStatus()` / `ConnectionController.IsRunning` диск не читают: процесс — `ISingBoxPort.IsRunning`, режим и профиль —
-сессия в памяти (без сессии — `proxy` и `null`).
+`GetStatus()` / `ConnectionController.IsRunning` диск не читают: процесс — `IVpnEngine.GetStatus()` (у in-process ядра —
+`ISingBoxPort.IsRunning`), режим и профиль — сессия оркестрации в памяти (без сессии — `proxy` и `null`). Ядро тоже
+знает режим и профиль своей сессии (`EngineStatus`): по ним на шаге 7 перезапущенный интерфейс узнает о VPN,
+поднятом службой.
 
 `ConnectionController.StartAsync` при любом исключении дополнительно вызывает `DisconnectAsync`.
 
 ### Отключение и восстановление
 
-`DisconnectCoreAsync`: `SingBoxRunner.Stop()` (kill всего дерева процессов, ожидание 2 с) → восстановление WinINET
-по снимку, если прокси включали мы → одним `AppStateStore.Update` сброс флагов и `ActiveProfileId = null` → удаление
-конфига → `ConnectionStateChanged(false)`.
+`DisconnectCoreAsync` (оркестрация): `IVpnEngine.DisconnectAsync` (ядро: `SingBoxRunner.Stop()` — kill всего дерева
+процессов, ожидание 2 с — и удаление конфига) → восстановление WinINET по снимку, если прокси включали мы → одним
+`AppStateStore.Update` сброс флагов и `ActiveProfileId = null` → `ConnectionStateChanged(false)`.
 
-`RecoverStaleRuntimeState` вызывается при старте и по событию `ProcessExited` раннера (sing-box упал сам). Если
-`_sessionLock` занят — ничего не делает (идёт connect/disconnect).
+Неожиданный выход sing-box: раннер поднимает `ProcessExited` → ядро удаляет конфиг, сбрасывает свою сессию и
+поднимает `StatusChanged(IsRunning = false)` → оркестрация вызывает `RecoverStaleRuntimeState` (восстановление
+прокси, сброс флагов и `ActiveProfileId`, `ConnectionStateChanged(false)`). Тот же `RecoverStaleRuntimeState`
+вызывается при старте. Если занят лок ядра или `_sessionLock` оркестрации — идёт собственный connect/disconnect, и
+обработчики ничего не делают.
 
 `SingBoxRunner` привязывает процесс к Job Object с `KILL_ON_JOB_CLOSE` (`Windows/ProcessJobScope.cs`): при падении
 клиента sing-box завершается вместе с ним.
@@ -162,14 +206,15 @@ Domain не содержит UI: подписи значений — `Presentati
 
 TUN требует администратора. Клиент не повышает себя «на месте»:
 
-1. `VpnConnectionService` возвращает `ElevationArgs = --takeover --start --mode {mode} --profile "{id}"`.
+1. `VpnConnectionService` (оркестрация, до обращения к ядру) возвращает `ElevationArgs = --takeover --start --mode {mode} --profile "{id}"`.
 2. `ConnectionController` вызывает `Elevation.RestartElevated` (`runas`). Отмена UAC → исключение.
 3. `ConnectionStartOutcome.ExitCurrentProcess = true` → `MainViewModel` вызывает `App.RequestExit`, текущий процесс
    останавливает VPN и выходит, освобождая мьютекс.
 4. Новый процесс с `--takeover` до 20 с ждёт мьютекс (`SingleInstance.Acquire`), затем `ApplyStartupAsync`
    выбирает режим/профиль и подключается.
 
-После этого клиент работает повышенным до выхода. Обновление из повышенного клиента — отдельная история, см.
+После этого клиент работает повышенным до выхода; in-process ядро запускает sing-box от его имени. На шаге 8
+этот путь удаляется: TUN поднимает служба, интерфейс не повышается (ADR-0001). Обновление из повышенного клиента — отдельная история, см.
 [UPDATE-HANDOFF.md](UPDATE-HANDOFF.md).
 
 ### Single instance и аргументы командной строки

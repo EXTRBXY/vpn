@@ -7,15 +7,15 @@
 `InternalsVisibleTo` открывает тестам internal-типы Infrastructure (`SingBoxConfigGenerator`, `VlessLinkParser`,
 `DpapiJsonFile`, `AppPaths`, …).
 
-Состояние на 19.10.2026 (после шага 5): 345 тестов, 342 проходят, 3 desktop-теста пропускаются вне специального
-запуска. Сборка
-Release — без предупреждений.
+Состояние на 19.10.2026 (после шага 6): 394 теста, 391 проходит, 3 desktop-теста пропускаются вне специального
+запуска. Сборка Release — без предупреждений.
 
 | Область | Файлы |
 | --- | --- |
 | Domain-политики | `DomainPoliciesTests`, `SemanticVersionPolicyTests`, `InstallerFilePolicyTests`, `SubscriptionBodyDecoderTests`, `SubscriptionUserinfoParserTests`, `AppCloseBehaviorTests` |
 | Генерация sing-box | `SingBoxConfigGeneratorTests`, `SecurityRegressionTests` |
-| Use-case сервисы | `VpnConnectionServiceTests`, `SubscriptionServiceSyncTests` |
+| Use-case сервисы | `VpnConnectionServiceTests` (оркестрация вместе с настоящим `SingBoxVpnEngine` поверх поддельного sing-box), `SubscriptionServiceSyncTests` |
+| Ядро и его контракт | `SingBoxVpnEngineTests` (версия контракта, валидация и нормализация запроса, откат при сбое запуска и порта, выход процесса), `EngineContractTests` (JSON-roundtrip запроса и статуса, конфиг из запроса = конфиг из состояния на матрице эталонов) |
 | Presentation-контроллеры | `Connection*ControllerTests`, `ConnectionViewStateFactoryTests`, `ProfileManagementControllerTests`, `SubscriptionManagementControllerTests`, `RuleSetManagementControllerTests`, `TunAppsControllerTests`, `AppUpdateControllerTests` |
 | Infrastructure | `DpapiJsonFileTests`, `ProfileParserPortTests`, `RuleSetFileServiceTests`, `SubscriptionHttpFetcherTests`, `SingBoxRunnerTests`, `ProcessJobScopeTests`, `InstallerUpdateServiceTests`, `InstallerLaunchServiceTests` |
 | WPF | `SettingsViewModelTests` (реальные контроллеры, изолированное хранилище; разделы настроек и одно сохранение), `UpdateViewModelTests`, `WpfSettingsBindingTests` (настоящие контролы на STA-потоке), `AsyncRelayCommandTests`, `GlobalExceptionHandlerTests` (журнал с маскированием, сообщение, аварийная остановка VPN — без настоящего падения процесса) |
@@ -26,7 +26,8 @@ Release — без предупреждений.
 Фейки объявлены внутри каждого тестового класса (`private sealed class Fake…`); общей библиотеки тестовых двойников
 нет. Фейки `ISettingsService` обязаны реализовать `UpdateState` (default-реализации в интерфейсе нет). Тесты гонок
 состояния — `VpnConnectionServiceTests` (сохранение настроек во время подключения, защита runtime-флагов, `GetStatus`
-без чтения стора) и `SettingsServiceTests`.
+без чтения стора, откат при сбое sing-box и WinINET, восстановление прокси после выхода процесса) и
+`SettingsServiceTests`.
 
 ## Запуск
 

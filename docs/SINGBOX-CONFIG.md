@@ -163,8 +163,11 @@ rule `action`).
 
 ## Что генератор делает сам, а что должно быть в политике
 
-Генератор принимает `VpnProfile` и `AppStateModel`, уже нормализованные `AppStateNormalizer`
-(`VpnConnectionService.ConnectAsync` вызывает его перед `WriteConfig`). Сам он значения не нормализует:
+Генератор принимает `VpnProfile` и `AppStateModel`, уже нормализованные `AppStateNormalizer`. С шага 6 их собирает
+ядро (`SingBoxVpnEngine`) из типизированного `EngineConnectRequest` (`EngineRequestMapper.ToProfile`/`ToState`) и
+нормализует перед `WriteConfig`, не полагаясь на нормализацию интерфейса; см. ARCHITECTURE.md, «Граница
+"интерфейс ↔ ядро"». Генератор и итоговый JSON от этого не изменились: `EngineContractTests` сверяет конфиг, построенный
+через JSON запроса, с конфигом из состояния напрямую на всей матрице эталонов. Сам генератор значения не нормализует:
 
 - стек, CIDR, имя интерфейса, MTU, DNS-режим и DoH-поля, уровень журнала, пути процессов — из нормализованного
   состояния как есть;
