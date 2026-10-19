@@ -1,4 +1,6 @@
 using System.Text.Json;
+using NothingVpn.Domain.Models;
+using NothingVpn.Domain.Policies;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
 using NothingVpn.Application.Services;
@@ -15,7 +17,7 @@ public sealed class VpnConnectionServiceTests
         {
             State = new AppStateModel
             {
-                Mode = "tun",
+                Mode = ConnectionMode.Tun,
                 ActiveProfileId = "p1"
             }
         };
@@ -29,6 +31,53 @@ public sealed class VpnConnectionServiceTests
     }
 
     [Fact]
+    public async Task ConnectAsync_ChecksEnabledRuleSetFilesThroughFileService()
+    {
+        var stateStore = new FakeStateStorePort
+        {
+            State = new AppStateModel
+            {
+                Mode = ConnectionMode.Proxy,
+                UserRuleSets =
+                [
+                    new UserRuleSetModel { Tag = "geoip-ru", FileName = "geoip-ru.srs", Enabled = true },
+                    new UserRuleSetModel { Tag = "off", FileName = "off.srs", Enabled = false }
+                ]
+            }
+        };
+        var files = new FakeRuleSetFileService();
+        var singBox = new FakeSingBoxPort();
+        var service = CreateService(new FakeProfileStorePort(), stateStore, isAdmin: true, singBoxPort: singBox, ruleSetFiles: files);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.ConnectAsync(new ConnectRequest { ProfileId = "p1" }));
+        Assert.Equal("Не найдены файлы включённых rule-set (.srs).", error.Message);
+        Assert.False(singBox.StartCalled);
+
+        files.ExistingFiles.Add("geoip-ru.srs");
+        var result = await service.ConnectAsync(new ConnectRequest { ProfileId = "p1" });
+        Assert.True(result.Started);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_ReportsCorruptRuleSetBeforeMissingFiles()
+    {
+        var stateStore = new FakeStateStorePort
+        {
+            State = new AppStateModel
+            {
+                Mode = ConnectionMode.Proxy,
+                UserRuleSets = [new UserRuleSetModel { Tag = "bad", FileName = @"..\bad.srs", Enabled = true }]
+            }
+        };
+        var service = CreateService(new FakeProfileStorePort(), stateStore, isAdmin: true);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.ConnectAsync(new ConnectRequest { ProfileId = "p1" }));
+        Assert.StartsWith("Некоторые rule-set записи повреждены", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ConnectAsync_StartsAndSavesState_WhenProxyMode()
     {
         var profileStore = new FakeProfileStorePort();
@@ -36,7 +85,7 @@ public sealed class VpnConnectionServiceTests
         {
             State = new AppStateModel
             {
-                Mode = "proxy",
+                Mode = ConnectionMode.Proxy,
                 LocalMixedPort = 1080
             }
         };
@@ -60,7 +109,7 @@ public sealed class VpnConnectionServiceTests
         {
             State = new AppStateModel
             {
-                Mode = "proxy",
+                Mode = ConnectionMode.Proxy,
                 ActiveProfileId = "p1",
                 ProxyWasEnabledByUs = true,
                 PreviousProxySettings = new ProxySettingsSnapshotModel()
@@ -81,7 +130,7 @@ public sealed class VpnConnectionServiceTests
     [Fact]
     public async Task ConnectAsync_StopsExistingSession_BeforeStart()
     {
-        var stateStore = new FakeStateStorePort { State = new AppStateModel { Mode = "proxy", LocalMixedPort = 1080 } };
+        var stateStore = new FakeStateStorePort { State = new AppStateModel { Mode = ConnectionMode.Proxy, LocalMixedPort = 1080 } };
         var singBox = new FakeSingBoxPort { IsRunning = true };
         var service = CreateService(new FakeProfileStorePort(), stateStore, isAdmin: true, singBoxPort: singBox);
 
@@ -116,7 +165,7 @@ public sealed class VpnConnectionServiceTests
     [Fact]
     public async Task ConnectAsync_ThrowsAndRollsBack_WhenSingBoxExitsDuringConnect()
     {
-        var stateStore = new FakeStateStorePort { State = new AppStateModel { Mode = "proxy", LocalMixedPort = 1080 } };
+        var stateStore = new FakeStateStorePort { State = new AppStateModel { Mode = ConnectionMode.Proxy, LocalMixedPort = 1080 } };
         var singBox = new FakeSingBoxPort { ExitOnStart = true };
         var proxy = new FakeProxyPort();
         var service = CreateService(new FakeProfileStorePort(), stateStore, isAdmin: true, singBoxPort: singBox, proxyPort: proxy);
@@ -136,7 +185,7 @@ public sealed class VpnConnectionServiceTests
         {
             State = new AppStateModel
             {
-                Mode = "proxy",
+                Mode = ConnectionMode.Proxy,
                 LocalMixedPort = 1080,
                 ProxyWasEnabledByUs = true,
                 PreviousProxySettings = new ProxySettingsSnapshotModel()
@@ -162,7 +211,7 @@ public sealed class VpnConnectionServiceTests
         {
             State = new AppStateModel
             {
-                Mode = "proxy",
+                Mode = ConnectionMode.Proxy,
                 LocalMixedPort = 1080
             }
         };
@@ -190,7 +239,7 @@ public sealed class VpnConnectionServiceTests
     [Fact]
     public async Task ConnectAsync_KeepsSettingsSavedWhileConnecting()
     {
-        var stateStore = new FakeStateStorePort { State = new AppStateModel { Mode = "proxy", LocalMixedPort = 1080 } };
+        var stateStore = new FakeStateStorePort { State = new AppStateModel { Mode = ConnectionMode.Proxy, LocalMixedPort = 1080 } };
         var appState = new AppStateStore(stateStore);
         var settings = new SettingsService(appState, new FakePathPolicyPort());
         var diagnostics = new FakeDiagnosticsPort { Gate = new(TaskCreationOptions.RunContinuationsAsynchronously) };
@@ -203,7 +252,7 @@ public sealed class VpnConnectionServiceTests
         settings.UpdateState(s =>
         {
             s.DohServer = "1.1.1.1";
-            s.CloseBehavior = "exit";
+            s.CloseBehavior = AppCloseBehavior.Exit;
             s.UpdateDismissedModalForTag = "v9.9.9";
         });
         diagnostics.Gate!.SetResult();
@@ -212,7 +261,7 @@ public sealed class VpnConnectionServiceTests
         Assert.True(result.Started);
         var saved = stateStore.State;
         Assert.Equal("1.1.1.1", saved.DohServer);
-        Assert.Equal("exit", saved.CloseBehavior);
+        Assert.Equal("exit", saved.CloseBehavior.ToValue());
         Assert.Equal("v9.9.9", saved.UpdateDismissedModalForTag);
         Assert.Equal("p1", saved.ActiveProfileId);
         Assert.True(saved.ProxyWasEnabledByUs);
@@ -221,7 +270,7 @@ public sealed class VpnConnectionServiceTests
     [Fact]
     public async Task SettingsSavesFromUi_DoNotOverwriteProxyRuntimeFlags()
     {
-        var stateStore = new FakeStateStorePort { State = new AppStateModel { Mode = "proxy", LocalMixedPort = 1080 } };
+        var stateStore = new FakeStateStorePort { State = new AppStateModel { Mode = ConnectionMode.Proxy, LocalMixedPort = 1080 } };
         var appState = new AppStateStore(stateStore);
         var settings = new SettingsService(appState, new FakePathPolicyPort());
         var screen = new NothingVpn.Presentation.ConnectionScreenController(new FakeProfileService(), settings);
@@ -260,7 +309,7 @@ public sealed class VpnConnectionServiceTests
     [Fact]
     public async Task GetStatus_DoesNotReadStateStore()
     {
-        var stateStore = new FakeStateStorePort { State = new AppStateModel { Mode = "proxy", LocalMixedPort = 1080 } };
+        var stateStore = new FakeStateStorePort { State = new AppStateModel { Mode = ConnectionMode.Proxy, LocalMixedPort = 1080 } };
         var singBox = new FakeSingBoxPort();
         var service = CreateService(new FakeProfileStorePort(), stateStore, isAdmin: true, singBoxPort: singBox);
         var controller = new NothingVpn.Presentation.ConnectionController(service, new FakeAppLifecycleService());
@@ -278,7 +327,7 @@ public sealed class VpnConnectionServiceTests
         var status = controller.GetStatus();
 
         Assert.Equal(before, stateStore.LoadCalls);
-        Assert.Equal("proxy", status.Mode);
+        Assert.Equal("proxy", status.Mode.ToValue());
         Assert.Equal("p1", status.ActiveProfileId);
 
         await service.DisconnectAsync();
@@ -296,7 +345,8 @@ public sealed class VpnConnectionServiceTests
         FakeSingBoxPort? singBoxPort = null,
         FakeProxyPort? proxyPort = null,
         FakeDiagnosticsPort? diagnosticsPort = null,
-        AppStateStore? appStateStore = null)
+        AppStateStore? appStateStore = null,
+        FakeRuleSetFileService? ruleSetFiles = null)
     {
         return new VpnConnectionService(
             profileStore,
@@ -305,7 +355,7 @@ public sealed class VpnConnectionServiceTests
             proxyPort ?? new FakeProxyPort(),
             diagnosticsPort ?? new FakeDiagnosticsPort(),
             new FakeElevationPort(isAdmin),
-            new FakeAppPathsPort(),
+            ruleSetFiles ?? new FakeRuleSetFileService(),
             new FakePathPolicyPort(),
             new FakeLogPort());
     }
@@ -461,7 +511,7 @@ public sealed class VpnConnectionServiceTests
     {
         public bool IsAdministrator() => true;
         public bool RestartElevated(string arguments) => false;
-        public string BuildTakeoverArgs(string mode, string profileId) => string.Empty;
+        public string BuildTakeoverArgs(ConnectionMode mode, string profileId) => string.Empty;
     }
 
     private sealed class FakeElevationPort(bool isAdmin) : IElevationPort
@@ -470,9 +520,17 @@ public sealed class VpnConnectionServiceTests
         public bool RestartElevated(string arguments) => true;
     }
 
-    private sealed class FakeAppPathsPort : IAppPathsPort
+    private sealed class FakeRuleSetFileService : IRuleSetFileService
     {
-        public AppPathsModel Get() => new() { RuleSetsDir = "rulesets" };
+        public HashSet<string> ExistingFiles { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public string CatalogUrl => string.Empty;
+        public bool Exists(UserRuleSetModel ruleSet) => ExistingFiles.Contains(ruleSet.FileName);
+        public RuleSetImportResult Import(string sourcePath) => throw new NotSupportedException();
+        public void Delete(UserRuleSetModel ruleSet) => throw new NotSupportedException();
+        public Task<RuleSetDownloadResult> DownloadBuiltinAsync(
+            UserRuleSetModel ruleSet,
+            bool useConditionalRequest,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class FakePathPolicyPort : IPathPolicyPort
@@ -488,7 +546,7 @@ public sealed class VpnConnectionServiceTests
     }
     private sealed class FakeLogPort : ILogPort
     {
-        public string SnapshotText(int minLevel) => string.Empty;
-        public string? TryGetLatestMessage(int minLevel) => "FATAL test";
+        public string SnapshotText(LogLevel minLevel) => string.Empty;
+        public string? TryGetLatestMessage(LogLevel minLevel) => "FATAL test";
     }
 }

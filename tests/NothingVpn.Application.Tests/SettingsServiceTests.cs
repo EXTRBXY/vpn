@@ -1,4 +1,6 @@
 using System.Text.Json;
+using NothingVpn.Domain.Models;
+using NothingVpn.Domain.Policies;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
 using NothingVpn.Application.Services;
@@ -34,13 +36,13 @@ public sealed class SettingsServiceTests
 
         settings.UpdateState(s =>
         {
-            s.CloseBehavior = "exit";
+            s.CloseBehavior = AppCloseBehavior.Exit;
             s.ProxyWasEnabledByUs = false;
             s.PreviousProxySettings!.ProxyServer = "tampered";
         });
 
         var saved = port.Snapshot();
-        Assert.Equal("exit", saved.CloseBehavior);
+        Assert.Equal("exit", saved.CloseBehavior.ToValue());
         Assert.True(saved.ProxyWasEnabledByUs);
         Assert.Equal("corp:3128", saved.PreviousProxySettings?.ProxyServer);
     }
@@ -83,13 +85,13 @@ public sealed class SettingsServiceTests
         });
         var settings = new SettingsService(new AppStateStore(port), new FakePathPolicyPort());
         var stale = settings.GetState();
-        settings.UpdateState(s => s.CloseBehavior = "exit");
+        settings.UpdateState(s => s.CloseBehavior = AppCloseBehavior.Exit);
         var controller = new RuleSetManagementController(settings);
 
         controller.MarkDownloaded(stale, stale.UserRuleSets[0], " \"etag\" ");
 
         var saved = port.Snapshot();
-        Assert.Equal("exit", saved.CloseBehavior);
+        Assert.Equal("exit", saved.CloseBehavior.ToValue());
         Assert.Equal("\"etag\"", saved.UserRuleSets[0].RemoteEtag);
         Assert.NotNull(saved.UserRuleSets[0].LastDownloadedUtc);
     }

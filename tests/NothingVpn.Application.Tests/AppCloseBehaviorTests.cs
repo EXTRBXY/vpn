@@ -12,13 +12,13 @@ public sealed class AppCloseBehaviorTests
     [InlineData("unknown", AppCloseBehavior.HideToTray)]
     [InlineData("tray", AppCloseBehavior.HideToTray)]
     [InlineData("EXIT", AppCloseBehavior.Exit)]
-    public void Normalize_returns_supported_value(string? value, string expected) =>
-        Assert.Equal(expected, AppCloseBehavior.Normalize(value));
+    public void Parse_returns_supported_value(string? value, AppCloseBehavior expected) =>
+        Assert.Equal(expected, AppCloseBehaviors.Values.Parse(value));
 
     [Theory]
     [InlineData(AppCloseBehavior.HideToTray)]
     [InlineData(AppCloseBehavior.Exit)]
-    public void Storage_roundtrip_preserves_close_behavior(string behavior)
+    public void Storage_roundtrip_preserves_close_behavior(AppCloseBehavior behavior)
     {
         var root = Path.Combine(Path.GetTempPath(), "NothingVpn.Tests", Guid.NewGuid().ToString("N"));
         try

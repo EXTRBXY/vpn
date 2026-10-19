@@ -244,8 +244,8 @@ public sealed class SubscriptionServiceSyncTests
             update(_state);
             StateChanged?.Invoke(this, _state);
         }
-        public void UpdateMode(string mode) => _state.Mode = mode;
-        public void UpdateDns(string mode, string dohServer, string dohPath, string dohSni, string detour) { }
+        public void UpdateMode(ConnectionMode mode) => _state.Mode = mode;
+        public void UpdateDns(DnsMode mode, string dohServer, string dohPath, string dohSni, DnsDetour detour) { }
         public void UpdateTunSettings(TunSettings settings) { }
         public void UpdateProxySettings(ProxyConnectionSettings settings) { }
         public void UpdateRuleSets(IReadOnlyCollection<UserRuleSetModel> ruleSets) { }

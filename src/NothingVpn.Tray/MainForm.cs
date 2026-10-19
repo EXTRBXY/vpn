@@ -324,7 +324,7 @@ internal sealed class MainForm : Form
         _connectionPanel.ModeChanged += (_, _) =>
         {
             if (_loadingData) return;
-            _state.Mode = ComboIndexToMode(_connectionPanel.ModeIndex);
+            _state.Mode = ComboIndexes.ToMode(_connectionPanel.ModeIndex);
             SaveState();
             UpdateTitle();
             UpdateConnectionTabVisibility();
@@ -340,7 +340,7 @@ internal sealed class MainForm : Form
             if (_loadingData) return;
             _state.DebugLogs = _logPanel.DebugLogs;
             // Keep sing-box logging minimal by default.
-            _state.SingBoxLogLevel = _state.DebugLogs ? "debug" : "warn";
+            _state.SingBoxLogLevel = _state.DebugLogs ? LogLevel.Debug : LogLevel.Warn;
             SaveState();
         };
         _connectionPanel.PingRequested += async (_, _) => await PingAsync();
@@ -449,7 +449,7 @@ internal sealed class MainForm : Form
 
         if (!string.IsNullOrWhiteSpace(startup.Mode))
         {
-            _state.Mode = ConnectionPolicy.NormalizeMode(startup.Mode);
+            _state.Mode = ConnectionPolicy.Modes.Parse(startup.Mode);
             SaveState();
         }
 
@@ -460,7 +460,7 @@ internal sealed class MainForm : Form
                 _connectionPanel.SelectProfile(match);
         }
 
-        _connectionPanel.ModeIndex = ModeToComboIndex(_state.Mode);
+        _connectionPanel.ModeIndex = ComboIndexes.FromMode(_state.Mode);
         SyncTunAppsListFromState();
         UpdateConnectionTabVisibility();
         UpdateTitle();
@@ -562,7 +562,7 @@ internal sealed class MainForm : Form
 
         _connectionPanel.LoadProfiles(_profiles, snapshot.SelectedProfile);
         _connectionPanel.SetPort(_state.LocalMixedPort);
-        _connectionPanel.ModeIndex = ModeToComboIndex(_state.Mode);
+        _connectionPanel.ModeIndex = ComboIndexes.FromMode(_state.Mode);
         SyncTunAppsListFromState();
         SyncRuleSetsGridFromState();
         UpdateConnectionTabVisibility();
@@ -591,8 +591,8 @@ internal sealed class MainForm : Form
         var allowProxyDetour = DnsDetourPolicy.AllowsProxyDetour(_state.Mode);
         if (!allowProxyDetour)
         {
-            _dnsDetourCombo.SelectedIndex = DnsPolicy.DetourToComboIndex("direct");
-            _state.DnsDetour = "direct";
+            _dnsDetourCombo.SelectedIndex = ComboIndexes.FromDetour(DnsDetour.Direct);
+            _state.DnsDetour = DnsDetour.Direct;
         }
 
         var isDoh = _dnsModeCombo.SelectedIndex == 1;
@@ -616,17 +616,17 @@ internal sealed class MainForm : Form
         try
         {
             var idx = _dnsPresetCombo.SelectedIndex;
-            if (idx < 0 || idx >= 4) return;
+            if (idx < 0 || ComboIndexes.ToPreset(idx) == DnsPreset.Custom) return;
 
             var dns = new DnsSettings
             {
-                Mode = "doh",
+                Mode = DnsMode.Doh,
                 DohServer = _dohServerBox.Text,
                 DohPath = _dohPathBox.Text,
                 DohSni = _dohSniBox.Text,
-                Detour = DnsPolicy.ComboIndexToDetour(_dnsDetourCombo.SelectedIndex)
+                Detour = ComboIndexes.ToDetour(_dnsDetourCombo.SelectedIndex)
             };
-            DnsPolicy.ApplyPreset(idx, dns);
+            DnsPolicy.ApplyPreset(ComboIndexes.ToPreset(idx), dns);
             _dohServerBox.Text = dns.DohServer;
             _dohPathBox.Text = dns.DohPath;
             _dohSniBox.Text = dns.DohSni;
@@ -641,8 +641,8 @@ internal sealed class MainForm : Form
     {
         try
         {
-            var dnsMode = _dnsModeCombo.SelectedIndex == 0 ? "system" : "doh";
-            var detour = DnsPolicy.ComboIndexToDetour(_dnsDetourCombo.SelectedIndex);
+            var dnsMode = ComboIndexes.ToDnsMode(_dnsModeCombo.SelectedIndex);
+            var detour = ComboIndexes.ToDetour(_dnsDetourCombo.SelectedIndex);
             var draft = new ConnectionSettingsDraft(
                 new ProxyConnectionSettings { ProxyOverride = _proxyOverrideBox.Text },
                 new TunSettings
@@ -652,7 +652,7 @@ internal sealed class MainForm : Form
                         ? "auto"
                         : (_tunAddressCidrBox.Text ?? "").Trim(),
                     Mtu = (int)_tunMtu.Value,
-                    Stack = TunSettingsPolicy.ComboIndexToStack(_tunStackCombo.SelectedIndex),
+                    Stack = ComboIndexes.ToStack(_tunStackCombo.SelectedIndex),
                     AutoRoute = _tunAutoRoute.Checked,
                     StrictRoute = _tunStrictRoute.Checked
                 },
@@ -1241,26 +1241,11 @@ internal sealed class MainForm : Form
         NotifyVpnConnectionState(false);
     }
 
-    private static int ModeToComboIndex(string? mode) =>
-        (mode ?? "").Trim().ToLowerInvariant() switch
-        {
-            "tun" => 1,
-            "tun_apps" => 2,
-            _ => 0
-        };
-
-    private static string ComboIndexToMode(int idx) => idx switch
-    {
-        1 => "tun",
-        2 => "tun_apps",
-        _ => "proxy"
-    };
-
     private void UpdateConnectionTabVisibility()
     {
         _connectionSettings.UpdateVisibility(_state.Mode);
 
-        var tunAppsVisible = string.Equals(_state.Mode, ConnectionPolicy.TunAppsMode, StringComparison.OrdinalIgnoreCase);
+        var tunAppsVisible = _state.Mode == ConnectionMode.TunApps;
         _tunAppsPanel.SetModeVisible(tunAppsVisible);
     }
 

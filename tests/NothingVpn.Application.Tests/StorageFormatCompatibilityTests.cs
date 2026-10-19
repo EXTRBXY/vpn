@@ -3,6 +3,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using NothingVpn.Domain.Models;
+using NothingVpn.Domain.Policies;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
 using NothingVpn.Infrastructure.Ports;
@@ -178,7 +180,7 @@ public sealed class StorageFormatCompatibilityTests : IDisposable
         var state = new StateStorePort(paths).Load();
 
         Assert.Equal("a1b2c3d4e5f60718", state.ActiveProfileId);
-        Assert.Equal("tun", state.Mode);
+        Assert.Equal("tun", state.Mode.ToValue());
         Assert.Equal([@"C:\Program Files\App\app.exe"], state.TunAppProcessPaths);
         Assert.Equal(
             ["geosite-category-ru", "geosite-category-ru-ads", "geoip-ru", "user-ruleset-0123456789ab"],
@@ -187,7 +189,7 @@ public sealed class StorageFormatCompatibilityTests : IDisposable
         Assert.Equal("Geosite: категория RU", ru.Name);
         Assert.Equal("geosite-category-ru.srs", ru.FileName);
         Assert.True(ru.Enabled);
-        Assert.Equal("direct", ru.Action);
+        Assert.Equal("direct", ru.Action.ToValue());
         Assert.Equal("sing-geosite:category-ru", ru.BuiltinId);
         Assert.Equal("\"abc123\"", ru.RemoteEtag);
         Assert.Equal(new DateTimeOffset(2026, 9, 1, 10, 20, 30, TimeSpan.FromHours(3)), ru.LastDownloadedUtc);
@@ -195,7 +197,7 @@ public sealed class StorageFormatCompatibilityTests : IDisposable
         Assert.Equal("Custom", custom.Name);
         Assert.Equal("custom.srs", custom.FileName);
         Assert.True(custom.Enabled);
-        Assert.Equal("block", custom.Action);
+        Assert.Equal("block", custom.Action.ToValue());
         Assert.Null(custom.BuiltinId);
         Assert.Equal(2080, state.LocalMixedPort);
         Assert.True(state.ProxyWasEnabledByUs);
@@ -207,17 +209,17 @@ public sealed class StorageFormatCompatibilityTests : IDisposable
         Assert.Equal("MyTun", state.TunInterfaceName);
         Assert.Equal("10.0.0.1/30", state.TunAddressCidr);
         Assert.Equal(1400, state.TunMtu);
-        Assert.Equal("mixed", state.TunStack);
+        Assert.Equal("mixed", state.TunStack.ToValue());
         Assert.False(state.TunAutoRoute);
         Assert.False(state.TunStrictRoute);
-        Assert.Equal("system", state.DnsMode);
+        Assert.Equal("system", state.DnsMode.ToValue());
         Assert.Equal("1.1.1.1", state.DohServer);
         Assert.Equal("/q", state.DohPath);
         Assert.Equal("cloudflare-dns.com", state.DohSni);
-        Assert.Equal("proxy", state.DnsDetour);
+        Assert.Equal("proxy", state.DnsDetour.ToValue());
         Assert.True(state.DebugLogs);
-        Assert.Equal("error", state.SingBoxLogLevel);
-        Assert.Equal("exit", state.CloseBehavior);
+        Assert.Equal("error", state.SingBoxLogLevel.ToValue());
+        Assert.Equal("exit", state.CloseBehavior.ToValue());
         Assert.Equal("v0.6.8", state.UpdateDismissedModalForTag);
         Assert.Equal("0.6.8", state.LastRecordedAppSemver);
         Assert.Equal(new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero), state.UpdateLastCheckUtc);
@@ -243,28 +245,28 @@ public sealed class StorageFormatCompatibilityTests : IDisposable
         var state = new StateStorePort(paths).Load();
 
         Assert.Equal("p1", state.ActiveProfileId);
-        Assert.Equal("proxy", state.Mode);
+        Assert.Equal("proxy", state.Mode.ToValue());
         Assert.Equal(1080, state.LocalMixedPort);
         Assert.Equal("localhost;127.*;10.*;192.168.*;172.16.*", state.ProxyOverride);
         Assert.Equal("NothingVpn", state.TunInterfaceName);
         Assert.Equal("auto", state.TunAddressCidr);
         Assert.Equal(1500, state.TunMtu);
-        Assert.Equal("", state.TunStack);
+        Assert.Equal("", state.TunStack.ToValue());
         Assert.True(state.TunAutoRoute);
         Assert.True(state.TunStrictRoute);
-        Assert.Equal("doh", state.DnsMode);
+        Assert.Equal("doh", state.DnsMode.ToValue());
         Assert.Equal("8.8.8.8", state.DohServer);
         Assert.Equal("/dns-query", state.DohPath);
         Assert.Equal("dns.google", state.DohSni);
-        Assert.Equal("direct", state.DnsDetour);
-        Assert.Equal("warn", state.SingBoxLogLevel);
-        Assert.Equal("tray", state.CloseBehavior);
+        Assert.Equal("direct", state.DnsDetour.ToValue());
+        Assert.Equal("warn", state.SingBoxLogLevel.ToValue());
+        Assert.Equal("tray", state.CloseBehavior.ToValue());
         Assert.False(state.ProxyWasEnabledByUs);
         Assert.Null(state.PreviousProxySettings);
         Assert.Equal(
             ["sing-geosite:category-ru", "sing-geosite:category-ru-ads", "sing-geoip:ru", null],
             state.UserRuleSets.Select(r => r.BuiltinId));
-        Assert.Equal(["direct", "block", "direct", "direct"], state.UserRuleSets.Select(r => r.Action));
+        Assert.Equal(["direct", "block", "direct", "direct"], state.UserRuleSets.Select(r => r.Action.ToValue()));
         Assert.All(state.UserRuleSets.Take(3), r => Assert.False(r.Enabled));
 
         // Встроенные наборы добавляются только в модель: Load ничего не пишет (REFACTORING 2.3).

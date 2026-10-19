@@ -1,9 +1,11 @@
+using NothingVpn.Domain.Models;
+
 namespace NothingVpn.Presentation;
 
 public interface IConnectionDiagnosticController
 {
     Task<ConnectionDiagnosticResult> RunAsync(
-        string? connectionMode,
+        ConnectionMode connectionMode,
         bool isRunning,
         CancellationToken cancellationToken = default);
 }

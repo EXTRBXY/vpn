@@ -1,5 +1,5 @@
 using NothingVpn.Application.Ports;
-using NothingVpn.Domain.Policies;
+using NothingVpn.Domain.Models;
 
 namespace NothingVpn.Application.Services;
 
@@ -9,10 +9,6 @@ public sealed class AppLifecycleService(IElevationPort elevationPort) : IAppLife
 
     public bool RestartElevated(string arguments) => elevationPort.RestartElevated(arguments);
 
-    public string BuildTakeoverArgs(string mode, string profileId)
-    {
-        var normalizedMode = ConnectionPolicy.NormalizeMode(mode);
-        return $"--takeover --start --mode {normalizedMode} --profile \"{profileId}\"";
-    }
+    public string BuildTakeoverArgs(ConnectionMode mode, string profileId) =>
+        StartupArguments.Takeover(mode, profileId);
 }
-

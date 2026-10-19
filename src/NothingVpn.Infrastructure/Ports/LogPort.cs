@@ -1,4 +1,5 @@
 using NothingVpn.Application.Ports;
+using NothingVpn.Domain.Models;
 using NothingVpn.Infrastructure.Runtime;
 
 namespace NothingVpn.Infrastructure.Ports;
@@ -12,13 +13,13 @@ public sealed class LogPort : ILogPort
         _context = context;
     }
 
-    public string SnapshotText(int minLevel)
+    public string SnapshotText(LogLevel minLevel)
     {
         var text = _context.LogStore.SnapshotText(minLevel, out _);
         return text;
     }
 
-    public string? TryGetLatestMessage(int minLevel) =>
+    public string? TryGetLatestMessage(LogLevel minLevel) =>
         _context.LogStore.TryGetLatestMessage(minLevel);
 }
 

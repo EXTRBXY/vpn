@@ -8,7 +8,7 @@ public static class TunSettingsPolicy
 {
     public const string DefaultInterfaceName = "NothingVpn";
     public const string AutoAddressCidr = "auto";
-    public const string DefaultStack = "";
+    public const TunStack DefaultStack = TunStack.Default;
     public const int DefaultMtu = 1500;
     public const int LegacyMtuSentinel = 9000;
     public const int MinMtu = 576;
@@ -79,38 +79,15 @@ public static class TunSettingsPolicy
         return Math.Clamp(mtu, MinMtu, MaxMtu);
     }
 
-    public static string NormalizeStack(string? stack)
-    {
-        var s = (stack ?? string.Empty).Trim().ToLowerInvariant();
-        return s switch
+    public static readonly SettingValueMap<TunStack> Stacks = new(
+        DefaultStack,
+        new Dictionary<TunStack, string>
         {
-            "system" => "system",
-            "mixed" => "mixed",
-            "gvisor" => "gvisor",
-            _ => DefaultStack
-        };
-    }
+            [TunStack.Default] = "",
+            [TunStack.System] = "system",
+            [TunStack.Mixed] = "mixed",
+            [TunStack.Gvisor] = "gvisor"
+        });
 
-    public static int StackToComboIndex(string? stack) =>
-        NormalizeStack(stack) switch
-        {
-            "mixed" => 1,
-            "gvisor" => 2,
-            _ => 0
-        };
-
-    public static string ComboIndexToStack(int index) => index switch
-    {
-        1 => "mixed",
-        2 => "gvisor",
-        _ => ""
-    };
-
-    public static string StackToDisplayLabel(string? stack) =>
-        NormalizeStack(stack) switch
-        {
-            "mixed" => "Смешанный",
-            "gvisor" => "gVisor",
-            _ => "Системный"
-        };
+    public static TunStack NormalizeStack(TunStack stack) => Stacks.Normalize(stack);
 }

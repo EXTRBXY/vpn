@@ -26,7 +26,7 @@ public sealed class ConnectionSettingsController : IConnectionSettingsController
 
         ProxyConnectionPolicy.Validate(proxy);
         TunSettingsPolicy.Validate(tun);
-        if (string.Equals(dns.Mode?.Trim(), "doh", StringComparison.OrdinalIgnoreCase))
+        if (dns.Mode == DnsMode.Doh)
         {
             if (string.IsNullOrWhiteSpace(dns.DohServer))
                 throw new InvalidOperationException("DoH IP не задан.");
@@ -51,8 +51,8 @@ public sealed class ConnectionSettingsController : IConnectionSettingsController
             ConnectionSettingsMapper.ApplyDnsSettings(target, dns);
             if (draft.TunAppPaths is not null) target.TunAppProcessPaths = draft.TunAppPaths.ToList();
             if (draft.RuleSets is not null) target.UserRuleSets = draft.RuleSets.ToList();
-            if (draft.LogLevel is not null) target.SingBoxLogLevel = draft.LogLevel;
-            if (draft.CloseBehavior is not null) target.CloseBehavior = AppCloseBehavior.Normalize(draft.CloseBehavior);
+            if (draft.LogLevel is { } logLevel) target.SingBoxLogLevel = logLevel;
+            if (draft.CloseBehavior is { } closeBehavior) target.CloseBehavior = closeBehavior;
         }
     }
 

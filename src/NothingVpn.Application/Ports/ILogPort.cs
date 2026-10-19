@@ -1,8 +1,10 @@
+using NothingVpn.Domain.Models;
+
 namespace NothingVpn.Application.Ports;
 
 public interface ILogPort
 {
-    string SnapshotText(int minLevel);
-    string? TryGetLatestMessage(int minLevel);
+    string SnapshotText(LogLevel minLevel);
+    string? TryGetLatestMessage(LogLevel minLevel);
 }
 

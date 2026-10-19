@@ -12,16 +12,16 @@ public sealed class DomainPoliciesTests
     [InlineData("tun", "tun")]
     [InlineData("tun_apps", "tun_apps")]
     [InlineData("unknown", "proxy")]
-    public void NormalizeMode_ReturnsExpected(string input, string expected)
+    public void ParseMode_ReturnsExpected(string input, string expected)
     {
-        Assert.Equal(expected, ConnectionPolicy.NormalizeMode(input));
+        Assert.Equal(expected, Mode(input).ToValue());
     }
 
     [Fact]
     public void EnsureTunAppsHasTargets_ThrowsWhenEmpty()
     {
         var ex = Assert.Throws<InvalidOperationException>(() =>
-            ConnectionPolicy.EnsureTunAppsHasTargets("tun_apps", Array.Empty<string>()));
+            ConnectionPolicy.EnsureTunAppsHasTargets(ConnectionMode.TunApps, Array.Empty<string>()));
         Assert.Contains("TUN", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -30,15 +30,15 @@ public sealed class DomainPoliciesTests
     {
         var settings = new DnsSettings
         {
-            Mode = "invalid",
-            Detour = "invalid",
+            Mode = (DnsMode)42,
+            Detour = (DnsDetour)42,
             DohPath = ""
         };
 
         DnsPolicy.Normalize(settings);
 
-        Assert.Equal("doh", settings.Mode);
-        Assert.Equal("direct", settings.Detour);
+        Assert.Equal("doh", settings.Mode.ToValue());
+        Assert.Equal("direct", settings.Detour.ToValue());
         Assert.Equal("/dns-query", settings.DohPath);
     }
     [Theory]
@@ -48,7 +48,7 @@ public sealed class DomainPoliciesTests
     [InlineData("tun", "direct", "direct")]
     public void DnsDetourPolicy_EffectiveDetour_RespectsTunApps(string mode, string requested, string expected)
     {
-        Assert.Equal(expected, DnsDetourPolicy.EffectiveDetour(mode, requested));
+        Assert.Equal(expected, DnsDetourPolicy.EffectiveDetour(Mode(mode), Detour(requested)).ToValue());
     }
 
     [Fact]
@@ -56,7 +56,7 @@ public sealed class DomainPoliciesTests
     {
         var ok = new DnsSettings
         {
-            Mode = "doh",
+            Mode = DnsMode.Doh,
             DohServer = "8.8.8.8",
             DohSni = "dns.google",
             DohPath = "/dns-query"
@@ -65,7 +65,7 @@ public sealed class DomainPoliciesTests
 
         var bad = new DnsSettings
         {
-            Mode = "doh",
+            Mode = DnsMode.Doh,
             DohServer = "8.8.8.8",
             DohSni = "",
             DohPath = "/dns-query"
@@ -74,23 +74,23 @@ public sealed class DomainPoliciesTests
     }
 
     [Theory]
-    [InlineData("1.1.1.1", "cloudflare-dns.com", "/dns-query", 0)]
-    [InlineData("8.8.8.8", "dns.google", "/dns-query", 1)]
-    [InlineData("9.9.9.9", "dns.quad9.net", "/dns-query", 2)]
-    [InlineData("94.140.14.14", "dns.adguard.com", "/dns-query", 3)]
-    [InlineData("8.8.8.8", "dns.google", "/custom", 4)]
-    public void DnsPolicy_StateToPresetIndex_ReflectsActualDnsFields(
-        string server, string sni, string path, int expected)
+    [InlineData("1.1.1.1", "cloudflare-dns.com", "/dns-query", DnsPreset.Cloudflare)]
+    [InlineData("8.8.8.8", "dns.google", "/dns-query", DnsPreset.Google)]
+    [InlineData("9.9.9.9", "dns.quad9.net", "/dns-query", DnsPreset.Quad9)]
+    [InlineData("94.140.14.14", "dns.adguard.com", "/dns-query", DnsPreset.AdGuard)]
+    [InlineData("8.8.8.8", "dns.google", "/custom", DnsPreset.Custom)]
+    public void DnsPolicy_DetectPreset_ReflectsActualDnsFields(
+        string server, string sni, string path, DnsPreset expected)
     {
         var settings = new DnsSettings { DohServer = server, DohSni = sni, DohPath = path };
 
-        Assert.Equal(expected, DnsPolicy.StateToPresetIndex(settings));
+        Assert.Equal(expected, DnsPolicy.DetectPreset(settings));
     }
 
     [Fact]
     public void RuleSetRoutingPolicy_TunAlwaysRequiresSniff()
     {
-        var decision = RuleSetRoutingPolicy.Evaluate(Array.Empty<UserRuleSetEntry>(), "system", isTunMode: true);
+        var decision = RuleSetRoutingPolicy.Evaluate(Array.Empty<UserRuleSetEntry>(), DnsMode.System, isTunMode: true);
         Assert.True(decision.RequiresSniff);
         Assert.False(decision.RequiresSplitDns);
         Assert.Empty(decision.DirectRuleSetTags);
@@ -99,7 +99,7 @@ public sealed class DomainPoliciesTests
     [Fact]
     public void RuleSetRoutingPolicy_ProxyRequiresSniffOnlyWithEnabledRuleSets()
     {
-        var empty = RuleSetRoutingPolicy.Evaluate(Array.Empty<UserRuleSetEntry>(), "doh", isTunMode: false);
+        var empty = RuleSetRoutingPolicy.Evaluate(Array.Empty<UserRuleSetEntry>(), DnsMode.Doh, isTunMode: false);
         Assert.False(empty.RequiresSniff);
 
         var withDirect = RuleSetRoutingPolicy.Evaluate(
@@ -110,10 +110,10 @@ public sealed class DomainPoliciesTests
                     Tag = "geosite-category-ru",
                     FileName = "geosite-category-ru.srs",
                     Enabled = true,
-                    Action = "direct"
+                    Action = RuleSetAction.Direct
                 }
             },
-            "doh",
+            DnsMode.Doh,
             isTunMode: false);
 
         Assert.True(withDirect.RequiresSniff);
@@ -131,30 +131,30 @@ public sealed class DomainPoliciesTests
                 Tag = "geosite-category-ru",
                 FileName = "geosite-category-ru.srs",
                 Enabled = true,
-                Action = "direct"
+                Action = RuleSetAction.Direct
             },
             new UserRuleSetEntry
             {
                 Tag = "geoip-ru",
                 FileName = "geoip-ru.srs",
                 Enabled = true,
-                Action = "direct"
+                Action = RuleSetAction.Direct
             },
             new UserRuleSetEntry
             {
                 Tag = "geosite-category-ru-ads",
                 FileName = "geosite-category-ru@ads.srs",
                 Enabled = true,
-                Action = "block"
+                Action = RuleSetAction.Block
             }
         };
 
-        var doh = RuleSetRoutingPolicy.Evaluate(entries, "doh", isTunMode: true);
+        var doh = RuleSetRoutingPolicy.Evaluate(entries, DnsMode.Doh, isTunMode: true);
         Assert.True(doh.RequiresSplitDns);
         Assert.Equal(new[] { "geosite-category-ru", "geoip-ru" }, doh.DirectRuleSetTags);
         Assert.Equal(new[] { "geosite-category-ru" }, doh.DnsDirectRuleSetTags);
 
-        var system = RuleSetRoutingPolicy.Evaluate(entries, "system", isTunMode: true);
+        var system = RuleSetRoutingPolicy.Evaluate(entries, DnsMode.System, isTunMode: true);
         Assert.False(system.RequiresSplitDns);
     }
 
@@ -206,7 +206,7 @@ public sealed class DomainPoliciesTests
         string userDetour,
         string? expected)
     {
-        Assert.Equal(expected, TunBootstrapPolicy.ResolveSingBoxDohDetour(connectionMode, strictRoute, userDetour));
+        Assert.Equal(expected, TunBootstrapPolicy.ResolveSingBoxDohDetour(Mode(connectionMode), strictRoute, Detour(userDetour)));
     }
 
     [Theory]
@@ -243,8 +243,8 @@ public sealed class DomainPoliciesTests
     public void TunAppsPolicy_SplitTunnelFlags(string mode, bool userStrictRoute)
     {
         var isTunApps = string.Equals(mode, "tun_apps", StringComparison.Ordinal);
-        Assert.Equal(isTunApps, TunAppsPolicy.IsTunApps(mode));
-        Assert.Equal(userStrictRoute && !isTunApps, TunAppsPolicy.UseStrictRoute(mode, userStrictRoute));
+        Assert.Equal(isTunApps, TunAppsPolicy.IsTunApps(Mode(mode)));
+        Assert.Equal(userStrictRoute && !isTunApps, TunAppsPolicy.UseStrictRoute(Mode(mode), userStrictRoute));
     }
 
     [Theory]
@@ -253,7 +253,7 @@ public sealed class DomainPoliciesTests
     [InlineData("proxy", false)]
     public void TunRoutingPolicy_HijackDns_AllTunModes(string mode, bool expected)
     {
-        Assert.Equal(expected, TunRoutingPolicy.HijackDns(mode));
+        Assert.Equal(expected, TunRoutingPolicy.HijackDns(Mode(mode)));
     }
 
     [Theory]
@@ -262,9 +262,9 @@ public sealed class DomainPoliciesTests
     [InlineData("proxy", false)]
     public void TunRoutingPolicy_RouteQuicAndSecureDns_OnlyFullTun(string mode, bool expected)
     {
-        Assert.Equal(expected, TunRoutingPolicy.RouteQuicThroughProxy(mode));
-        Assert.Equal(expected, TunRoutingPolicy.RouteSecureDnsThroughProxy(mode));
-        Assert.Equal(expected, TunRoutingPolicy.RouteIpv6ThroughProxy(mode));
+        Assert.Equal(expected, TunRoutingPolicy.RouteQuicThroughProxy(Mode(mode)));
+        Assert.Equal(expected, TunRoutingPolicy.RouteSecureDnsThroughProxy(Mode(mode)));
+        Assert.Equal(expected, TunRoutingPolicy.RouteIpv6ThroughProxy(Mode(mode)));
     }
 
     [Fact]
@@ -308,9 +308,9 @@ public sealed class DomainPoliciesTests
     [InlineData("system", "system")]
     [InlineData("unknown", "")]
     [InlineData("", "")]
-    public void TunSettingsPolicy_NormalizeStack(string input, string expected)
+    public void TunSettingsPolicy_ParseStack(string input, string expected)
     {
-        Assert.Equal(expected, TunSettingsPolicy.NormalizeStack(input));
+        Assert.Equal(expected, TunSettingsPolicy.Stacks.Parse(input).ToValue());
     }
 
     [Fact]
@@ -328,20 +328,30 @@ public sealed class DomainPoliciesTests
         Assert.Throws<ArgumentException>(() => ProxyConnectionPolicy.Validate(settings));
     }
 
-    [Fact]
-    public void DnsPolicy_IsDohMode_DetectsMode()
+    [Theory]
+    [InlineData(DnsPreset.Cloudflare, "1.1.1.1", "cloudflare-dns.com")]
+    [InlineData(DnsPreset.AdGuard, "94.140.14.14", "dns.adguard.com")]
+    public void DnsPolicy_ApplyPreset_SetsPresetFields(DnsPreset preset, string server, string sni)
     {
-        Assert.True(DnsPolicy.IsDohMode(new DnsSettings { Mode = "doh" }));
-        Assert.False(DnsPolicy.IsDohMode(new DnsSettings { Mode = "system" }));
+        var settings = DnsPolicy.ApplyPreset(preset, new DnsSettings { DohServer = "x", DohSni = "y", DohPath = "/q" });
+
+        Assert.Equal(server, settings.DohServer);
+        Assert.Equal(sni, settings.DohSni);
+        Assert.Equal("/dns-query", settings.DohPath);
+        Assert.Equal(preset, DnsPolicy.DetectPreset(settings));
     }
 
-    [Theory]
-    [InlineData("proxy", 1, "Через VPN")]
-    [InlineData("direct", 0, "Напрямую")]
-    public void DnsPolicy_DetourUiMapping(string detour, int expectedIndex, string expectedLabel)
+    [Fact]
+    public void DnsPolicy_ApplyCustomPreset_KeepsFields()
     {
-        Assert.Equal(expectedIndex, DnsPolicy.DetourToComboIndex(detour));
-        Assert.Equal(detour, DnsPolicy.ComboIndexToDetour(expectedIndex));
-        Assert.Equal(expectedLabel, DnsPolicy.DetourToDisplayLabel(detour));
+        var settings = DnsPolicy.ApplyPreset(DnsPreset.Custom, new DnsSettings { DohServer = "10.0.0.53", DohSni = "dns.local", DohPath = "/q" });
+
+        Assert.Equal("10.0.0.53", settings.DohServer);
+        Assert.Equal("dns.local", settings.DohSni);
+        Assert.Equal("/q", settings.DohPath);
     }
+
+    private static ConnectionMode Mode(string value) => ConnectionPolicy.Modes.Parse(value);
+
+    private static DnsDetour Detour(string value) => DnsPolicy.Detours.Parse(value);
 }

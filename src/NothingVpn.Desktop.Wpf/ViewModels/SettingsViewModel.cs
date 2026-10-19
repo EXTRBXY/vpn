@@ -20,8 +20,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private readonly NothingVpn.Application.Services.IRuleSetFileService _ruleSetFiles;
     private readonly NothingVpn.Infrastructure.TunApps.TunAppsSelectionService _tunAppSelection;
     private string? _message;
-    private string? _dnsPreset;
-    private string _dnsMode = "doh";
+    private DnsPreset? _dnsPreset;
+    private DnsMode _dnsMode = DnsPolicy.DefaultMode;
     private string _dohServer = "";
     private string _dohSni = "";
     private string _dohPath = "/dns-query";
@@ -167,30 +167,30 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public string AddressCidr { get; set; } = "auto";
     public int Mtu { get => int.TryParse(MtuText, out var value) ? value : 0; set => MtuText = value.ToString(System.Globalization.CultureInfo.InvariantCulture); }
     public string MtuText { get; set; } = "1500";
-    public string Stack { get; set; } = "";
+    public TunStack Stack { get; set; } = TunSettingsPolicy.DefaultStack;
     public bool AutoRoute { get; set; }
     public bool StrictRoute { get; set; }
-    public string DnsMode
+    public DnsMode DnsMode
     {
         get => _dnsMode;
         set
         {
-            if (string.Equals(_dnsMode, value, StringComparison.Ordinal)) return;
+            if (_dnsMode == value) return;
             _dnsMode = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(IsDohMode));
             UpdateDnsDetourAvailability();
         }
     }
-    public bool IsDohMode => string.Equals(DnsMode, "doh", StringComparison.OrdinalIgnoreCase);
+    public bool IsDohMode => DnsMode == DnsMode.Doh;
     public string DohServer { get => _dohServer; set { _dohServer = value; OnPropertyChanged(); UpdateDnsPreset(); } }
     public string DohPath { get => _dohPath; set { _dohPath = value; OnPropertyChanged(); UpdateDnsPreset(); } }
     public string DohSni { get => _dohSni; set { _dohSni = value; OnPropertyChanged(); UpdateDnsPreset(); } }
-    public string DnsDetour { get; set; } = "direct";
-    public string LogLevel { get; set; } = "warn";
-    public string CloseBehavior { get; set; } = AppCloseBehavior.HideToTray;
+    public DnsDetour DnsDetour { get; set; } = DnsPolicy.DefaultDetour;
+    public LogLevel LogLevel { get; set; } = SingBoxLogLevelPolicy.DefaultLevel;
+    public AppCloseBehavior CloseBehavior { get; set; } = AppCloseBehaviors.Default;
     public bool IsDnsDetourEditable { get => _dnsDetourEditable; private set { if (_dnsDetourEditable == value) return; _dnsDetourEditable = value; OnPropertyChanged(); OnPropertyChanged(nameof(DnsDetourHint)); } }
-    public string DnsDetourHint => !string.Equals(DnsMode, "doh", StringComparison.OrdinalIgnoreCase)
+    public string DnsDetourHint => !IsDohMode
         ? "Маршрут используется только для защищённого DNS."
         : !DnsDetourPolicy.AllowsProxyDetour(_state.Mode)
             ? "В режиме TUN для выбранных приложений DNS всегда идёт напрямую."
@@ -204,15 +204,15 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         _isConnectionRunning = running;
         OnPropertyChanged(nameof(ConnectionNotice));
     }
-    public string? DnsPreset
+    public DnsPreset? DnsPreset
     {
         get => _dnsPreset;
         set
         {
-            if (string.Equals(_dnsPreset, value, StringComparison.Ordinal)) return;
+            if (_dnsPreset == value) return;
             _dnsPreset = value;
             OnPropertyChanged();
-            if (value is not null) ApplyDnsPreset(value);
+            if (value is { } preset) ApplyDnsPreset(preset);
         }
     }
     public void Reload()
@@ -221,16 +221,15 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         _state = _settingsService.GetState();
         if (!DnsDetourPolicy.AllowsProxyDetour(_state.Mode))
         {
-            DnsDetour = "direct";
+            DnsDetour = DnsDetour.Direct;
             OnPropertyChanged(nameof(DnsDetour));
         }
         UpdateDnsDetourAvailability();
     }
-    public void ApplyDnsPreset(string preset)
+    public void ApplyDnsPreset(DnsPreset preset)
     {
-        var index = preset switch { "cloudflare" => 0, "google" => 1, "quad9" => 2, "adguard" => 3, _ => -1 };
-        if (index < 0) return;
-        var dns = DnsPolicy.ApplyPreset(index, new DnsSettings { Mode = DnsMode, Detour = DnsDetour, DohServer = DohServer, DohSni = DohSni, DohPath = DohPath });
+        if (preset == NothingVpn.Domain.Models.DnsPreset.Custom) return;
+        var dns = DnsPolicy.ApplyPreset(preset, new DnsSettings { Mode = DnsMode, Detour = DnsDetour, DohServer = DohServer, DohSni = DohSni, DohPath = DohPath });
         DohServer = dns.DohServer; DohSni = dns.DohSni; DohPath = dns.DohPath;
         OnPropertyChanged(nameof(DohServer)); OnPropertyChanged(nameof(DohSni)); OnPropertyChanged(nameof(DohPath));
     }
@@ -302,9 +301,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         _state = state;
         ProxyOverride = state.ProxyOverride; InterfaceName = state.TunInterfaceName;
         AddressCidr = state.TunAddressCidr; Mtu = TunSettingsPolicy.NormalizeMtu(state.TunMtu);
-        Stack = TunSettingsPolicy.ComboIndexToStack(TunSettingsPolicy.StackToComboIndex(state.TunStack)); AutoRoute = state.TunAutoRoute; StrictRoute = state.TunStrictRoute;
+        Stack = ComboStack(state.TunStack); AutoRoute = state.TunAutoRoute; StrictRoute = state.TunStrictRoute;
         DnsMode = state.DnsMode; DohServer = state.DohServer; DohPath = state.DohPath; DohSni = state.DohSni; DnsDetour = state.DnsDetour;
-        LogLevel = state.SingBoxLogLevel; CloseBehavior = AppCloseBehavior.Normalize(state.CloseBehavior);
+        LogLevel = state.SingBoxLogLevel; CloseBehavior = AppCloseBehaviors.Values.Normalize(state.CloseBehavior);
         UpdateDnsPreset();
         ReplaceTunApps(_tunAppsController.Normalize(state.TunAppProcessPaths));
         SelectedBuiltinRuleSet = null; SelectedUserRuleSet = null;
@@ -318,15 +317,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     }
     private void UpdateDnsDetourAvailability()
     {
-        IsDnsDetourEditable = string.Equals(DnsMode, "doh", StringComparison.OrdinalIgnoreCase) && DnsDetourPolicy.AllowsProxyDetour(_state.Mode);
+        IsDnsDetourEditable = IsDohMode && DnsDetourPolicy.AllowsProxyDetour(_state.Mode);
         OnPropertyChanged(nameof(DnsDetourHint));
     }
     private void UpdateDnsPreset()
     {
-        _dnsPreset = DnsPolicy.StateToPresetIndex(new DnsSettings { DohServer = DohServer, DohSni = DohSni, DohPath = DohPath }) switch
-        {
-            0 => "cloudflare", 1 => "google", 2 => "quad9", 3 => "adguard", _ => "custom"
-        };
+        _dnsPreset = DnsPolicy.DetectPreset(new DnsSettings { DohServer = DohServer, DohSni = DohSni, DohPath = DohPath });
         OnPropertyChanged(nameof(DnsPreset));
     }
     private void SetRuleSetBusy(bool busy)
@@ -337,6 +333,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CanRemoveUserRuleSet));
         ((RelayCommand)SaveCommand).RaiseCanExecuteChanged();
     }
+    // В списке стеков нет отдельного «system»: явный system показывается и сохраняется как стек по умолчанию.
+    private static TunStack ComboStack(TunStack stack) =>
+        stack is TunStack.Mixed or TunStack.Gvisor ? stack : TunStack.Default;
     private static UserRuleSetModel CloneRuleSet(UserRuleSetModel item) => new()
     {
         Tag = item.Tag, Name = item.Name, FileName = item.FileName, Enabled = item.Enabled,

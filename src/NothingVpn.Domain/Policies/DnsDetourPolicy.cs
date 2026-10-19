@@ -1,3 +1,5 @@
+using NothingVpn.Domain.Models;
+
 namespace NothingVpn.Domain.Policies;
 
 /// <summary>
@@ -10,17 +12,11 @@ public static class DnsDetourPolicy
     /// В tun_apps DNS через proxy ломает модель (весь DNS уходит в VPN)
     /// и часто даёт нерабочий bootstrap — запрещаем.
     /// </summary>
-    public static bool AllowsProxyDetour(string? connectionMode)
-    {
-        var mode = (connectionMode ?? string.Empty).Trim().ToLowerInvariant();
-        return mode is not "tun_apps";
-    }
+    public static bool AllowsProxyDetour(ConnectionMode connectionMode) =>
+        connectionMode != ConnectionMode.TunApps;
 
-    public static string EffectiveDetour(string? connectionMode, string? requestedDetour)
-    {
-        var detour = (requestedDetour ?? string.Empty).Trim().ToLowerInvariant();
-        if (detour != "proxy")
-            return "direct";
-        return AllowsProxyDetour(connectionMode) ? "proxy" : "direct";
-    }
+    public static DnsDetour EffectiveDetour(ConnectionMode connectionMode, DnsDetour requestedDetour) =>
+        requestedDetour == DnsDetour.Proxy && AllowsProxyDetour(connectionMode)
+            ? DnsDetour.Proxy
+            : DnsDetour.Direct;
 }

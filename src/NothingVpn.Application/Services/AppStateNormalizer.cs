@@ -9,14 +9,16 @@ namespace NothingVpn.Application.Services;
 /// Единственная точка нормализации состояния: применяет Domain-политики ко всем полям настроек.
 /// Вызывается при каждой записи настроек (SettingsService) и перед генерацией конфига (VpnConnectionService);
 /// генератор sing-box получает уже нормализованное состояние и сам ничего не нормализует.
+/// Строковые значения разбирает при чтении state.json толерантный конвертер (Serialization), здесь enum'ы
+/// только защищаются от неопределённых числовых значений.
 /// </summary>
 public static class AppStateNormalizer
 {
     public static void Normalize(AppStateModel state, IPathPolicyPort pathPolicy)
     {
-        state.Mode = ConnectionPolicy.NormalizeMode(state.Mode);
+        state.Mode = ConnectionPolicy.Modes.Normalize(state.Mode);
         state.DnsDetour = DnsDetourPolicy.EffectiveDetour(state.Mode, state.DnsDetour);
-        state.CloseBehavior = AppCloseBehavior.Normalize(state.CloseBehavior);
+        state.CloseBehavior = AppCloseBehaviors.Values.Normalize(state.CloseBehavior);
         state.SingBoxLogLevel = SingBoxLogLevelPolicy.Normalize(state.SingBoxLogLevel);
         state.TunAppProcessPaths = pathPolicy.NormalizeDistinctExePaths(state.TunAppProcessPaths).ToList();
 

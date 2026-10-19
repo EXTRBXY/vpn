@@ -1,4 +1,6 @@
 using NothingVpn.Application.Models;
+using NothingVpn.Domain.Models;
+using NothingVpn.Domain.Policies;
 
 namespace NothingVpn.Tray.Internal.UI;
 
@@ -104,7 +106,10 @@ internal sealed class RuleSetsPanelControl : UserControl
             DataPropertyName = nameof(UserRuleSetModel.Action),
             Width = 90,
             FlatStyle = FlatStyle.Flat,
-            DataSource = new[] { "direct", "block" }
+            DataSource = RuleSetPolicyValidator.Actions.Values.Select(a => new ActionOption(a, a.ToValue())).ToList(),
+            ValueMember = nameof(ActionOption.Value),
+            DisplayMember = nameof(ActionOption.Text),
+            ValueType = typeof(RuleSetAction)
         });
         grid.Columns.Add(new DataGridViewTextBoxColumn
         {
@@ -115,4 +120,6 @@ internal sealed class RuleSetsPanelControl : UserControl
         });
         return grid;
     }
+
+    private sealed record ActionOption(RuleSetAction Value, string Text);
 }

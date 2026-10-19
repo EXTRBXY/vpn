@@ -1,4 +1,6 @@
+using NothingVpn.Domain.Policies;
 using System.Runtime.CompilerServices;
+using NothingVpn.Domain.Models;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Services;
 using NothingVpn.Infrastructure.Ports;
@@ -101,7 +103,7 @@ public sealed class SingBoxConfigGoldenTests : IDisposable
     private static AppStateModel CreateState(string mode, string dnsMode, string detour, bool ruleSets) => new()
     {
         ActiveProfileId = "0123456789abcdef",
-        Mode = mode,
+        Mode = ConnectionPolicy.Modes.Parse(mode),
         TunAppProcessPaths =
         [
             @"C:\Program Files\Browser\browser.exe",
@@ -116,7 +118,7 @@ public sealed class SingBoxConfigGoldenTests : IDisposable
                 Name = "Geosite: категория RU",
                 FileName = "geosite-category-ru.srs",
                 Enabled = ruleSets,
-                Action = "direct"
+                Action = RuleSetAction.Direct
             },
             new UserRuleSetModel
             {
@@ -125,7 +127,7 @@ public sealed class SingBoxConfigGoldenTests : IDisposable
                 Name = "Geosite: категория RU — реклама",
                 FileName = "geosite-category-ru@ads.srs",
                 Enabled = ruleSets,
-                Action = "block"
+                Action = RuleSetAction.Block
             },
             new UserRuleSetModel
             {
@@ -134,7 +136,7 @@ public sealed class SingBoxConfigGoldenTests : IDisposable
                 Name = "GeoIP: RU",
                 FileName = "geoip-ru.srs",
                 Enabled = ruleSets,
-                Action = "direct"
+                Action = RuleSetAction.Direct
             },
             new UserRuleSetModel
             {
@@ -142,22 +144,22 @@ public sealed class SingBoxConfigGoldenTests : IDisposable
                 Name = "My list",
                 FileName = "my-list.srs",
                 Enabled = ruleSets,
-                Action = "direct"
+                Action = RuleSetAction.Direct
             }
         ],
         LocalMixedPort = 1080,
         TunInterfaceName = "NothingVpn",
         TunAddressCidr = "auto",
         TunMtu = 1500,
-        TunStack = "",
+        TunStack = TunStack.Default,
         TunAutoRoute = true,
         TunStrictRoute = true,
-        DnsMode = dnsMode,
+        DnsMode = DnsPolicy.Modes.Parse(dnsMode),
         DohServer = "8.8.8.8",
         DohPath = "/dns-query",
         DohSni = "dns.google",
-        DnsDetour = detour,
-        SingBoxLogLevel = "warn"
+        DnsDetour = DnsPolicy.Detours.Parse(detour),
+        SingBoxLogLevel = LogLevel.Warn
     };
 
     private static VpnProfile RealityProfile() => new()

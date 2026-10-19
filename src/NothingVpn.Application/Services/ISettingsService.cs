@@ -13,8 +13,8 @@ public interface ISettingsService
     /// (<see cref="ConnectionRuntimeState"/>) через этот метод изменить нельзя — они сохраняются как есть.
     /// </summary>
     void UpdateState(Action<AppStateModel> update);
-    void UpdateMode(string mode);
-    void UpdateDns(string mode, string dohServer, string dohPath, string dohSni, string detour);
+    void UpdateMode(ConnectionMode mode);
+    void UpdateDns(DnsMode mode, string dohServer, string dohPath, string dohSni, DnsDetour detour);
     void UpdateTunSettings(TunSettings settings);
     void UpdateProxySettings(ProxyConnectionSettings settings);
     void UpdateRuleSets(IReadOnlyCollection<UserRuleSetModel> ruleSets);

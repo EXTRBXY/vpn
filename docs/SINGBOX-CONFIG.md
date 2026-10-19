@@ -19,7 +19,9 @@ rule `action`).
 
 ## Режимы
 
-`ConnectionPolicy`: `proxy` (по умолчанию для любого неизвестного значения), `tun`, `tun_apps`.
+`ConnectionMode` (`ConnectionPolicy.Modes`): `proxy` (по умолчанию для любого неизвестного значения), `tun`, `tun_apps`.
+Все enum-настройки попадают в конфиг канонической строкой `ToValue()` — той же, что в state.json (STORAGE.md);
+имя файла конфига тоже использует её: `{profileId}.tun_apps.json`.
 
 | | `proxy` | `tun` | `tun_apps` |
 | --- | --- | --- | --- |
@@ -58,7 +60,7 @@ rule `action`).
 | `mtu` | `TunSettingsPolicy.NormalizeMtu`: ≤0 или legacy 9000 → 1500, иначе clamp 576..9000 |
 | `auto_route` | настройка (по умолчанию `true`) |
 | `strict_route` | `TunAppsPolicy.UseStrictRoute` |
-| `stack` | `system` / `mixed` / `gvisor`; пусто → `system` на Windows |
+| `stack` | `system` / `mixed` / `gvisor`; `TunStack.Default` (в state.json `""`) → `system` на Windows (`TunInterfacePolicy.SingBoxStack`) |
 
 Хеш адресов — `n = n*31 + char` по строке profileId. Изменение формулы меняет адреса интерфейсов у всех пользователей.
 

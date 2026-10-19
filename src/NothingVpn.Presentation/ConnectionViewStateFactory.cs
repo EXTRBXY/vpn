@@ -1,4 +1,5 @@
 using NothingVpn.Application.Models;
+using NothingVpn.Domain.Models;
 using NothingVpn.Domain.Policies;
 
 namespace NothingVpn.Presentation;
@@ -11,7 +12,7 @@ public static class ConnectionViewStateFactory
         bool isRunning,
         bool isAdministrator)
     {
-        var mode = ConnectionPolicy.NormalizeMode(state.Mode);
+        var mode = ConnectionPolicy.Modes.Normalize(state.Mode);
         var canEditTunApps = !isRunning && TunAppsPolicy.IsTunApps(mode);
         return new ConnectionViewState(
             IsRunning: isRunning,
@@ -31,33 +32,33 @@ public static class ConnectionViewStateFactory
             ProxyBypassText: BuildProxyBypassStatusText(state, mode));
     }
 
-    private static string TitleMode(string mode) => mode switch
+    private static string TitleMode(ConnectionMode mode) => mode switch
     {
-        ConnectionPolicy.TunMode => "TUN",
-        ConnectionPolicy.TunAppsMode => "TUN (приложения)",
+        ConnectionMode.Tun => "TUN",
+        ConnectionMode.TunApps => "TUN (приложения)",
         _ => "прокси"
     };
 
-    private static string DisplayMode(string mode) => mode switch
+    private static string DisplayMode(ConnectionMode mode) => mode switch
     {
-        ConnectionPolicy.TunMode => "TUN (весь трафик)",
-        ConnectionPolicy.TunAppsMode => "TUN (выбранные приложения)",
+        ConnectionMode.Tun => "TUN (весь трафик)",
+        ConnectionMode.TunApps => "TUN (выбранные приложения)",
         _ => "Прокси"
     };
 
-    private static string BuildDnsStatusText(AppStateModel state, string mode)
+    private static string BuildDnsStatusText(AppStateModel state, ConnectionMode mode)
     {
-        var dnsMode = (state.DnsMode ?? string.Empty).Trim().ToLowerInvariant();
+        var isDoh = state.DnsMode == DnsMode.Doh;
         var effectiveDetour = DnsDetourPolicy.EffectiveDetour(mode, state.DnsDetour);
-        var detourLabel = DnsPolicy.DetourToDisplayLabel(effectiveDetour).ToLowerInvariant();
+        var detourLabel = SettingLabels.Detour(effectiveDetour).ToLowerInvariant();
         if (TunAppsPolicy.IsTunApps(mode))
         {
-            return dnsMode == "doh"
+            return isDoh
                 ? $"DoH (hijack), трафик приложений по списку, {detourLabel}"
                 : "Системный DNS (hijack), трафик приложений по списку";
         }
 
-        if (dnsMode == "doh")
+        if (isDoh)
         {
             var server = string.IsNullOrWhiteSpace(state.DohServer) ? "(не задан)" : state.DohServer.Trim();
             var sni = string.IsNullOrWhiteSpace(state.DohSni) ? "(без SNI)" : state.DohSni.Trim();
@@ -76,20 +77,20 @@ public static class ConnectionViewStateFactory
         return $"{enabled} активных (встроенные: {builtinEnabled}, пользовательские: {customEnabled})";
     }
 
-    private static string BuildTunStatusText(AppStateModel state, string mode)
+    private static string BuildTunStatusText(AppStateModel state, ConnectionMode mode)
     {
         if (!ConnectionPolicy.IsTunMode(mode))
             return "—";
 
         var mtu = TunSettingsPolicy.NormalizeMtu(state.TunMtu);
-        var stack = TunSettingsPolicy.StackToDisplayLabel(state.TunStack);
+        var stack = SettingLabels.Stack(state.TunStack);
         var strict = state.TunStrictRoute ? "вкл." : "выкл.";
         return $"MTU {mtu}, стек {stack}, строгая маршрутизация {strict}";
     }
 
-    private static string BuildProxyBypassStatusText(AppStateModel state, string mode)
+    private static string BuildProxyBypassStatusText(AppStateModel state, ConnectionMode mode)
     {
-        if (!string.Equals(mode, ConnectionPolicy.ProxyMode, StringComparison.OrdinalIgnoreCase))
+        if (mode != ConnectionMode.Proxy)
             return "—";
 
         var value = (state.ProxyOverride ?? string.Empty).Trim();

@@ -1,6 +1,7 @@
 using NothingVpn.Application.Mappers;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
+using NothingVpn.Domain.Models;
 using NothingVpn.Domain.Policies;
 
 namespace NothingVpn.Application.Services;
@@ -16,7 +17,7 @@ public sealed class VpnConnectionService : IVpnConnectionService
     private readonly IProxyPort _proxyPort;
     private readonly IDiagnosticsPort _diagnosticsPort;
     private readonly IElevationPort _elevationPort;
-    private readonly IAppPathsPort _appPathsPort;
+    private readonly IRuleSetFileService _ruleSetFiles;
     private readonly IPathPolicyPort _pathPolicy;
     private readonly ILogPort _logPort;
     private readonly SemaphoreSlim _sessionLock = new(1, 1);
@@ -30,7 +31,7 @@ public sealed class VpnConnectionService : IVpnConnectionService
         IProxyPort proxyPort,
         IDiagnosticsPort diagnosticsPort,
         IElevationPort elevationPort,
-        IAppPathsPort appPathsPort,
+        IRuleSetFileService ruleSetFiles,
         IPathPolicyPort pathPolicy,
         ILogPort logPort)
     {
@@ -40,7 +41,7 @@ public sealed class VpnConnectionService : IVpnConnectionService
         _proxyPort = proxyPort;
         _diagnosticsPort = diagnosticsPort;
         _elevationPort = elevationPort;
-        _appPathsPort = appPathsPort;
+        _ruleSetFiles = ruleSetFiles;
         _pathPolicy = pathPolicy;
         _logPort = logPort;
         _singBoxPort.ProcessExited += (_, _) =>
@@ -67,11 +68,11 @@ public sealed class VpnConnectionService : IVpnConnectionService
             var state = _stateStore.Load();
             AppStateNormalizer.Normalize(state, _pathPolicy);
             ConnectionPolicy.EnsureTunAppsHasTargets(state.Mode, state.TunAppProcessPaths);
-            ValidateRuleSets(state, _appPathsPort.Get().RuleSetsDir);
+            ValidateRuleSets(state);
 
             if (ConnectionPolicy.IsTunMode(state.Mode) && !_elevationPort.IsAdministrator())
             {
-                var args = $"--takeover --start --mode {state.Mode} --profile \"{profile.Id}\"";
+                var args = StartupArguments.Takeover(state.Mode, profile.Id);
                 return new ConnectResult
                 {
                     Started = false,
@@ -248,14 +249,16 @@ public sealed class VpnConnectionService : IVpnConnectionService
         }
     }
 
-    private static void ValidateRuleSets(AppStateModel state, string ruleSetsDir)
+    private void ValidateRuleSets(AppStateModel state)
     {
-        RuleSetPolicyValidator.ValidateEnabled(ConnectionSettingsMapper.ToRuleSetEntries(state.UserRuleSets), ruleSetsDir);
+        RuleSetPolicyValidator.ValidateEnabled(ConnectionSettingsMapper.ToRuleSetEntries(state.UserRuleSets));
+        if (state.UserRuleSets.Any(rs => rs.Enabled && !_ruleSetFiles.Exists(rs)))
+            throw new InvalidOperationException("Не найдены файлы включённых rule-set (.srs).");
     }
 
     private string DescribeSingBoxStartupFailure()
     {
-        var detail = _logPort.TryGetLatestMessage(5) ?? _logPort.TryGetLatestMessage(4);
+        var detail = _logPort.TryGetLatestMessage(LogLevel.Fatal) ?? _logPort.TryGetLatestMessage(LogLevel.Error);
         return detail is null
             ? "sing-box завершился сразу после запуска. Откройте логи в приложении."
             : $"sing-box завершился сразу после запуска: {detail}";
@@ -280,5 +283,5 @@ public sealed class VpnConnectionService : IVpnConnectionService
     private static void ClearProxyFlags(AppStateModel state) =>
         new ConnectionRuntimeState(ProxyWasEnabledByUs: false, PreviousProxySettings: null).ApplyTo(state);
 
-    private sealed record ConnectedSession(string Mode, string ProfileId);
+    private sealed record ConnectedSession(ConnectionMode Mode, string ProfileId);
 }

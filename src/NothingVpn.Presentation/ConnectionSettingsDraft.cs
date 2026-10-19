@@ -10,6 +10,6 @@ public sealed record ConnectionSettingsDraft(
 {
     public IReadOnlyList<string>? TunAppPaths { get; init; }
     public IReadOnlyList<UserRuleSetModel>? RuleSets { get; init; }
-    public string? LogLevel { get; init; }
-    public string? CloseBehavior { get; init; }
+    public LogLevel? LogLevel { get; init; }
+    public AppCloseBehavior? CloseBehavior { get; init; }
 }

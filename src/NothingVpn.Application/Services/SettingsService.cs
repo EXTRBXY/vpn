@@ -25,12 +25,12 @@ public sealed class SettingsService(AppStateStore stateStore, IPathPolicyPort pa
         StateChanged?.Invoke(this, state);
     }
 
-    public void UpdateMode(string mode)
+    public void UpdateMode(ConnectionMode mode)
     {
-        UpdateState(state => state.Mode = ConnectionPolicy.NormalizeMode(mode));
+        UpdateState(state => state.Mode = mode);
     }
 
-    public void UpdateDns(string mode, string dohServer, string dohPath, string dohSni, string detour)
+    public void UpdateDns(DnsMode mode, string dohServer, string dohPath, string dohSni, DnsDetour detour)
     {
         var dns = new DnsSettings
         {

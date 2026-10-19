@@ -2,6 +2,7 @@ using System.Collections;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using NothingVpn.Domain.Models;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
 using NothingVpn.Infrastructure.Ports;
@@ -99,7 +100,7 @@ public sealed class StorageRoundtripTests : IDisposable
     private static AppStateModel FilledState() => new()
     {
         ActiveProfileId = "state-active-profile",
-        Mode = "tun_apps",
+        Mode = ConnectionMode.TunApps,
         TunAppProcessPaths = [@"C:\Apps\one.exe", @"D:\Apps\two.exe"],
         UserRuleSets =
         [
@@ -110,7 +111,7 @@ public sealed class StorageRoundtripTests : IDisposable
                 Name = "rs-name-1",
                 FileName = "geosite-category-ru.srs",
                 Enabled = false,
-                Action = "block",
+                Action = RuleSetAction.Block,
                 BuiltinId = "sing-geosite:category-ru",
                 RemoteEtag = "\"etag-1\"",
                 LastDownloadedUtc = new DateTimeOffset(2026, 1, 2, 3, 4, 5, TimeSpan.FromHours(3))
@@ -121,7 +122,7 @@ public sealed class StorageRoundtripTests : IDisposable
                 Name = "rs-name-2",
                 FileName = "geosite-category-ru@ads.srs",
                 Enabled = true,
-                Action = "block",
+                Action = RuleSetAction.Block,
                 BuiltinId = "sing-geosite:category-ru-ads",
                 RemoteEtag = "\"etag-2\"",
                 LastDownloadedUtc = new DateTimeOffset(2026, 2, 3, 4, 5, 6, TimeSpan.Zero)
@@ -132,7 +133,7 @@ public sealed class StorageRoundtripTests : IDisposable
                 Name = "rs-name-3",
                 FileName = "geoip-ru.srs",
                 Enabled = true,
-                Action = "direct",
+                Action = RuleSetAction.Direct,
                 BuiltinId = "sing-geoip:ru"
             },
             new UserRuleSetModel
@@ -141,7 +142,7 @@ public sealed class StorageRoundtripTests : IDisposable
                 Name = "rs-name-4",
                 FileName = "user-list.srs",
                 Enabled = false,
-                Action = "block"
+                Action = RuleSetAction.Block
             }
         ],
         LocalMixedPort = 21080,
@@ -156,16 +157,16 @@ public sealed class StorageRoundtripTests : IDisposable
         TunInterfaceName = "StateIface",
         TunAddressCidr = "10.123.0.1/30",
         TunMtu = 1400,
-        TunStack = "gvisor",
+        TunStack = TunStack.Gvisor,
         TunAutoRoute = false,
         TunStrictRoute = false,
-        DnsMode = "system",
+        DnsMode = DnsMode.System,
         DohServer = "9.9.9.9",
         DohPath = "/state-dns-query",
         DohSni = "dns.quad9.net",
-        DnsDetour = "proxy",
+        DnsDetour = DnsDetour.Proxy,
         DebugLogs = true,
-        SingBoxLogLevel = "debug",
+        SingBoxLogLevel = LogLevel.Debug,
         CloseBehavior = AppCloseBehavior.Exit,
         UpdateDismissedModalForTag = "v9.8.7",
         LastRecordedAppSemver = "1.2.3",

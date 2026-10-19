@@ -76,6 +76,22 @@ Application-моделями; `SingBoxPort.WriteConfig` передаёт их г
 Domain содержит отдельное представление групп настроек (`DnsSettings`, `TunSettings`, `ProxyConnectionSettings`) для
 политик; `ConnectionSettingsMapper` (Application) раскладывает его в плоский `AppStateModel` и обратно.
 
+### Типизированные значения настроек
+
+Перечислимые настройки — enum'ы (шаг 4, REFACTORING.md 3.3): `ConnectionMode`, `DnsMode`, `DnsDetour`,
+`RuleSetAction`, `TunStack`, `LogLevel`, `DnsPreset` (Domain/Models) и `AppCloseBehavior` (Application/Models).
+`LogLevel` — общий для уровня журнала sing-box в настройках и уровня записей `InMemoryLogStore`/`ILogPort`.
+
+Строковое представление каждого enum'а — `SettingValueMap<T>` в соответствующей политике (`ConnectionPolicy.Modes`,
+`DnsPolicy.Modes`/`Detours`, `RuleSetPolicyValidator.Actions`, `TunSettingsPolicy.Stacks`,
+`SingBoxLogLevelPolicy.Levels`, `AppCloseBehaviors.Values`). Карта задаёт каноническую строку (`ToValue()`), толерантный
+разбор (регистр и пробелы не важны, неизвестное → значение по умолчанию) и `Normalize` для неопределённых числовых
+значений. Эти же строки попадают в state.json, аргумент `--mode` (`StartupArguments.Takeover`) и конфиг sing-box.
+Никогда не пишите enum в строку через `ToString()` или интерполяцию — только `ToValue()`.
+
+Domain не содержит UI: подписи значений — `Presentation/SettingLabels`, порядок пунктов комбобоксов WinForms —
+`Tray/Internal/UI/ComboIndexes`; WPF привязывает `ComboBox` к enum-значениям через `Tag="{x:Static …}"`.
+
 ### Нормализация и значения по умолчанию
 
 - Значения по умолчанию — константы Domain-политик (`ConnectionPolicy.DefaultMode`, `DnsPolicy.Default*`,
@@ -99,7 +115,8 @@ Domain содержит отдельное представление групп
 2. Загрузка профиля и снимка состояния из `AppStateStore`. Снимок нужен только для генерации конфига и обратно
    целиком не сохраняется — настройки, изменённые за время подключения, не теряются.
 3. Нормализация снимка (`AppStateNormalizer`); `ConnectionPolicy.EnsureTunAppsHasTargets`; `RuleSetPolicyValidator.ValidateEnabled`
-   (проверяет и наличие `.srs` на диске).
+   (теги, имена файлов, действия); наличие `.srs` на диске — через `IRuleSetFileService.Exists` (Domain файловую систему
+   не трогает).
 4. TUN без прав администратора → `ConnectResult { RequiresElevation, ElevationArgs }` (см. «Повышение прав»).
 5. Если sing-box уже работает — полный disconnect.
 6. `ISingBoxPort.WriteConfig` → `configs/{profileId}.{mode}.json`; `ValidateConfig` (`sing-box check`); `Start`;
@@ -211,8 +228,8 @@ TUN требует администратора. Клиент не повыша�
 ## Логирование
 
 `InMemoryLogStore` — кольцевой буфер ≈ 1 МБ, общий для sing-box и UI. Каждая запись проходит `LogRedactor`
-(UUID, `vless://`, путь `/sub/…`, `pbk`/`sid`/`uuid`, токены, `Authorization: Bearer`). Уровни — целые 0..6
-(TRACE…PANIC). `SingBoxRunner` разбирает уровень из строки sing-box и понижает до WARN типичные «connection closed».
+(UUID, `vless://`, путь `/sub/…`, `pbk`/`sid`/`uuid`, токены, `Authorization: Bearer`). Уровни — enum `LogLevel`
+(Trace…Panic, значения 0..6). `SingBoxRunner` разбирает уровень из строки sing-box и понижает до WARN типичные «connection closed».
 Буфер очищается при каждом старте sing-box. На диск журнал пишется только по явному «Сохранить» в диагностике.
 
 WPF-клиент сам ничего в журнал не пишет — там только вывод sing-box. (В WinForms был `AppLogger`.)

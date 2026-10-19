@@ -14,11 +14,11 @@ public static class RuleSetRoutingPolicy
     /// Вычисляет требования к sniff/split DNS по enabled rule-set и режиму DNS/подключения.
     /// </summary>
     /// <param name="entries">Записи rule-set (учитываются только Enabled).</param>
-    /// <param name="dnsMode">system|doh</param>
+    /// <param name="dnsMode">DNS-режим.</param>
     /// <param name="isTunMode">true для tun / tun_apps</param>
     public static RuleSetRoutingDecision Evaluate(
         IEnumerable<UserRuleSetEntry> entries,
-        string? dnsMode,
+        DnsMode dnsMode,
         bool isTunMode)
     {
         var directTags = new List<string>();
@@ -34,8 +34,7 @@ public static class RuleSetRoutingPolicy
             if (!seen.Add(tag)) continue;
 
             anyEnabled = true;
-            var action = (entry.Action ?? "direct").Trim().ToLowerInvariant();
-            if (action != "direct") continue;
+            if (entry.Action != RuleSetAction.Direct) continue;
 
             directTags.Add(tag);
             // geoip rule-sets match addresses, not query names — skip for DNS split.
@@ -43,9 +42,8 @@ public static class RuleSetRoutingPolicy
                 dnsTags.Add(tag);
         }
 
-        var mode = (dnsMode ?? string.Empty).Trim().ToLowerInvariant();
         var requiresSniff = isTunMode || anyEnabled;
-        var requiresSplitDns = mode == "doh" && dnsTags.Count > 0;
+        var requiresSplitDns = dnsMode == DnsMode.Doh && dnsTags.Count > 0;
 
         return new RuleSetRoutingDecision(directTags, dnsTags, requiresSniff, requiresSplitDns);
     }

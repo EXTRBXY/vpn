@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using NothingVpn.Domain.Models;
 using NothingVpn.Infrastructure.Diagnostics;
 using NothingVpn.Infrastructure.Security;
 using NothingVpn.Infrastructure.Windows;
@@ -319,9 +320,9 @@ internal sealed class SingBoxRunner : IDisposable
     private static readonly Regex WordLevelPrefix = new(@"^(TRACE|DEBUG|INFO|WARN|WARNING|ERROR|FATAL|PANIC)\b[:\s\-]*", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex LevelKeyValue = new(@"\blevel=(trace|debug|info|warn|warning|error|fatal|panic)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-    private static (int Level, string Text) DetectLevel(string s)
+    private static (LogLevel Level, string Text) DetectLevel(string s)
     {
-        if (string.IsNullOrEmpty(s)) return (2, "INFO");
+        if (string.IsNullOrEmpty(s)) return (LogLevel.Info, "INFO");
 
         var t = s.TrimStart();
 
@@ -333,15 +334,15 @@ internal sealed class SingBoxRunner : IDisposable
         {
             return m.Groups[1].Value switch
             {
-                "TRAC" => (0, "TRACE"),
-                "DEBU" => (1, "DEBUG"),
-                "INFO" => (2, "INFO"),
-                "WARN" => (3, "WARN"),
-                "ERRO" => (4, "ERROR"),
-                "ERROR" => (4, "ERROR"),
-                "FATA" => (5, "FATAL"),
-                "PANI" => (6, "PANIC"),
-                _ => (2, "INFO")
+                "TRAC" => (LogLevel.Trace, "TRACE"),
+                "DEBU" => (LogLevel.Debug, "DEBUG"),
+                "INFO" => (LogLevel.Info, "INFO"),
+                "WARN" => (LogLevel.Warn, "WARN"),
+                "ERRO" => (LogLevel.Error, "ERROR"),
+                "ERROR" => (LogLevel.Error, "ERROR"),
+                "FATA" => (LogLevel.Fatal, "FATAL"),
+                "PANI" => (LogLevel.Panic, "PANIC"),
+                _ => (LogLevel.Info, "INFO")
             };
         }
 
@@ -352,14 +353,14 @@ internal sealed class SingBoxRunner : IDisposable
             if (v == "WARNING") v = "WARN";
             return v switch
             {
-                "TRACE" => (0, "TRACE"),
-                "DEBUG" => (1, "DEBUG"),
-                "INFO" => (2, "INFO"),
-                "WARN" => (3, "WARN"),
-                "ERROR" => (4, "ERROR"),
-                "FATAL" => (5, "FATAL"),
-                "PANIC" => (6, "PANIC"),
-                _ => (2, "INFO")
+                "TRACE" => (LogLevel.Trace, "TRACE"),
+                "DEBUG" => (LogLevel.Debug, "DEBUG"),
+                "INFO" => (LogLevel.Info, "INFO"),
+                "WARN" => (LogLevel.Warn, "WARN"),
+                "ERROR" => (LogLevel.Error, "ERROR"),
+                "FATAL" => (LogLevel.Fatal, "FATAL"),
+                "PANIC" => (LogLevel.Panic, "PANIC"),
+                _ => (LogLevel.Info, "INFO")
             };
         }
 
@@ -370,14 +371,14 @@ internal sealed class SingBoxRunner : IDisposable
             if (v == "WARNING") v = "WARN";
             return v switch
             {
-                "TRACE" => (0, "TRACE"),
-                "DEBUG" => (1, "DEBUG"),
-                "INFO" => (2, "INFO"),
-                "WARN" => (3, "WARN"),
-                "ERROR" => (4, "ERROR"),
-                "FATAL" => (5, "FATAL"),
-                "PANIC" => (6, "PANIC"),
-                _ => (2, "INFO")
+                "TRACE" => (LogLevel.Trace, "TRACE"),
+                "DEBUG" => (LogLevel.Debug, "DEBUG"),
+                "INFO" => (LogLevel.Info, "INFO"),
+                "WARN" => (LogLevel.Warn, "WARN"),
+                "ERROR" => (LogLevel.Error, "ERROR"),
+                "FATAL" => (LogLevel.Fatal, "FATAL"),
+                "PANIC" => (LogLevel.Panic, "PANIC"),
+                _ => (LogLevel.Info, "INFO")
             };
         }
 
@@ -387,60 +388,60 @@ internal sealed class SingBoxRunner : IDisposable
             var v = m4.Groups[1].Value.ToLowerInvariant();
             return v switch
             {
-                "trace" => (0, "TRACE"),
-                "debug" => (1, "DEBUG"),
-                "info" => (2, "INFO"),
-                "warn" => (3, "WARN"),
-                "warning" => (3, "WARN"),
-                "error" => (4, "ERROR"),
-                "fatal" => (5, "FATAL"),
-                "panic" => (6, "PANIC"),
-                _ => (2, "INFO")
+                "trace" => (LogLevel.Trace, "TRACE"),
+                "debug" => (LogLevel.Debug, "DEBUG"),
+                "info" => (LogLevel.Info, "INFO"),
+                "warn" => (LogLevel.Warn, "WARN"),
+                "warning" => (LogLevel.Warn, "WARN"),
+                "error" => (LogLevel.Error, "ERROR"),
+                "fatal" => (LogLevel.Fatal, "FATAL"),
+                "panic" => (LogLevel.Panic, "PANIC"),
+                _ => (LogLevel.Info, "INFO")
             };
         }
 
-        return (2, "INFO");
+        return (LogLevel.Info, "INFO");
     }
 
-    private static bool TryParseFastLevel(string s, out int level, out string text)
+    private static bool TryParseFastLevel(string s, out LogLevel level, out string text)
     {
-        level = 2;
+        level = LogLevel.Info;
         text = "INFO";
         if (s.Length >= 5 && s[4] == '[')
         {
             if (s.StartsWith("TRAC", StringComparison.Ordinal))
             {
-                level = 0; text = "TRACE"; return true;
+                level = LogLevel.Trace; text = "TRACE"; return true;
             }
             if (s.StartsWith("DEBU", StringComparison.Ordinal))
             {
-                level = 1; text = "DEBUG"; return true;
+                level = LogLevel.Debug; text = "DEBUG"; return true;
             }
             if (s.StartsWith("INFO", StringComparison.Ordinal))
             {
-                level = 2; text = "INFO"; return true;
+                level = LogLevel.Info; text = "INFO"; return true;
             }
             if (s.StartsWith("WARN", StringComparison.Ordinal))
             {
-                level = 3; text = "WARN"; return true;
+                level = LogLevel.Warn; text = "WARN"; return true;
             }
             if (s.StartsWith("ERRO", StringComparison.Ordinal))
             {
-                level = 4; text = "ERROR"; return true;
+                level = LogLevel.Error; text = "ERROR"; return true;
             }
             if (s.StartsWith("FATA", StringComparison.Ordinal))
             {
-                level = 5; text = "FATAL"; return true;
+                level = LogLevel.Fatal; text = "FATAL"; return true;
             }
             if (s.StartsWith("PANI", StringComparison.Ordinal))
             {
-                level = 6; text = "PANIC"; return true;
+                level = LogLevel.Panic; text = "PANIC"; return true;
             }
         }
 
         if (s.Length >= 6 && s[5] == '[' && s.StartsWith("ERROR", StringComparison.Ordinal))
         {
-            level = 4;
+            level = LogLevel.Error;
             text = "ERROR";
             return true;
         }
@@ -448,13 +449,13 @@ internal sealed class SingBoxRunner : IDisposable
         return false;
     }
 
-    private static (int Level, string Text, string Line) NormalizeSeverity(int level, string levelText, string line)
+    private static (LogLevel Level, string Text, string Line) NormalizeSeverity(LogLevel level, string levelText, string line)
     {
-        if (level < 4) return (level, levelText, line);
+        if (level < LogLevel.Error) return (level, levelText, line);
         if (!IsTransientConnectionClose(line)) return (level, levelText, line);
 
         var normalizedLine = SingBoxErrorPrefix.Replace(line, "WARN");
-        return (3, "WARN", normalizedLine);
+        return (LogLevel.Warn, "WARN", normalizedLine);
     }
 
     private static string StripLevelPrefix(string line)
