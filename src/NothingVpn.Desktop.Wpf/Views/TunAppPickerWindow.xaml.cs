@@ -37,21 +37,29 @@ public partial class TunAppPickerWindow : System.Windows.Window
     }
 
     private void OnSearch(object sender, System.Windows.Controls.TextChangedEventArgs e) => Refresh();
+
     private void Refresh()
     {
         if (AppsList is null || _loading) return;
         var selectedPath = (AppsList.SelectedItem as TunAppListItem)?.Path;
         var query = SearchBox.Text.Trim();
-        var items = _all.Where(x => query.Length == 0 || x.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase) || x.Path.Contains(query, StringComparison.OrdinalIgnoreCase)).ToArray();
+        var items = _all.Where(x => query.Length == 0
+                || x.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase)
+                || x.Path.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
         AppsList.ItemsSource = items;
         AppsList.SelectedItem = items.FirstOrDefault(x => x.Path == selectedPath);
-        StatusText.Text = items.Length == 0 ? "Приложения не найдены. Можно выбрать файл .exe в настройках." : $"Найдено: {items.Length}";
+        StatusText.Text = items.Length == 0
+            ? "Приложения не найдены. Можно выбрать файл .exe в настройках."
+            : $"Найдено: {items.Length}";
     }
+
     private void OnAccept(object sender, System.Windows.RoutedEventArgs e)
     {
         if (AppsList.SelectedItem is not TunAppListItem item) return;
         SelectedPath = item.Path;
         DialogResult = true;
     }
+
     private void OnCancel(object sender, System.Windows.RoutedEventArgs e) => DialogResult = false;
 }
