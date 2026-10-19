@@ -1,8 +1,9 @@
 # CLAUDE.md
 
-Nothing VPN — Windows-клиент VLESS на .NET 8: WPF-оболочка над `sing-box.exe`. Клиент генерирует JSON-конфиг
-sing-box, запускает его дочерним процессом и управляет системным прокси WinINET, UAC и треем. Режимы: `proxy`
-(mixed-inbound + системный прокси), `tun` (весь трафик), `tun_apps` (только выбранные `.exe`).
+Nothing VPN — Windows-клиент VLESS на .NET 8: WPF-оболочка над `sing-box.exe`. Интерфейс передаёт типизированный
+запрос службе Windows `NothingVpn`, которая строит JSON-конфиг sing-box и запускает его; сам интерфейс управляет
+системным прокси WinINET и треем. Режимы: `proxy` (mixed-inbound + системный прокси), `tun` (весь трафик),
+`tun_apps` (только выбранные `.exe`).
 
 Язык проекта — русский: UI, сообщения об ошибках для пользователя, документация. Идентификаторы — английские,
 комментарии встречаются на обоих языках.
@@ -19,11 +20,9 @@ dotnet test NothingVpn.sln -c Release --no-build
 dotnet test NothingVpn.sln -c Release --no-build --filter "FullyQualifiedName~SingBoxConfigGeneratorTests"
 .\build\Build.ps1 -Target Publish        # artifacts\publish\win-x64\NothingVpn.Desktop.Wpf.exe (+ sing-box.exe, wintun.dll)
 .\build\Build.ps1 -Target Installer      # Inno Setup 6 поверх существующего publish
-.\build\Test-UpdateHandoff.ps1           # desktop-тесты обновления; повторить с -RequireElevated из админ-терминала
 ```
 
-Базовая линия (19.10.2026, после шага 7б): сборка без предупреждений, 453 теста проходят, 3 desktop-теста пропущены
-намеренно.
+Базовая линия (19.10.2026, после шага 8): сборка без предупреждений, 453 теста проходят, пропущенных нет.
 Только Windows. `Publish` берёт `sing-box.exe`/`wintun.dll` из `-RuntimeAssetsDirectory` или из установленного
 клиента (`%ProgramFiles%\NothingVpn`, затем старый `%LOCALAPPDATA%\Programs\NothingVpn`). Ничего не устанавливайте и
 не регистрируйте службу на машине пользователя; установку проверяет он сам по `docs/SERVICE-INSTALL-CHECKLIST.md`.
@@ -34,7 +33,7 @@ dotnet test NothingVpn.sln -c Release --no-build --filter "FullyQualifiedName~Si
 src/NothingVpn.Domain          чистые политики и модели настроек (без зависимостей)
 src/NothingVpn.Application     use-case сервисы, модели, порты I*Port
 src/NothingVpn.Presentation    UI-независимые контроллеры экранов
-src/NothingVpn.Infrastructure  реализации портов: sing-box, DPAPI-хранилище, WinINET, UAC, обновления;
+src/NothingVpn.Infrastructure  реализации портов: sing-box, DPAPI-хранилище, WinINET, обновления;
                                Composition/ApplicationServicesFactory — composition root
 src/NothingVpn.Desktop.Wpf     упаковываемый клиент: Composition/DesktopCompositionRoot — UI-композиция,
                                Platform/ — трей, таймеры, тема, single-instance, обработка исключений
@@ -43,7 +42,7 @@ src/NothingVpn.Service         служба Windows NothingVpn (LocalSystem): я
                                per-user установки от имени пользователя
 src/NothingVpn.Tray            legacy WinForms, эталон до удаления; не публикуется
 tests/NothingVpn.Application.Tests  единственный тестовый проект, покрывает все слои включая WPF
-build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/NothingVpn.iss (per-machine, служба)
+build/                         Build.ps1, installer/NothingVpn.iss (per-machine, служба)
 ```
 
 Ключевые файлы:
@@ -51,8 +50,8 @@ build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/Noth
 - `Application/Engine/` — граница «интерфейс ↔ ядро»: порт `IVpnEngine`, контракт `EngineConnectRequest`/`EngineStatus`
   (версия `EngineContract.Version`), ядро `SingBoxVpnEngine` (валидация запроса, конфиг, запуск sing-box) — внутри
   клиента и в службе; `IEngineRuleSetStore` — откуда ядро берёт rule-set.
-- `Application/Services/VpnConnectionService.cs` — клиентская оркестрация подключения: state.json, WinINET, UAC,
-  откат, восстановление после остановки ядра.
+- `Application/Services/VpnConnectionService.cs` — клиентская оркестрация подключения: state.json, WinINET,
+  проверка прав для ядра в процессе, откат, восстановление после остановки ядра.
 - `Infrastructure/SingBox/SingBoxConfigGenerator.cs` — вся генерация конфига; `SingBoxRunner.cs` — процесс sing-box.
 - `Domain/Policies/*` — правила маршрутизации, DNS, TUN, значения по умолчанию; меняйте поведение здесь, а не в
   генераторе или UI. `Application/Services/AppStateNormalizer.cs` — единственная точка нормализации состояния.
@@ -86,8 +85,9 @@ build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/Noth
   толерантное (неизвестное → значение по умолчанию, не исключение). Enum в строку — только `ToValue()`, не `ToString()`.
 - `VlessLinkParser.StableId` — Id профиля; на нём держатся активный профиль и синхронизация подписок.
 - Хеш profileId → адреса TUN; `BuiltinId`/`Tag` встроенных rule-set.
-- Аргументы `--takeover --start --mode --profile`, `--smoke-test`; мьютекс `Global\NothingVpn.Desktop.Wpf`;
-  имя `NothingVpn.Desktop.Wpf.exe`; ассет `NothingVpnSetup.exe` в `EXTRBXY/vpn`.
+- Аргументы `--start --mode --profile`, `--smoke-test` (`--takeover` удалён на шаге 8 и игнорируется);
+  мьютекс `Global\NothingVpn.Desktop.Wpf` (он же `AppMutex` установщика); имя `NothingVpn.Desktop.Wpf.exe`;
+  ассет `NothingVpnSetup.exe` в `EXTRBXY/vpn`.
 - Служба `NothingVpn`, канал `NothingVpn.Service`, каталог установки `%ProgramFiles%\NothingVpn` (только он: служба
   от SYSTEM запускает файлы оттуда), `AppId` установщика, `NothingVpn.Service.exe --migrate-user-install`.
 
@@ -110,7 +110,7 @@ build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/Noth
   (сейчас 2) и записью в ADR-0001. Поля конверта канала `contractVersion`/`type`/`id`/`error` не меняются никогда.
 - Клиент канала проверяет сервер (`LocalSystemPipeServerVerifier`) до отправки первого байта — не ослабляйте и не
   обходите проверку; в тестах её подменяет внутренний `IPipeServerVerifier`.
-  WinINET, state.json и UAC остаются в `VpnConnectionService`, а не в ядре.
+  WinINET и state.json остаются в `VpnConnectionService`, а не в ядре.
 - Секреты в журнал — только через `ILogPort.Append` / `InMemoryLogStore.AppendStructured` (маскирует `LogRedactor`).
   Никогда не логировать UUID, ключи, URL подписок.
 - Необработанные исключения WPF ловит `Platform/GlobalExceptionHandler` (журнал + сообщение; фатальные — попытка
@@ -118,17 +118,18 @@ build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/Noth
 - Страница настроек разделена на разделы (`ViewModels/Settings/*`), но сохраняется одной операцией в
   `SettingsViewModel.Save`. Новое поле настроек — в раздел (`Load`/`ToSettings`) и в черновик сохранения.
 - Конфиг sing-box в `configs\` лежит открытым текстом; он обязан удаляться при остановке и откате.
-- TUN через службу прав интерфейсу не требует (`IVpnEngine.TunRequiresElevatedCaller`). `runas --takeover` остался
-  только для ядра в процессе (`NOTHINGVPN_ENGINE=inprocess`) и удаляется на шаге 8
-  ([docs/adr/0001-privileged-service.md](docs/adr/0001-privileged-service.md)); не наращивайте код вокруг повышения клиента.
+- TUN через службу прав интерфейсу не требует (`IVpnEngine.TunRequiresElevatedCaller`). Интерфейс себя не повышает
+  (шаг 8, [docs/adr/0001-privileged-service.md](docs/adr/0001-privileged-service.md)): ядро в процессе
+  (`NOTHINGVPN_ENGINE=inprocess`) без прав отклоняет TUN ошибкой. Не возвращайте `runas`/`--takeover`.
   Недоступная служба — ошибка пользователю, а не откат на ядро в процессе.
 - Перезапущенный интерфейс подхватывает сессию, работающую в службе: `RecoverStaleRuntimeState` её не трогает, флаги
   прокси остаются в state.json до отключения.
 - Установщик повышен: пользовательское (HKCU, `%LOCALAPPDATA%`, ярлыки пользователя) — только через
   `ExecAsOriginalUser` (`--migrate-user-install`), не из повышенного `[Code]`. Старый деинсталлятор ≤ 0.6.8 не
   запускать: в тихом режиме он удаляет данные.
-- Обновление из повышенного клиента запускается только через неповышенный токен (`WindowsUserProcessLauncher`).
-  Не добавлять запасной повышенный путь, `runas`, `UseShellExecute` для установщика. См. `docs/UPDATE-HANDOFF.md`.
+- Установщик обновления запускает `InstallerLaunchService` после штатного выхода клиента (VPN отключён, мьютекс
+  освобождён): `Process.Start` с `UseShellExecute=false`, имя файла по `InstallerFilePolicy`, отказ, если процесс
+  клиента повышен. Не добавлять `runas`, `UseShellExecute`, запуск до выхода. См. `docs/UPDATE-HANDOFF.md`.
 - WPF smoke-test и запуск клиента используют настоящий каталог данных текущего пользователя.
 
 ## Стиль

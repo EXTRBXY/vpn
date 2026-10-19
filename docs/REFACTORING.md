@@ -16,11 +16,11 @@
 | Формула Id профиля (SHA-256, 16 hex) | `Infrastructure/Profile/VlessLinkParser.cs` (`StableId`) | `activeProfileId`, синхронизация подписок |
 | Хеш profileId → адреса TUN `198.18.x.y/30` и `fdfe:dcba:9876:…/126` | `Domain/Policies/TunInterfacePolicy.cs` | стабильность адресов интерфейса |
 | `BuiltinId`/`Tag`/`FileName` встроенных rule-set | `Infrastructure/RuleSets/BuiltinGeositeRuleSets.cs` | сопоставление с записями в состоянии и файлами на диске |
-| Аргументы `--takeover --start --mode --profile`, `--smoke-test` | `VpnConnectionService`, `AppLifecycleService`, `Desktop.Wpf/Platform/StartupOptions.cs` | перезапуск с UAC, CI smoke-test |
+| Аргументы `--start --mode --profile`, `--smoke-test` (`--takeover` удалён на шаге 8) | `Desktop.Wpf/Platform/StartupOptions.cs` | ярлыки и скрипты пользователей, пересылка второму экземпляру, CI smoke-test |
 | Мьютекс `Global\NothingVpn.Desktop.Wpf` и канал `NothingVpn.Desktop.Wpf.pipe` | `Desktop.Wpf/App.xaml.cs` (`AppId`) | установщик (`AppMutex`), второй экземпляр |
 | Имя exe `NothingVpn.Desktop.Wpf.exe` | csproj, `.iss`, `Build.ps1`, `release.yml` | ярлыки, автозапуск в `HKCU\...\Run`, обновление поверх |
 | Ассет релиза `NothingVpnSetup.exe`, репозиторий `EXTRBXY/vpn` | `Infrastructure/Updates/GitHubAppUpdateService.cs`, `Domain/Updates/*` | автообновление уже установленных версий |
-| Тихие аргументы установщика и протокол `READY`/`COMMIT`/`COMMITTED` | `Infrastructure/Updates/InstallerLaunchService.cs`, `InstallerUpdateWorker.cs` | обновление из повышенного клиента |
+| Тихие аргументы установщика `/SILENT /SP- /SUPPRESSMSGBOXES /CLOSEAPPLICATIONS /NORESTART` (протокол `READY`/`COMMIT` удалён на шаге 8) | `Infrastructure/Updates/InstallerLaunchService.cs` | тихое обновление поверх установленной версии |
 | `AppId` Inno Setup `{A2D610D2-…}` | `.iss`, `LegacyUserInstallMigration` | обновление поверх, а не параллельная установка; по нему находится старая per-user установка |
 | Служба `NothingVpn` (LocalSystem), канал `NothingVpn.Service`, каталог `%ProgramFiles%\NothingVpn`, ключ `NothingVpn.Service.exe --migrate-user-install` | `NothingVpnWindowsService`, `ServiceProtocol`, `.iss` | установщик останавливает и удаляет службу по имени; установленные версии обновляются поверх |
 | Итоговый JSON sing-box | `SingBoxConfigGenerator` | поведение маршрутизации; порядок правил значим |
@@ -204,7 +204,8 @@ Application.Models); реализации — `LogPort` и `TunAppsSelectionServ
 ### 3.8. Мелочи
 
 - `Application/Class1.cs` — пустой шаблонный класс.
-- `AppLifecycleService.BuildTakeoverArgs` дублирует формирование аргументов в `VpnConnectionService.ConnectAsync`.
+- ~~`AppLifecycleService.BuildTakeoverArgs` дублирует формирование аргументов в `VpnConnectionService.ConnectAsync`.~~
+  Удалено вместе с UAC-перезапуском (шаг 8).
 - `DiagnosticsService.ExportLogs`, `IAppUpdateController.GetCurrentReleaseAsync`, `AppPathsModel.LogsDir`,
   `AppStateModel.DebugLogs` в WPF не используются.
 - ~~Часть WPF-файлов записана «в строку» (`StartupOptions`, `ThemeManager`, `DiagnosticsViewModel`, `UpdateViewModel`,
@@ -288,13 +289,17 @@ WinForms-клиент ещё в решении как эталон (`docs/WPF-MI
      автозапуск переносится на новый exe. Интерфейс по умолчанию работает через службу, TUN без UAC; ядро в процессе —
      только при `NOTHINGVPN_ENGINE=inprocess`. Перезапущенный интерфейс подхватывает работающую в службе сессию.
      Каталог данных службы, созданный заранее пользователем, служба не принимает. Код UAC-перезапуска и
-     UPDATE-HANDOFF оставлен до шага 8.
+     UPDATE-HANDOFF оставался до шага 8.
    - **7в. Переход.** ✅ Эмуляция пройдена 19.10.2026: установщик, запущенный как его запускает 0.6.8 (без прав,
      `UseShellExecute=false`, `/SILENT …`), показал UAC и установился; старая копия убрана, данные и настройки
      целы. **Промежуточный релиз не нужен.** Остаётся проверить настоящее обновление после публикации релиза со
      службой ([чек-лист, 7в-Б](SERVICE-INSTALL-CHECKLIST.md#б-настоящее-обновление)).
-8. **Удаление повышения клиента.** Убрать `--takeover`/`runas`, `WindowsUserProcessLauncher`,
-   `InstallerUpdateWorker`, протокол `READY/COMMIT`; обновить UPDATE-HANDOFF.md и SECURITY.md.
+8. **Удаление повышения клиента.** ✅ Готово (19.10.2026): удалены UAC-перезапуск (`--takeover`/`runas`, ожидание
+   мьютекса, `ElevationArgs`/`ExitCurrentProcess`, `IAppLifecycleService`), `WindowsUserProcessLauncher`,
+   `InstallerUpdateWorker` и протокол `READY/COMMIT` вместе с desktop-тестами и `Test-UpdateHandoff.ps1`. Ядро в
+   процессе без прав отклоняет TUN ошибкой. Установщик запускается напрямую после штатного выхода клиента, с отказом
+   в повышенном процессе ([UPDATE-HANDOFF.md](UPDATE-HANDOFF.md)). `NothingVpn.Tray` адаптирован минимально. Ручная
+   проверка обновления из интерфейса — [чек-лист, раздел 7](SERVICE-INSTALL-CHECKLIST.md#7-обновление-из-интерфейса).
 9. **Удаление WinForms.** После закрытия разрывов (раздел 4): удалить `NothingVpn.Tray`, `TunAppIconCache`,
    зависимость Infrastructure от WinForms (3.6, 3.7).
 10. **Сборка.** Единая версия, исправление `build-app.cmd`, актуализация `.cursor`-правил (раздел 5).
