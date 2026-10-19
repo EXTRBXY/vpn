@@ -15,6 +15,7 @@ $ErrorActionPreference = 'Stop'
 $script:RepoRoot = Split-Path -Parent $PSScriptRoot
 $script:Solution = Join-Path $script:RepoRoot 'NothingVpn.sln'
 $script:DesktopProject = Join-Path $script:RepoRoot 'src\NothingVpn.Desktop.Wpf\NothingVpn.Desktop.Wpf.csproj'
+$script:ServiceProject = Join-Path $script:RepoRoot 'src\NothingVpn.Service\NothingVpn.Service.csproj'
 $script:Artifacts = Join-Path $script:RepoRoot 'artifacts'
 $script:PublishDirectory = Join-Path $script:Artifacts "publish\$Runtime"
 $script:TestResultsDirectory = Join-Path $script:Artifacts 'test-results'
@@ -114,18 +115,23 @@ function Invoke-Publish {
     }
     New-Item -ItemType Directory -Path $script:PublishDirectory -Force | Out-Null
     $versionArguments = Get-VersionArguments
-    $arguments = @(
-        'publish', $script:DesktopProject,
-        '-c', $Configuration,
-        '-r', $Runtime,
-        '--no-restore',
-        '--output', $script:PublishDirectory) + $versionArguments
-    Invoke-DotNet -Arguments $arguments
+    # The service (refactoring step 7a) is published next to the client; the installer does not ship it yet (step 7b).
+    foreach ($project in @($script:DesktopProject, $script:ServiceProject)) {
+        $arguments = @(
+            'publish', $project,
+            '-c', $Configuration,
+            '-r', $Runtime,
+            '--no-restore',
+            '--output', $script:PublishDirectory) + $versionArguments
+        Invoke-DotNet -Arguments $arguments
+    }
     Copy-RuntimeAssets
 
-    $application = Join-Path $script:PublishDirectory 'NothingVpn.Desktop.Wpf.exe'
-    if (-not (Test-Path -LiteralPath $application)) {
-        throw "Publish output not found: $application"
+    foreach ($name in @('NothingVpn.Desktop.Wpf.exe', 'NothingVpn.Service.exe')) {
+        $output = Join-Path $script:PublishDirectory $name
+        if (-not (Test-Path -LiteralPath $output)) {
+            throw "Publish output not found: $output"
+        }
     }
     Write-Host "Publish output: $script:PublishDirectory"
 }

@@ -190,6 +190,8 @@ Application.Models); реализации — `LogPort` и `TunAppsSelectionServ
 `Environment.ProcessPath`) и `System.Drawing` в `TrayStatusIconBuilder` (UI-код в Infrastructure).
 
 Шаг 5: `TrayStatusIconBuilder` из Infrastructure убран (WPF и Tray держат свои копии); остальное — по-прежнему.
+С шага 7а зависимость стоит дороже: служба ссылается на Infrastructure и несёт WindowsDesktop runtime (exe ~72 МБ
+даже со сжатием).
 
 ### 3.7. Дублирование между WinForms и WPF
 
@@ -243,7 +245,7 @@ WinForms-клиент ещё в решении как эталон (`docs/WPF-MI
 
 - `.cursor/rules/nothing-vpn-singbox-architecture.mdc` описывает UI как WinForms.
 - `build-app.cmd` выводит путь к `NothingVpn.Tray.exe`, хотя публикуется `NothingVpn.Desktop.Wpf.exe`.
-- Версия `0.6.8` захардкожена в пяти местах: два csproj, `Build.ps1` (значение по умолчанию для установщика),
+- Версия `0.6.8` захардкожена в шести местах: три csproj (WPF, Tray, Service — с шага 7а), `Build.ps1` (значение по умолчанию для установщика),
   `.iss`, `release.yml` (значение по умолчанию для ручного запуска). Кандидат на `Directory.Build.props`.
 - `docs/WPF-MIGRATION.md` описывает план миграции, который в основном выполнен.
 
@@ -268,9 +270,20 @@ WinForms-клиент ещё в решении как эталон (`docs/WPF-MI
    стал клиентской оркестрацией (state.json, WinINET, UAC, откат). Rule-set пока передаются ссылкой на файл
    каталога rule-set — передача содержимого перенесена на шаг 7. См. [ADR-0001](adr/0001-privileged-service.md),
    ARCHITECTURE.md («Граница "интерфейс ↔ ядро"»).
-7. **Служба Windows.** `NothingVpn.Service` — вторая реализация порта, канал с ACL, per-machine установщик,
-   удаление старой per-user установки. Перед релизом — ручная проверка обновления с 0.6.8 (раздел «Переход» в ADR);
-   по её итогам при необходимости промежуточный релиз.
+7. **Служба Windows.** Разбит на три части, каждая — отдельный PR (подробно — ADR-0001, «Порядок внедрения»):
+   - **7а. Служба и транспорт по каналу.** ✅ Готово: проект `NothingVpn.Service` (служба Windows поверх
+     `SingBoxVpnEngine`, sing-box только из своего каталога, данные в `%ProgramData%\NothingVpn` с ACL, журнал
+     маскируется в службе), протокол канала (кадры с длиной и JSON с версией контракта, команды `connect`,
+     `disconnect`, `getStatus`, `subscribeLog`, события статуса и журнала, пределы и тайм-ауты), ACL канала и
+     `FILE_FLAG_FIRST_PIPE_INSTANCE`, проверка клиентом, что сервер — служба от LocalSystem, клиент `PipeVpnEngine`,
+     контракт v2 (rule-set содержимым). Установщик не менялся; клиент по умолчанию работает с ядром внутри процесса
+     (служба — только при `NOTHINGVPN_ENGINE=service`), поведение релиза прежнее. Служба публикуется рядом с
+     клиентом. Итоговый JSON sing-box внутри процесса не изменился (эталоны те же); у службы отличаются только пути
+     rule-set.
+   - **7б. Установка.** Per-machine установщик в `Program Files`, регистрация и запуск службы, удаление старой
+     per-user установки с сохранением данных, интерфейс работает через службу.
+   - **7в. Переход.** Ручная проверка обновления с 0.6.8 (раздел «Переход» в ADR); по её итогам при необходимости
+     промежуточный релиз.
 8. **Удаление повышения клиента.** Убрать `--takeover`/`runas`, `WindowsUserProcessLauncher`,
    `InstallerUpdateWorker`, протокол `READY/COMMIT`; обновить UPDATE-HANDOFF.md и SECURITY.md.
 9. **Удаление WinForms.** После закрытия разрывов (раздел 4): удалить `NothingVpn.Tray`, `TunAppIconCache`,

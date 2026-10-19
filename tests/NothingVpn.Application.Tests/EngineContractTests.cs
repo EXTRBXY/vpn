@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Nodes;
 using NothingVpn.Application.Engine;
 using NothingVpn.Application.Models;
@@ -22,7 +22,8 @@ public sealed class EngineContractTests : IDisposable
     public void ContractVersion_IsPinned()
     {
         // Смена версии — осознанное несовместимое изменение протокола: обновите тест и ADR-0001.
-        Assert.Equal(1, EngineContract.Version);
+        // v2 (шаг 7а): rule-set содержимым для службы.
+        Assert.Equal(2, EngineContract.Version);
         Assert.Equal(EngineContract.Version, new EngineConnectRequest().ContractVersion);
         Assert.Equal(EngineContract.Version, new EngineStatus().ContractVersion);
     }
@@ -79,7 +80,8 @@ public sealed class EngineContractTests : IDisposable
 
         Assert.Equal(json, JsonSerializer.Serialize(restored));
         var node = JsonNode.Parse(json)!;
-        Assert.Equal(1, (int)node["contractVersion"]!);
+        Assert.Equal(2, (int)node["contractVersion"]!);
+        Assert.Null(node["ruleSets"]![0]!["content"]);
         Assert.Equal("tun_apps", (string?)node["mode"]);
         Assert.Equal("debug", (string?)node["logLevel"]);
         Assert.Equal("system", (string?)node["dns"]!["mode"]);
@@ -102,6 +104,21 @@ public sealed class EngineContractTests : IDisposable
         Assert.DoesNotContain(names, n => n.Contains("Json", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(names, n => n.Contains("Dir", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(names, n => n.Contains("ConfigPath", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void RuleSetContent_RoundtripsAsBase64()
+    {
+        var request = new EngineConnectRequest
+        {
+            RuleSets = [new EngineRuleSet { Tag = "ads", FileName = "ads.srs", Content = [1, 2, 3, 250] }]
+        };
+
+        var json = JsonSerializer.Serialize(request);
+        var restored = JsonSerializer.Deserialize<EngineConnectRequest>(json)!;
+
+        Assert.Equal("AQID+g==", (string?)JsonNode.Parse(json)!["ruleSets"]![0]!["content"]);
+        Assert.Equal(new byte[] { 1, 2, 3, 250 }, restored.RuleSets[0].Content);
     }
 
     [Fact]

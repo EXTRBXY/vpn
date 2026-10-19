@@ -27,4 +27,12 @@ internal sealed class LegacyRuntimeContext
         LogStore = logStore;
         Runner = new SingBoxRunner("sing-box.exe", LogStore);
     }
+
+    /// <summary>Контекст службы: свои пути (%ProgramData%) и раннер, ищущий sing-box только в каталоге службы.</summary>
+    public LegacyRuntimeContext(AppPaths paths, InMemoryLogStore logStore, SingBoxRunner runner)
+    {
+        Paths = paths;
+        LogStore = logStore;
+        Runner = runner;
+    }
 }

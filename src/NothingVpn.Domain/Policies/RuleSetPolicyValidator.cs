@@ -52,6 +52,31 @@ public static class RuleSetPolicyValidator
             throw new InvalidOperationException("Найдены дублирующиеся rule-set tag.");
     }
 
+    /// <summary>Предел одного .srs, переданного ядру содержимым (служба, ADR-0001). Встроенные наборы — десятки КиБ.</summary>
+    public const int MaxContentBytes = 8 * 1024 * 1024;
+
+    /// <summary>Предел всех rule-set одного запроса: держит размер сообщения канала службы ограниченным.</summary>
+    public const int MaxTotalContentBytes = 16 * 1024 * 1024;
+
+    /// <summary>Проверяет размеры содержимого rule-set (в байтах) по пределам ядра.</summary>
+    public static void EnsureContentWithinLimits(IEnumerable<int> contentSizes)
+    {
+        long total = 0;
+        foreach (var size in contentSizes)
+        {
+            if (size <= 0)
+                throw new InvalidOperationException("Файл rule-set (.srs) пустой.");
+            if (size > MaxContentBytes)
+                throw new InvalidOperationException(
+                    $"Файл rule-set (.srs) слишком большой: больше {MaxContentBytes / (1024 * 1024)} МиБ.");
+
+            total += size;
+            if (total > MaxTotalContentBytes)
+                throw new InvalidOperationException(
+                    $"Rule-set (.srs) вместе занимают больше {MaxTotalContentBytes / (1024 * 1024)} МиБ.");
+        }
+    }
+
     public static bool IsSafeRuleSetFileName(string fileName)
     {
         var raw = (fileName ?? string.Empty).Trim();

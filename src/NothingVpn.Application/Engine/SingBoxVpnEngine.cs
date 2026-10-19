@@ -8,7 +8,7 @@ namespace NothingVpn.Application.Engine;
 
 /// <summary>
 /// Ядро поверх <see cref="ISingBoxPort"/>: валидация запроса, конфиг, check/run/stop, статус процесса, выход
-/// процесса. Сейчас работает внутри процесса интерфейса; на шаге 7 тот же класс будет работать в службе.
+/// процесса. Работает внутри процесса интерфейса и в службе (с её портами и <see cref="IEngineRuleSetStore"/>).
 /// Ничего не знает о state.json, системном прокси и UAC.
 /// </summary>
 public sealed class SingBoxVpnEngine : IVpnEngine
@@ -20,6 +20,7 @@ public sealed class SingBoxVpnEngine : IVpnEngine
     private readonly IDiagnosticsPort _diagnosticsPort;
     private readonly IPathPolicyPort _pathPolicy;
     private readonly ILogPort _logPort;
+    private readonly IEngineRuleSetStore _ruleSets;
     private readonly SemaphoreSlim _lock = new(1, 1);
     private EngineStatus _session = EngineStatus.Stopped;
 
@@ -27,9 +28,11 @@ public sealed class SingBoxVpnEngine : IVpnEngine
         ISingBoxPort singBoxPort,
         IDiagnosticsPort diagnosticsPort,
         IPathPolicyPort pathPolicy,
-        ILogPort logPort)
+        ILogPort logPort,
+        IEngineRuleSetStore? ruleSets = null)
     {
         _singBoxPort = singBoxPort;
+        _ruleSets = ruleSets ?? ReferencedRuleSetStore.Instance;
         _diagnosticsPort = diagnosticsPort;
         _pathPolicy = pathPolicy;
         _logPort = logPort;
@@ -53,9 +56,10 @@ public sealed class SingBoxVpnEngine : IVpnEngine
             if (_singBoxPort.IsRunning)
                 StopCore();
 
-            var configPath = _singBoxPort.WriteConfig(profile, state);
             try
             {
+                ApplyRuleSetFiles(request, state);
+                var configPath = _singBoxPort.WriteConfig(profile, state);
                 _singBoxPort.ValidateConfig(configPath);
                 _singBoxPort.Start(configPath);
                 await WaitForSingBoxRunningAsync(cancellationToken).ConfigureAwait(false);
@@ -132,7 +136,23 @@ public sealed class SingBoxVpnEngine : IVpnEngine
             VlessEndpointPolicy.EnsureLocalPort(state.LocalMixedPort);
         ConnectionPolicy.EnsureTunAppsHasTargets(state.Mode, state.TunAppProcessPaths);
         RuleSetPolicyValidator.ValidateEnabled(ConnectionSettingsMapper.ToRuleSetEntries(state.UserRuleSets));
+        RuleSetPolicyValidator.EnsureContentWithinLimits(
+            (request.RuleSets ?? []).Where(rs => rs.Content is not null).Select(rs => rs.Content!.Length));
         return (profile, state);
+    }
+
+    /// <summary>
+    /// Имена файлов rule-set в конфиге — из хранилища ядра: внутри процесса те же, что в запросе, в службе —
+    /// файлы её каталога с переданным содержимым. Записи состояния соответствуют запросу один к одному
+    /// (<see cref="EngineRequestMapper.ToState"/>, нормализация rule-set не трогает, дубли тегов отклонены).
+    /// </summary>
+    private void ApplyRuleSetFiles(EngineConnectRequest request, Models.AppStateModel state)
+    {
+        var fileNames = _ruleSets.Prepare(request.RuleSets ?? []);
+        if (fileNames.Count != state.UserRuleSets.Count)
+            throw new InvalidOperationException("Хранилище rule-set ядра вернуло неверное число файлов.");
+        for (var i = 0; i < fileNames.Count; i++)
+            state.UserRuleSets[i].FileName = fileNames[i];
     }
 
     private void StopCore()
@@ -145,7 +165,14 @@ public sealed class SingBoxVpnEngine : IVpnEngine
         {
             Volatile.Write(ref _session, EngineStatus.Stopped);
             _singBoxPort.TryDeleteLastConfig();
+            ClearRuleSets();
         }
+    }
+
+    private void ClearRuleSets()
+    {
+        try { _ruleSets.Clear(); }
+        catch { }
     }
 
     private void OnProcessExited()
@@ -161,6 +188,7 @@ public sealed class SingBoxVpnEngine : IVpnEngine
 
             Volatile.Write(ref _session, EngineStatus.Stopped);
             _singBoxPort.TryDeleteLastConfig();
+            ClearRuleSets();
         }
         finally
         {
