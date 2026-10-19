@@ -22,7 +22,8 @@ dotnet test NothingVpn.sln -c Release --no-build --filter "FullyQualifiedName~Si
 .\build\Test-UpdateHandoff.ps1           # desktop-тесты обновления; повторить с -RequireElevated из админ-терминала
 ```
 
-Базовая линия (19.10.2026): сборка без предупреждений, 391 тест проходит, 3 desktop-теста пропущены намеренно.
+Базовая линия (19.10.2026, после шага 7а): сборка без предупреждений, 441 тест проходит, 3 desktop-теста пропущены
+намеренно.
 Только Windows. `Publish` берёт `sing-box.exe`/`wintun.dll` из `-RuntimeAssetsDirectory` или из установленного
 клиента в `%LOCALAPPDATA%\Programs\NothingVpn`.
 
@@ -36,6 +37,8 @@ src/NothingVpn.Infrastructure  реализации портов: sing-box, DPAP
                                Composition/ApplicationServicesFactory — composition root
 src/NothingVpn.Desktop.Wpf     упаковываемый клиент: Composition/DesktopCompositionRoot — UI-композиция,
                                Platform/ — трей, таймеры, тема, single-instance, обработка исключений
+src/NothingVpn.Service         служба Windows (шаг 7а): ядро sing-box и канал NothingVpn.Service; публикуется рядом
+                               с клиентом, установщик её пока не ставит
 src/NothingVpn.Tray            legacy WinForms, эталон до удаления; не публикуется
 tests/NothingVpn.Application.Tests  единственный тестовый проект, покрывает все слои включая WPF
 build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/NothingVpn.iss
@@ -44,7 +47,8 @@ build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/Noth
 Ключевые файлы:
 
 - `Application/Engine/` — граница «интерфейс ↔ ядро»: порт `IVpnEngine`, контракт `EngineConnectRequest`/`EngineStatus`
-  (версия `EngineContract.Version`), in-process ядро `SingBoxVpnEngine` (валидация запроса, конфиг, запуск sing-box).
+  (версия `EngineContract.Version`), ядро `SingBoxVpnEngine` (валидация запроса, конфиг, запуск sing-box) — внутри
+  клиента и в службе; `IEngineRuleSetStore` — откуда ядро берёт rule-set.
 - `Application/Services/VpnConnectionService.cs` — клиентская оркестрация подключения: state.json, WinINET, UAC,
   откат, восстановление после остановки ядра.
 - `Infrastructure/SingBox/SingBoxConfigGenerator.cs` — вся генерация конфига; `SingBoxRunner.cs` — процесс sing-box.
@@ -52,6 +56,9 @@ build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/Noth
   генераторе или UI. `Application/Services/AppStateNormalizer.cs` — единственная точка нормализации состояния.
 - `Application/Services/SettingsService.cs` — единственный путь записи `state.json` для UI.
 - `Infrastructure/Security/DpapiJsonFile.cs` — формат всех файлов данных.
+- `Infrastructure/ServiceChannel/*` — протокол канала службы, сервер, клиент `PipeVpnEngine`, ACL и проверка сервера;
+  `Infrastructure/ServiceHost/ServiceEngineHost.cs` — composition root службы. Протокол — ADR-0001, шаг 7а.
+  Клиент использует службу только при `NOTHINGVPN_ENGINE=service`; по умолчанию ядро внутри процесса.
 
 ## Архитектурные правила
 
@@ -92,9 +99,12 @@ build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/Noth
 - Runtime-флаги `ProxyWasEnabledByUs`/`PreviousProxySettings` пишет только `VpnConnectionService`;
   `SettingsService.UpdateState` их не меняет (`ConnectionRuntimeState`), даже если колбэк их присвоил.
 - `GetStatus`/`IsRunning` не читают диск: процесс — из `IVpnEngine.GetStatus`, режим/профиль — из сессии в памяти.
-- sing-box запускается только через `IVpnEngine` — это будущий контракт канала службы. Запрос к ядру типизированный:
+- sing-box запускается только через `IVpnEngine` — это и контракт канала службы. Запрос к ядру типизированный:
   никакого готового JSON sing-box и путей, куда ядро пишет. Новое поле, нужное ядру, — в `EngineConnectRequest`
-  (с `[JsonPropertyName]`) и `EngineRequestMapper`; несовместимое изменение — с ростом `EngineContract.Version`.
+  (с `[JsonPropertyName]`) и `EngineRequestMapper`; несовместимое изменение — с ростом `EngineContract.Version`
+  (сейчас 2) и записью в ADR-0001. Поля конверта канала `contractVersion`/`type`/`id`/`error` не меняются никогда.
+- Клиент канала проверяет сервер (`LocalSystemPipeServerVerifier`) до отправки первого байта — не ослабляйте и не
+  обходите проверку; в тестах её подменяет внутренний `IPipeServerVerifier`.
   WinINET, state.json и UAC остаются в `VpnConnectionService`, а не в ядре.
 - Секреты в журнал — только через `ILogPort.Append` / `InMemoryLogStore.AppendStructured` (маскирует `LogRedactor`).
   Никогда не логировать UUID, ключи, URL подписок.
@@ -117,5 +127,5 @@ build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/Noth
 - Нормализуйте и валидируйте входные значения через Domain-политики, а не локально.
 - Сетевые HTTP-клиенты ставят явный `UseProxy = false`, если запрос не должен идти через собственный VPN.
 - Тестовые фейки объявляются внутри тестового класса. Для WPF-тестов нужен STA-поток (см. `WpfSettingsBindingTests`).
-- Версия (`0.6.8`) захардкожена в обоих csproj, `Build.ps1`, `.iss`, `release.yml` — при смене версии менять везде.
+- Версия (`0.6.8`) захардкожена в трёх csproj (WPF, Tray, Service), `Build.ps1`, `.iss`, `release.yml` — при смене версии менять везде.
 - Релиз: push тега `vX.Y.Z` → GitHub Actions собирает и публикует установщик.

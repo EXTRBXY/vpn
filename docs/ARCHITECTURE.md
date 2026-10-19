@@ -16,6 +16,7 @@ Nothing VPN — Windows-клиент VLESS. Приложение не реали
 | `NothingVpn.Presentation` | `net8.0` | UI-независимые контроллеры экранов (`*Controller`) и снимки состояния для любого фронтенда. |
 | `NothingVpn.Infrastructure` | `net8.0-windows` | Реализации портов: sing-box (генератор + раннер), DPAPI-хранилище, WinINET, UAC, GitHub-обновления, поиск приложений. Содержит composition root `ApplicationServicesFactory`. |
 | `NothingVpn.Desktop.Wpf` | `net8.0-windows` | Упаковываемый клиент: окна, view model'и, трей, single-instance, тема, обработка исключений. UI-композиция — `Composition/DesktopCompositionRoot`. |
+| `NothingVpn.Service` | `net8.0-windows` | Служба Windows (шаг 7а): хостит ядро и канал `NothingVpn.Service`. Тонкий exe над `Infrastructure/ServiceHost`. Публикуется рядом с клиентом, установщик её пока не ставит. |
 | `NothingVpn.Tray` | `net8.0-windows` | Legacy WinForms-клиент. Не публикуется и не входит в установщик. |
 | `tests/NothingVpn.Application.Tests` | `net8.0-windows` | Единственный тестовый проект; покрывает все слои, включая WPF. |
 
@@ -38,28 +39,29 @@ WinForms-клиент (`NothingVpn.Tray`) по-прежнему обращает
 ## Граница «интерфейс ↔ ядро»
 
 Запуск sing-box отделён от остального клиента портом `IVpnEngine` (`Application/Engine/`, шаг 6 рефакторинга,
-[ADR-0001](adr/0001-privileged-service.md)). Это будущий контракт канала привилегированной службы:
+[ADR-0001](adr/0001-privileged-service.md)). Это же контракт канала привилегированной службы:
 
 ```text
 UI / Presentation ──► VpnConnectionService (оркестрация, процесс интерфейса) ──► IVpnEngine
                        профиль и state.json, UAC (--takeover),                    │
-                       WinINET и runtime-флаги, откат,                            ├─ SingBoxVpnEngine (сейчас, в процессе)
-                       восстановление после остановки ядра                        └─ клиент канала службы (шаг 7)
+                       WinINET и runtime-флаги, откат,                            ├─ SingBoxVpnEngine (в процессе, по умолчанию)
+                       восстановление после остановки ядра                        └─ PipeVpnEngine → канал → служба (шаг 7а)
 ```
 
 - **Команды**: `ConnectAsync(EngineConnectRequest)`, `DisconnectAsync`, `GetStatus`; событие `StatusChanged(EngineStatus)`.
 - **`EngineConnectRequest`** — типизированный и сериализуемый (System.Text.Json, явные camelCase-имена, строки enum'ов
   те же, что в state.json): параметры VLESS-профиля (`EngineProfile`), режим, уровень журнала, порт mixed-inbound,
   DNS (`EngineDnsSettings`), TUN (`EngineTunSettings`), пути `.exe` для `tun_apps`, включённые rule-set
-  (`EngineRuleSet`: tag, простое имя `.srs`, действие). Ни готового JSON sing-box, ни путей, куда ядро пишет.
+  (`EngineRuleSet`: tag, простое имя `.srs`, действие, для службы — содержимое). Ни готового JSON sing-box, ни путей, куда ядро пишет.
   `ProxyOverride` не передаётся: это настройка WinINET, её применяет интерфейс.
-- **Версия контракта** — `EngineContract.Version` (сейчас 1) в каждом запросе и статусе; ядро отклоняет чужую версию
+- **Версия контракта** — `EngineContract.Version` (сейчас 2) в каждом запросе и статусе; ядро отклоняет чужую версию
   ошибкой «Обновите приложение».
-- **Rule-set пока по ссылке**: имя файла в каталоге rule-set ядра; внутри процесса это общий `rulesets\`. Передача
-  содержимого (ADR-0001) — на шаге 7 вместе со службой, с ростом версии контракта.
+- **Rule-set**: внутри процесса — по ссылке, имя файла в общем `rulesets\` пользователя (`ReferencedRuleSetStore`).
+  В службу — содержимым (контракт v2): его дописывает `PipeVpnEngine`, служба пишет файлы в свой каталог
+  (`ServiceRuleSetStore`). Ядро получает имена файлов через порт `IEngineRuleSetStore`.
 - **Журнал** отдельной подпиской в порте не передаётся: ядро пишет в `ILogPort`, который читает интерфейс. Внутри
-  процесса это общий `InMemoryLogStore`; клиент канала на шаге 7 будет записывать в тот же порт строки, полученные
-  по `SubscribeLog` (уже замаскированные службой). Ни view model'и, ни оркестрация от этого не меняются.
+  процесса это общий `InMemoryLogStore`; клиент канала (`PipeVpnEngine`) записывает в тот же порт строки, полученные
+  по `subscribeLog` (уже замаскированные службой). Ни view model'и, ни оркестрация от этого не меняются.
 
 `SingBoxVpnEngine` работает поверх `ISingBoxPort` и не доверяет нормализации интерфейса: переводит запрос в
 `VpnProfile`/`AppStateModel` (`EngineRequestMapper`), прогоняет через `AppStateNormalizer` и Domain-политики
@@ -68,6 +70,31 @@ UI / Presentation ──► VpnConnectionService (оркестрация, про
 mixed-inbound. При ошибке сам останавливает sing-box и удаляет конфиг. О state.json, WinINET и UAC ядро не знает.
 Нормализация идемпотентна, поэтому конфиг из запроса совпадает с конфигом из состояния напрямую
 (`EngineContractTests` прогоняет матрицу эталонов генератора через JSON запроса).
+
+### Служба и транспорт по каналу (шаг 7а)
+
+```text
+процесс интерфейса (пользователь)                    служба NothingVpn (LocalSystem)
+VpnConnectionService ─► PipeVpnEngine ══ \\.\pipe\NothingVpn.Service ══► ServicePipeServer ─► SingBoxVpnEngine
+                         │ проверка сервера                                │ ACL, FIRST_PIPE_INSTANCE    │
+                         │ rule-set содержимым                             │ события status/log          ├─ SingBoxRunner (только свой каталог)
+                         └─ строки журнала → ILogPort                      └─ InMemoryLogStore (маскирование)
+                                                                                                         └─ ServiceRuleSetStore, %ProgramData%\NothingVpn
+```
+
+- `Infrastructure/ServiceChannel/`: протокол (`ServiceProtocol`, `ServiceMessage`, `ServiceFrameCodec` — кадр с длиной
+  и JSON с версией контракта), сервер `ServicePipeServer`, клиент `PipeVpnEngine`, ACL `ServicePipeSecurity` и
+  проверка сервера `LocalSystemPipeServerVerifier`.
+- `Infrastructure/ServiceHost/`: `ServiceEngineHost` (композиция ядра службы и сервера канала),
+  `ServiceDataDirectory` (`%ProgramData%\NothingVpn` с ACL), `ServiceRuleSetStore`.
+- `src/NothingVpn.Service`: `ServiceBase`, который создаёт `ServiceEngineHost` при старте и освобождает при остановке
+  (ядро останавливается).
+- `PipeVpnEngine.GetStatus` не ходит в канал: возвращает последнее состояние из ответов и событий службы. При обрыве
+  клиент переподключается; если служба недоступна, ядро считается остановленным, и `VpnConnectionService`, как при
+  выходе sing-box, восстанавливает системный прокси.
+
+Формат кадров, команды, ошибки, тайм-ауты и проверка сервера — в
+[ADR-0001](adr/0001-privileged-service.md#шаг-7а--служба-и-транспорт-по-каналу-сделано-19102026).
 
 ## Composition root
 
@@ -95,6 +122,9 @@ mixed-inbound. При ошибке сам останавливает sing-box и
    `SubscriptionRefreshScheduler` (через 5 с после старта + таймер 15 мин), сервер single-instance.
 
 Порядок шагов и интервалы те же, что были в `App.xaml.cs` до шага 5.
+
+Ядро выбирается там же: `SingBoxVpnEngine` внутри процесса по умолчанию, `PipeVpnEngine` — при переменной окружения
+`NOTHINGVPN_ENGINE=service` (режим разработки до шага 7б). Composition root службы — `ServiceHost/ServiceEngineHost`.
 
 `LegacyRuntimeContext` — внутренний контейнер, который делят `SingBoxPort` и `LogPort`: пути, общий `InMemoryLogStore`
 и единственный экземпляр `SingBoxRunner`.
@@ -330,7 +360,8 @@ rule-set. Сообщения разделы показывают через `Set
 | --- | --- |
 | Данные пользователя | `%LOCALAPPDATA%\NothingVpn.Tray\` (имя историческое, менять нельзя без миграции) |
 | Установка | `%LOCALAPPDATA%\Programs\NothingVpn\` (per-user, без прав администратора) |
-| `sing-box.exe`, `wintun.dll` | рядом с exe; поиск также в `bin\`, до 5 родительских каталогов и в каталоге установки; предпочитается каталог, где есть `wintun.dll` |
+| Данные службы | `%ProgramData%\NothingVpn\` (`configs\`, `rulesets\`), ACL SYSTEM и администраторов |
+| `sing-box.exe`, `wintun.dll` | служба — только каталог своего exe; клиент — рядом с exe; поиск также в `bin\`, до 5 родительских каталогов и в каталоге установки; предпочитается каталог, где есть `wintun.dll` |
 | Кэш установщика | `%TEMP%\NothingVpn\` |
 | Автозапуск | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\NothingVpn` (задача установщика) |
 
