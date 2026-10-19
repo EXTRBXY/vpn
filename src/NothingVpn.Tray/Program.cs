@@ -98,4 +98,4 @@ internal sealed record StartupArgs(
 
         return false;
     }
-}
+}
