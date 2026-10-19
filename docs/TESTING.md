@@ -7,16 +7,17 @@
 `InternalsVisibleTo` открывает тестам internal-типы Infrastructure (`SingBoxConfigGenerator`, `VlessLinkParser`,
 `DpapiJsonFile`, `AppPaths`, …).
 
-Состояние на 19.10.2026 (после шага 7а): 444 теста, 441 проходит, 3 desktop-теста пропускаются вне специального
+Состояние на 19.10.2026 (после шага 7б): 456 тестов, 453 проходит, 3 desktop-теста пропускаются вне специального
 запуска. Сборка Release — без предупреждений.
 
 | Область | Файлы |
 | --- | --- |
 | Domain-политики | `DomainPoliciesTests`, `SemanticVersionPolicyTests`, `InstallerFilePolicyTests`, `SubscriptionBodyDecoderTests`, `SubscriptionUserinfoParserTests`, `AppCloseBehaviorTests` |
 | Генерация sing-box | `SingBoxConfigGeneratorTests`, `SecurityRegressionTests` |
-| Use-case сервисы | `VpnConnectionServiceTests` (оркестрация вместе с настоящим `SingBoxVpnEngine` поверх поддельного sing-box), `SubscriptionServiceSyncTests` |
+| Use-case сервисы | `VpnConnectionServiceTests` (оркестрация вместе с настоящим `SingBoxVpnEngine` поверх поддельного sing-box; с поддельным ядром службы — TUN без UAC, перезапуск интерфейса при работающей в службе сессии, остановка службы), `SubscriptionServiceSyncTests` |
 | Ядро и его контракт | `SingBoxVpnEngineTests` (версия контракта, валидация и нормализация запроса, откат при сбое запуска и порта, выход процесса), `EngineContractTests` (JSON-roundtrip запроса и статуса, контракт v2 — rule-set содержимым в base64, конфиг из запроса = конфиг из состояния на матрице эталонов) |
 | Служба и канал | `ServiceProtocolTests` (кадр с длиной и JSON, версия, пределы кадра и rule-set, обрезанные и некорректные кадры, тайм-аут тела), `ServiceChannelTests` (сервер и клиент канала в одном процессе с поддельным sing-box: connect/disconnect/статус/журнал, ошибки ядра, старая версия клиента, обрыв и переподключение, rule-set содержимым в каталог службы, конфиг службы ≠ in-process только путями rule-set, отказ проверки сервера без отправки данных, ACL канала и каталога данных, `FILE_FLAG_FIRST_PIPE_INSTANCE`, поиск sing-box службой, выбор реализации ядра) |
+| Установка | `LegacyUserInstallMigrationTests` (удаление старой per-user копии без каталога данных и посторонних файлов, перенос автозапуска; каталог данных службы, созданный заранее пользователем, заменяется) — реестр подменён, файлы во временном каталоге |
 | Presentation-контроллеры | `Connection*ControllerTests`, `ConnectionViewStateFactoryTests`, `ProfileManagementControllerTests`, `SubscriptionManagementControllerTests`, `RuleSetManagementControllerTests`, `TunAppsControllerTests`, `AppUpdateControllerTests` |
 | Infrastructure | `DpapiJsonFileTests`, `ProfileParserPortTests`, `RuleSetFileServiceTests`, `SubscriptionHttpFetcherTests`, `SingBoxRunnerTests`, `ProcessJobScopeTests`, `InstallerUpdateServiceTests`, `InstallerLaunchServiceTests` |
 | WPF | `SettingsViewModelTests` (реальные контроллеры, изолированное хранилище; разделы настроек и одно сохранение), `UpdateViewModelTests`, `WpfSettingsBindingTests` (настоящие контролы на STA-потоке), `AsyncRelayCommandTests`, `GlobalExceptionHandlerTests` (журнал с маскированием, сообщение, аварийная остановка VPN — без настоящего падения процесса) |
@@ -47,7 +48,8 @@ TRX-результаты `Build.ps1` кладёт в `artifacts/test-results/`.
 
 Smoke-test работает с **настоящим** каталогом данных `%LOCALAPPDATA%\NothingVpn.Tray` текущего пользователя и
 вызывает `RecoverStaleRuntimeState` (может восстановить системный прокси). На машине разработчика это нормально,
-но учитывайте при запуске на рабочем профиле.
+но учитывайте при запуске на рабочем профиле. Клиент при старте до 3 с ищет службу; в CI её нет — это
+предупреждение в журнале, а не ошибка smoke-test.
 
 ### Desktop-тесты обновления
 
@@ -62,11 +64,12 @@ Smoke-test работает с **настоящим** каталогом дан�
 ## Что не покрыто автоматически
 
 - Реальный запуск sing-box и прохождение трафика (proxy, TUN, TUN по приложениям).
-- Установка и запуск службы Windows, канал от настоящей службы LocalSystem (положительный путь проверки сервера
-  подменяется в тестах; отказ для сервера от имени пользователя проверяется настоящей проверкой). Ручная проверка — в
-  описании PR шага 7а: `sc.exe create`, `NOTHINGVPN_ENGINE=service`.
-- UAC и takeover-перезапуск.
-- Реальная установка обновления.
+- Установщик (`NothingVpn.iss`: регистрация, остановка и удаление службы, миграция со старой установки,
+  `runasoriginaluser`), запуск службы Windows, канал от настоящей службы LocalSystem (положительный путь проверки
+  сервера подменяется в тестах; отказ для сервера от имени пользователя проверяется настоящей проверкой), реальная
+  установка обновления и UAC установщика в тихом режиме. Ручная проверка —
+  [SERVICE-INSTALL-CHECKLIST.md](SERVICE-INSTALL-CHECKLIST.md). CI компилирует установщик только в workflow Release.
+- UAC и takeover-перезапуск (только при `NOTHINGVPN_ENGINE=inprocess`).
 - `WinInetProxyController` (пишет в реестр текущего пользователя).
 - Провайдеры поиска установленных/запущенных приложений.
 - Трей, single-instance, пересылка аргументов, тема, таймеры подписок и обновлений.

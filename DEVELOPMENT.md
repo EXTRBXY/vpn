@@ -21,9 +21,12 @@ artifacts/    результаты сборки (не добавляются в 
 Для обычной проверки приложения не требуется запускать автоматические тесты:
 
 1. Запустите `build-app.cmd` двойным кликом. Скрипт создаст опубликованную self-contained сборку без установщика и откроет её каталог.
-2. Запустите и проверьте `artifacts\publish\win-x64\NothingVpn.Desktop.Wpf.exe`.
+2. Запустите и проверьте `artifacts\publish\win-x64\NothingVpn.Desktop.Wpf.exe`. Клиент подключается через службу
+   `NothingVpn`: без установленной службы подключение покажет «Служба Nothing VPN не отвечает…». Для проверки без
+   установки включите ядро в процессе (`NOTHINGVPN_ENGINE=inprocess`, см. «Служба Windows»).
 3. После проверки запустите `build-installer.cmd`. Он упакует в Inno Setup именно существующую опубликованную сборку, не пересобирая её.
-4. Проверьте `artifacts\installer\NothingVpnSetup.exe`.
+4. Проверьте `artifacts\installer\NothingVpnSetup.exe` (ставит клиент и службу в `C:\Program Files\NothingVpn`,
+   нужен UAC). Полная ручная проверка — [docs/SERVICE-INSTALL-CHECKLIST.md](docs/SERVICE-INSTALL-CHECKLIST.md).
 
 `build-installer.cmd` намеренно завершается ошибкой, если опубликованная сборка ещё не создана или в ней нет `sing-box.exe`.
 
@@ -55,15 +58,69 @@ artifacts/installer/NothingVpnSetup.exe.sha256
 
 ## Runtime-зависимости
 
-Для установленного приложения рядом с `NothingVpn.Desktop.Wpf.exe` необходим `sing-box.exe`; для TUN также нужен `wintun.dll`.
+Для установленного приложения рядом с `NothingVpn.Service.exe` необходим `sing-box.exe`; для TUN также нужен
+`wintun.dll`. Служба берёт их только из каталога своего exe.
 
-Локальный `Publish` ищет их в `%LOCALAPPDATA%\Programs\NothingVpn`. Можно явно передать каталог:
+Локальный `Publish` ищет их в установленном клиенте: `%ProgramFiles%\NothingVpn`, затем старый per-user каталог
+`%LOCALAPPDATA%\Programs\NothingVpn`. Можно явно передать каталог:
 
 ```powershell
 .\build\Build.ps1 -Target Publish -RuntimeAssetsDirectory C:\path\to\runtime-assets
 ```
 
-`Installer` требует `sing-box.exe` и предупреждает при отсутствии `wintun.dll`.
+`Installer` требует `NothingVpn.Desktop.Wpf.exe`, `NothingVpn.Service.exe` и `sing-box.exe`; без `wintun.dll`
+установщик собирается, но TUN будет недоступен.
+
+## Служба Windows
+
+С шага 7б интерфейс работает через службу `NothingVpn` (`src/NothingVpn.Service`, LocalSystem) по каналу
+`\\.\pipe\NothingVpn.Service`; архитектура — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#подключение-через-службу-шаг-7б),
+протокол — [ADR-0001](docs/adr/0001-privileged-service.md).
+
+**Сборка.** `Build.ps1 -Target Publish` публикует клиент и службу в один каталог `artifacts\publish\win-x64`
+(обе — self-contained single-file). Консольного режима у службы нет: клиент проверяет, что сервер канала — служба
+LocalSystem в сеансе 0, поэтому запуск exe из терминала (даже администратора) ничего не даст.
+
+**Установка для проверки** — только через собранный установщик: он регистрирует службу с путём в
+`Program Files`, запускает её и останавливает при обновлении.
+
+```powershell
+.\build\Build.ps1 -Target Publish
+.\build\Build.ps1 -Target Installer
+.\artifacts\installer\NothingVpnSetup.exe
+```
+
+Не регистрируйте службу вручную на exe из рабочего каталога (`sc.exe create … binPath= D:\…`): служба от SYSTEM
+запускала бы файлы из каталога, куда может писать любой ваш процесс.
+
+**Состояние и журналы.**
+
+```powershell
+sc.exe query NothingVpn          # STATE: 4 RUNNING
+sc.exe qc NothingVpn             # путь, автозапуск, LocalSystem
+sc.exe qfailure NothingVpn       # действия при сбое
+Get-WinEvent -LogName Application -MaxEvents 20 | Where-Object ProviderName -eq NothingVpn
+```
+
+Журнал ядра службы (вывод sing-box, ошибки запуска) приходит в журнал интерфейса — раздел «Диагностика». Журнал
+установщика — `%TEMP%\Setup Log *.txt` пользователя, подтвердившего UAC.
+
+**Отладка.** Установите Debug/Release-сборку установщиком и подключите отладчик Visual Studio, запущенной от имени
+администратора, к процессу `NothingVpn.Service.exe` (Debug → Attach to Process, «Show processes from all users»).
+Код ядра одинаков в службе и в процессе клиента, поэтому большую часть отладки проще вести с ядром в процессе.
+Транспорт канала покрывают `ServiceChannelTests` (сервер и клиент в одном процессе).
+
+**Ядро в процессе клиента (без службы).** Для разработки и ручной проверки без установки:
+
+```powershell
+$env:NOTHINGVPN_ENGINE = 'inprocess'
+.\artifacts\publish\win-x64\NothingVpn.Desktop.Wpf.exe
+```
+
+Тогда sing-box запускает сам клиент (как до шага 7б), ищет его рядом с exe, в `bin\` и родительских каталогах, а
+TUN снова требует прав администратора. UAC-перезапуск (`--takeover`) не передаёт новому процессу переменные окружения
+терминала, поэтому для TUN запускайте клиент из терминала, открытого от имени администратора. Любое другое значение
+переменной (или её отсутствие) — служба. В журнал пишется предупреждение о режиме.
 
 ## Сборка установщика
 
