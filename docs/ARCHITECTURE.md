@@ -15,7 +15,7 @@ Nothing VPN — Windows-клиент VLESS. Приложение не реали
 | `NothingVpn.Application` | `net8.0` | Use-case сервисы (`VpnConnectionService`, `SettingsService`, `SubscriptionService`, …), DTO-модели и **порты** (`I*Port`) — интерфейсы к внешнему миру. |
 | `NothingVpn.Presentation` | `net8.0` | UI-независимые контроллеры экранов (`*Controller`) и снимки состояния для любого фронтенда. |
 | `NothingVpn.Infrastructure` | `net8.0-windows` | Реализации портов: sing-box (генератор + раннер), DPAPI-хранилище, WinINET, UAC, GitHub-обновления, поиск приложений. Содержит composition root `ApplicationServicesFactory`. |
-| `NothingVpn.Desktop.Wpf` | `net8.0-windows` | Упаковываемый клиент: окна, view model'и, трей, single-instance, тема. |
+| `NothingVpn.Desktop.Wpf` | `net8.0-windows` | Упаковываемый клиент: окна, view model'и, трей, single-instance, тема, обработка исключений. UI-композиция — `Composition/DesktopCompositionRoot`. |
 | `NothingVpn.Tray` | `net8.0-windows` | Legacy WinForms-клиент. Не публикуется и не входит в установщик. |
 | `tests/NothingVpn.Application.Tests` | `net8.0-windows` | Единственный тестовый проект; покрывает все слои, включая WPF. |
 
@@ -24,17 +24,16 @@ Nothing VPN — Windows-клиент VLESS. Приложение не реали
 ```text
 Domain  ←  Application  ←  Presentation  ←  Desktop.Wpf
                 ↑                                │
-          Infrastructure  ←──────────────────────┘ (composition root + несколько прямых обращений, см. ниже)
+          Infrastructure  ←──────────────────────┘ (только Composition/DesktopCompositionRoot)
 ```
 
-Задуманное правило (см. `.cursor/rules`, `docs/WPF-MIGRATION.md`): UI зависит от Presentation/Application через интерфейсы,
-Infrastructure используется только в composition root. **Фактически** WPF напрямую использует ещё и:
+UI зависит от Presentation/Application через интерфейсы; Infrastructure WPF-клиент видит только в composition root
+(шаг 5 рефакторинга, REFACTORING.md 3.5). Журнал view model'и читают через порт `ILogPort`, поиск приложений для
+TUN — через `IAppDiscoveryPort` (`AppCandidate` — модель Application). Иконка трея — UI-код и живёт в WPF
+(`Platform/TrayStatusIconBuilder`; у WinForms-клиента своя копия). Правило проверяет `WpfLayerBoundaryTests`: анализ
+сигнатур и IL всех типов сборки WPF (включая лямбды и async-методы) и текстов XAML.
 
-- `InMemoryLogStore` — `MainViewModel`, `DiagnosticsViewModel`;
-- `TunAppsSelectionService`, `AppCandidate`, провайдеры приложений — `SettingsViewModel`, `TunAppListItem`, `App.xaml.cs`;
-- `TrayStatusIconBuilder` — `App.xaml.cs`.
-
-Для этих возможностей нет портов в Application. Это первое, что ломается при попытке заменить Infrastructure.
+WinForms-клиент (`NothingVpn.Tray`) по-прежнему обращается к Infrastructure напрямую; он уходит на шаге 9.
 
 ## Composition root
 
@@ -45,9 +44,22 @@ Infrastructure используется только в composition root. **Фа
 дописываются в `state.json`) и `VpnConnectionService.RecoverStaleRuntimeState()` — если предыдущий запуск оставил
 включённый системный прокси, он восстанавливается.
 
-Затем `App.OnStartup` (`src/NothingVpn.Desktop.Wpf/App.xaml.cs`) собирает контроллеры Presentation и view model'и,
-создаёт трей, таймеры и сервер single-instance. Это второй, UI-уровень композиции; он же содержит логику трея,
-таймеров и выхода.
+Второй, UI-уровень композиции — `DesktopCompositionRoot.Create` (`src/NothingVpn.Desktop.Wpf/Composition/`): из
+`ApplicationServiceBundle` собирает контроллеры Presentation и view model'и и отдаёт наружу `DesktopComposition` —
+только типы Application/Presentation и view model'и. Действия оболочки (выход, уведомление об обновлении, окно
+«Что нового») приходят в него делегатами `DesktopShell`. DI-контейнера нет и здесь.
+
+`App` (`App.xaml.cs`) только запускает, связывает и завершает части клиента (классы — в `Platform/`):
+
+1. `SystemThemeWatcher` — тема Windows (событие `UserPreferenceChanged` + опрос раз в секунду).
+2. `SingleInstance.Acquire` — мьютекс, пересылка аргументов первому экземпляру, ожидание при `--takeover`.
+3. `DesktopCompositionRoot.Create`, затем `GlobalExceptionHandler.Attach` (см. «Обработка исключений»).
+4. `MainWindow` и `TrayIcon` (меню, состояние, balloon-уведомление).
+5. При `--smoke-test` — выход с кодом 0. Иначе: сообщение о повреждённых файлах, `UpdateCheckScheduler`
+   (проверка при старте + таймер 30 мин), `ApplyStartupAsync` (`--start`/`--mode`/`--profile`),
+   `SubscriptionRefreshScheduler` (через 5 с после старта + таймер 15 мин), сервер single-instance.
+
+Порядок шагов и интервалы те же, что были в `App.xaml.cs` до шага 5.
 
 `LegacyRuntimeContext` — внутренний контейнер, который делят `SingBoxPort` и `LogPort`: пути, общий `InMemoryLogStore`
 и единственный экземпляр `SingBoxRunner`.
@@ -154,7 +166,7 @@ TUN требует администратора. Клиент не повыша�
 2. `ConnectionController` вызывает `Elevation.RestartElevated` (`runas`). Отмена UAC → исключение.
 3. `ConnectionStartOutcome.ExitCurrentProcess = true` → `MainViewModel` вызывает `App.RequestExit`, текущий процесс
    останавливает VPN и выходит, освобождая мьютекс.
-4. Новый процесс с `--takeover` до 20 с ждёт мьютекс (`App.WaitForPrimaryTakeover`), затем `ApplyStartupAsync`
+4. Новый процесс с `--takeover` до 20 с ждёт мьютекс (`SingleInstance.Acquire`), затем `ApplyStartupAsync`
    выбирает режим/профиль и подключается.
 
 После этого клиент работает повышенным до выхода. Обновление из повышенного клиента — отдельная история, см.
@@ -180,8 +192,9 @@ TUN требует администратора. Клиент не повыша�
 Ошибка сохраняется в `LastError` (≤ 200 символов). Пустой результат (ни одного VLESS) считается ошибкой и **не**
 удаляет существующие профили.
 
-Автообновление: `App` проверяет подписки через 5 с после старта и затем каждые 15 минут (`RefreshAllDueAsync`,
-только `Enabled` и просроченные по `UpdateIntervalHours`).
+Автообновление: `SubscriptionRefreshScheduler` проверяет подписки через 5 с после старта и затем каждые 15 минут
+(`RefreshAllDueAsync`, только `Enabled` и просроченные по `UpdateIntervalHours`). Сбой всего обновления пишется в
+журнал (Warn); ошибки отдельных подписок, как и раньше, — в их `LastError`.
 
 ### Обновления приложения
 
@@ -215,6 +228,14 @@ TUN требует администратора. Клиент не повыша�
 (валидация → `UpdateState` с merge только редактируемых полей). Файлы rule-set, помеченные на удаление, удаляются
 только после успешного сохранения.
 
+Черновик разбит по разделам страницы (`ViewModels/Settings/`): `DnsSettingsViewModel`, `TunSettingsViewModel`,
+`TunAppsSettingsViewModel`, `RuleSetsSettingsViewModel`, `ProxySettingsViewModel`, `AppBehaviorSettingsViewModel`
+(поведение окна и уровень журнала); обновления — `UpdateViewModel`. Каждый раздел загружает свои поля
+(`Load(state)`) и отдаёт свою часть черновика (`ToSettings`/`BuildForSave`). Сохраняет только `SettingsViewModel.Save`:
+сначала собирает все разделы (ошибка MTU — до любой записи), затем одна запись `UpdateState`, затем удаление файлов
+rule-set. Сообщения разделы показывают через `SettingsViewModel` (`ISettingsFeedback`). XAML привязывает каждую
+карточку к своему разделу (`DataContext="{Binding Dns}"` и т. д.).
+
 ## Потоки и асинхронность
 
 - Сервисы Application не привязаны к UI-потоку (`ConfigureAwait(false)`). События `ConnectionStateChanged` могут
@@ -222,8 +243,9 @@ TUN требует администратора. Клиент не повыша�
 - Синхронные операции с диском и DPAPI (`AppStateStore.Load/Update`) вызываются в том числе из UI-потока; частый
   опрос статуса (`IsRunning`) диск не трогает.
 - `SingBoxRunner.ValidateConfig` синхронно ждёт `sing-box check` (`GetAwaiter().GetResult()`), тайм-аут 2 с.
-- Таймеры WPF (`DispatcherTimer`): тема — 1 с, обновление журнала в диагностике — 1 с, проверка обновлений — 30 мин,
-  подписки — 15 мин.
+- Таймеры WPF (`DispatcherTimer`): тема — 1 с (`SystemThemeWatcher`), обновление журнала в диагностике — 1 с (снимок
+  берётся, только если изменилась `ILogPort.Version`), проверка обновлений — 30 мин (`UpdateCheckScheduler`),
+  подписки — 15 мин (`SubscriptionRefreshScheduler`).
 
 ## Логирование
 
@@ -232,7 +254,30 @@ TUN требует администратора. Клиент не повыша�
 (Trace…Panic, значения 0..6). `SingBoxRunner` разбирает уровень из строки sing-box и понижает до WARN типичные «connection closed».
 Буфер очищается при каждом старте sing-box. На диск журнал пишется только по явному «Сохранить» в диагностике.
 
-WPF-клиент сам ничего в журнал не пишет — там только вывод sing-box. (В WinForms был `AppLogger`.)
+Порт `ILogPort` (Application) — то, чем журнал видят сервисы и WPF: `Version` (меняется при записи и очистке; по ней
+диагностика понимает, что снимок устарел), `SnapshotText(minLevel)`, `TryGetLatestMessage`, `Append` (маскирование —
+внутри реализации) и `Clear`. Фильтр по уровню порт поддерживает; WPF-диагностика показывает весь буфер.
+
+Сам WPF-клиент пишет в журнал только необработанные исключения и сбои фонового обновления подписок (источник `app`);
+журнала событий приложения, как `AppLogger` в WinForms, нет (REFACTORING.md, раздел 4).
+
+## Обработка исключений
+
+`Platform/GlobalExceptionHandler` подключается к `Application.DispatcherUnhandledException`,
+`AppDomain.CurrentDomain.UnhandledException` и `TaskScheduler.UnobservedTaskException`:
+
+- ошибка UI-потока — запись в журнал (Error, с маскированием) и сообщение пользователю, приложение работает дальше;
+  ошибка, случившаяся пока сообщение открыто, только записывается;
+- `OutOfMemoryException`, `AccessViolationException`, `SEHException`, `InvalidProgramException` и завершающее процесс
+  исключение `AppDomain` — фатальные: запись (Fatal) и одна попытка остановить VPN (`IConnectionController.StopAsync`
+  через пул, не дольше 5 с), чтобы восстановить системный прокси. Не успел — прокси восстановит
+  `RecoverStaleRuntimeState` при следующем старте, sing-box завершит Job Object;
+- незамеченная ошибка задачи — запись и `SetObserved`.
+
+`AsyncRelayCommand.Execute` — `async void` поверх `ExecuteAsync`: исключение уходит в SynchronizationContext
+диспетчера и попадает в обработчик. Задачи без ожидания с UI-потока запускаются через `task.Forget()` с тем же
+эффектом (вместо `_ = task`, где ошибка терялась). Исключения из меню трея (WinForms) перехватывает `TrayIcon` и
+передаёт в тот же обработчик.
 
 ## Пути и внешние зависимости во время работы
 

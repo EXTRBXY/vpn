@@ -14,7 +14,8 @@
 | Журнал | `LogRedactor` маскирует GUID, `vless://…`, путь после `/sub/`, `pbk=`, `sid=`, `uuid=`, `token/password/secret/api_key=`, `Authorization: Bearer` |
 
 Правило проекта: никогда не логировать ключи, UUID, токены, приватные адреса в открытом виде. Любой новый источник
-строк в журнал должен проходить через `InMemoryLogStore.AppendStructured` (он вызывает редактор).
+строк в журнал должен проходить через `ILogPort.Append` / `InMemoryLogStore.AppendStructured` (они вызывают
+редактор). Это касается и необработанных исключений: `GlobalExceptionHandler` пишет `exception.ToString()` через порт.
 
 Ограничение редактора: адрес VLESS-сервера и URL подписок без сегмента `/sub/` не маскируются.
 

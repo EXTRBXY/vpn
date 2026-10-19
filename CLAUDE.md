@@ -22,7 +22,7 @@ dotnet test NothingVpn.sln -c Release --no-build --filter "FullyQualifiedName~Si
 .\build\Test-UpdateHandoff.ps1           # desktop-тесты обновления; повторить с -RequireElevated из админ-терминала
 ```
 
-Базовая линия (19.10.2026): сборка без предупреждений, 326 тестов проходят, 3 desktop-теста пропущены намеренно.
+Базовая линия (19.10.2026): сборка без предупреждений, 342 теста проходят, 3 desktop-теста пропущены намеренно.
 Только Windows. `Publish` берёт `sing-box.exe`/`wintun.dll` из `-RuntimeAssetsDirectory` или из установленного
 клиента в `%LOCALAPPDATA%\Programs\NothingVpn`.
 
@@ -34,7 +34,8 @@ src/NothingVpn.Application     use-case сервисы, модели, порты
 src/NothingVpn.Presentation    UI-независимые контроллеры экранов
 src/NothingVpn.Infrastructure  реализации портов: sing-box, DPAPI-хранилище, WinINET, UAC, обновления;
                                Composition/ApplicationServicesFactory — composition root
-src/NothingVpn.Desktop.Wpf     упаковываемый клиент (App.xaml.cs — UI-композиция, трей, таймеры)
+src/NothingVpn.Desktop.Wpf     упаковываемый клиент: Composition/DesktopCompositionRoot — UI-композиция,
+                               Platform/ — трей, таймеры, тема, single-instance, обработка исключений
 src/NothingVpn.Tray            legacy WinForms, эталон до удаления; не публикуется
 tests/NothingVpn.Application.Tests  единственный тестовый проект, покрывает все слои включая WPF
 build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/NothingVpn.iss
@@ -52,8 +53,8 @@ build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/Noth
 ## Архитектурные правила
 
 - Зависимости внутрь: Domain ← Application ← Presentation ← WPF. Infrastructure реализует порты Application.
-  WPF должен брать Infrastructure только в composition root (сейчас нарушено для журнала, поиска приложений и иконки
-  трея — не расширяйте эти нарушения, добавляйте порты).
+  WPF берёт Infrastructure только в `Composition/DesktopCompositionRoot` (проверяет `WpfLayerBoundaryTests`);
+  view model'ям нужное — через порты Application (`ILogPort`, `IAppDiscoveryPort`) и контроллеры Presentation.
 - Логику не класть в окна и code-behind; диалоги, буфер обмена, файловые пикеры — допустимы в code-behind.
 - sing-box — источник истины для туннелирования. Не дублировать в C# то, что делает ядро (DNS, маршрутизация).
   Новое поведение — политика в Domain, компилируемая в поля конфига. Поля проверять по документации sing-box
@@ -88,8 +89,12 @@ build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/Noth
 - Runtime-флаги `ProxyWasEnabledByUs`/`PreviousProxySettings` пишет только `VpnConnectionService`;
   `SettingsService.UpdateState` их не меняет (`ConnectionRuntimeState`), даже если колбэк их присвоил.
 - `GetStatus`/`IsRunning` не читают диск: процесс — из `ISingBoxPort`, режим/профиль — из сессии в памяти.
-- Секреты в журнал — только через `InMemoryLogStore.AppendStructured` (маскирует `LogRedactor`). Никогда не логировать
-  UUID, ключи, URL подписок.
+- Секреты в журнал — только через `ILogPort.Append` / `InMemoryLogStore.AppendStructured` (маскирует `LogRedactor`).
+  Никогда не логировать UUID, ключи, URL подписок.
+- Необработанные исключения WPF ловит `Platform/GlobalExceptionHandler` (журнал + сообщение; фатальные — попытка
+  остановить VPN). Запуск задачи без ожидания с UI-потока — `task.Forget()`, не `_ = task`: так ошибка не теряется.
+- Страница настроек разделена на разделы (`ViewModels/Settings/*`), но сохраняется одной операцией в
+  `SettingsViewModel.Save`. Новое поле настроек — в раздел (`Load`/`ToSettings`) и в черновик сохранения.
 - Конфиг sing-box в `configs\` лежит открытым текстом; он обязан удаляться при остановке и откате.
 - TUN требует админа: клиент перезапускает себя через `runas --takeover`, старый процесс выходит. Не пытаться
   «повысить на месте». Целевая архитектура — служба Windows и интерфейс без прав
