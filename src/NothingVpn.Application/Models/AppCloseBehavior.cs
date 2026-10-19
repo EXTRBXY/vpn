@@ -1,10 +1,25 @@
+using NothingVpn.Domain.Policies;
+
 namespace NothingVpn.Application.Models;
 
-public static class AppCloseBehavior
+/// <summary>Поведение при закрытии окна. В state.json: tray | exit.</summary>
+public enum AppCloseBehavior
 {
-    public const string HideToTray = "tray";
-    public const string Exit = "exit";
+    HideToTray,
+    Exit
+}
 
-    public static string Normalize(string? value) =>
-        string.Equals(value, Exit, StringComparison.OrdinalIgnoreCase) ? Exit : HideToTray;
+public static class AppCloseBehaviors
+{
+    public const AppCloseBehavior Default = AppCloseBehavior.HideToTray;
+
+    public static readonly SettingValueMap<AppCloseBehavior> Values = new(
+        Default,
+        new Dictionary<AppCloseBehavior, string>
+        {
+            [AppCloseBehavior.HideToTray] = "tray",
+            [AppCloseBehavior.Exit] = "exit"
+        });
+
+    public static string ToValue(this AppCloseBehavior value) => Values.ToValue(value);
 }

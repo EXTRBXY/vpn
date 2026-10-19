@@ -1,6 +1,7 @@
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Services;
 using NothingVpn.Domain.Models;
+using NothingVpn.Domain.Policies;
 using NothingVpn.Presentation;
 
 namespace NothingVpn.Application.Tests;
@@ -50,7 +51,7 @@ public sealed class ConnectionScreenControllerTests
                 ActiveProfileId = "missing",
                 TunAppProcessPaths = null!,
                 UserRuleSets = null!,
-                DnsDetour = string.Empty
+                DnsDetour = DnsDetour.Direct
             }
         };
         var controller = new ConnectionScreenController(new FakeProfileService(), settings);
@@ -61,7 +62,7 @@ public sealed class ConnectionScreenControllerTests
         Assert.Equal(string.Empty, snapshot.State.ActiveProfileId);
         Assert.NotNull(snapshot.State.TunAppProcessPaths);
         Assert.NotNull(snapshot.State.UserRuleSets);
-        Assert.Equal("direct", snapshot.State.DnsDetour);
+        Assert.Equal("direct", snapshot.State.DnsDetour.ToValue());
         Assert.Equal(1, settings.SaveCalls);
     }
 
@@ -70,14 +71,14 @@ public sealed class ConnectionScreenControllerTests
     {
         var settings = new FakeSettingsService
         {
-            State = new AppStateModel { TunAppProcessPaths = [@"C:\Apps\saved.exe"], CloseBehavior = "exit", ActiveProfileId = "p2" }
+            State = new AppStateModel { TunAppProcessPaths = [@"C:\Apps\saved.exe"], CloseBehavior = AppCloseBehavior.Exit, ActiveProfileId = "p2" }
         };
         var stale = new AppStateModel { ActiveProfileId = "p1" };
         var controller = new ConnectionScreenController(new FakeProfileService("p1", "p2"), settings);
-        controller.SelectMode(stale, "tun_apps");
-        Assert.Equal("tun_apps", settings.State.Mode);
+        controller.SelectMode(stale, ConnectionMode.TunApps);
+        Assert.Equal("tun_apps", settings.State.Mode.ToValue());
         Assert.Equal(new[] { @"C:\Apps\saved.exe" }, settings.State.TunAppProcessPaths);
-        Assert.Equal("exit", settings.State.CloseBehavior);
+        Assert.Equal("exit", settings.State.CloseBehavior.ToValue());
         Assert.Equal("p2", settings.State.ActiveProfileId);
     }
 
@@ -128,8 +129,8 @@ public sealed class ConnectionScreenControllerTests
             SaveCalls++;
         }
 
-        public void UpdateMode(string mode) => throw new NotSupportedException();
-        public void UpdateDns(string mode, string dohServer, string dohPath, string dohSni, string detour) => throw new NotSupportedException();
+        public void UpdateMode(ConnectionMode mode) => throw new NotSupportedException();
+        public void UpdateDns(DnsMode mode, string dohServer, string dohPath, string dohSni, DnsDetour detour) => throw new NotSupportedException();
         public void UpdateTunSettings(TunSettings settings) => throw new NotSupportedException();
         public void UpdateProxySettings(ProxyConnectionSettings settings) => throw new NotSupportedException();
         public void UpdateRuleSets(IReadOnlyCollection<UserRuleSetModel> ruleSets) => throw new NotSupportedException();

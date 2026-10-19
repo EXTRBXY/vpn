@@ -1,3 +1,4 @@
+using NothingVpn.Domain.Models;
 using NothingVpn.Application.Services;
 using NothingVpn.Presentation;
 
@@ -11,7 +12,7 @@ public sealed class ConnectionDiagnosticControllerTests
         var diagnostics = new FakeDiagnosticsService();
         var controller = new ConnectionDiagnosticController(diagnostics);
 
-        var result = await controller.RunAsync("proxy", isRunning: false);
+        var result = await controller.RunAsync(ConnectionMode.Proxy, isRunning: false);
 
         Assert.Equal(ConnectionDiagnosticStatus.NotRunning, result.Status);
         Assert.Equal(0, diagnostics.ProxyCalls + diagnostics.TunCalls);
@@ -23,7 +24,7 @@ public sealed class ConnectionDiagnosticControllerTests
         var diagnostics = new FakeDiagnosticsService();
         var controller = new ConnectionDiagnosticController(diagnostics);
 
-        var result = await controller.RunAsync("proxy", isRunning: true);
+        var result = await controller.RunAsync(ConnectionMode.Proxy, isRunning: true);
 
         Assert.Equal(ConnectionDiagnosticStatus.Success, result.Status);
         Assert.StartsWith("Прокси: OK", result.Message);
@@ -39,7 +40,7 @@ public sealed class ConnectionDiagnosticControllerTests
         var diagnostics = new FakeDiagnosticsService();
         var controller = new ConnectionDiagnosticController(diagnostics);
 
-        var result = await controller.RunAsync("tun_apps", isRunning: true);
+        var result = await controller.RunAsync(ConnectionMode.TunApps, isRunning: true);
 
         Assert.Equal(ConnectionDiagnosticStatus.Success, result.Status);
         Assert.Contains("выбранные приложения", result.Message);
@@ -56,7 +57,7 @@ public sealed class ConnectionDiagnosticControllerTests
         };
         var controller = new ConnectionDiagnosticController(diagnostics);
 
-        var result = await controller.RunAsync("proxy", isRunning: true);
+        var result = await controller.RunAsync(ConnectionMode.Proxy, isRunning: true);
 
         Assert.Equal(ConnectionDiagnosticStatus.Failure, result.Status);
         Assert.Contains("Connection refused.", result.Message);
@@ -92,7 +93,7 @@ public sealed class ConnectionDiagnosticControllerTests
             return Task.FromResult(TunResult);
         }
 
-        public string GetLogsText(int minLevel) => throw new NotSupportedException();
-        public void ExportLogs(string path, int minLevel) => throw new NotSupportedException();
+        public string GetLogsText(LogLevel minLevel) => throw new NotSupportedException();
+        public void ExportLogs(string path, LogLevel minLevel) => throw new NotSupportedException();
     }
 }

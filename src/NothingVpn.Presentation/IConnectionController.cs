@@ -1,4 +1,5 @@
 using NothingVpn.Application.Models;
+using NothingVpn.Domain.Models;
 
 namespace NothingVpn.Presentation;
 
@@ -10,7 +11,7 @@ public interface IConnectionController
     VpnConnectionStatus GetStatus();
     Task<ConnectionStartOutcome> StartAsync(
         string profileId,
-        string mode,
+        ConnectionMode mode,
         CancellationToken cancellationToken = default);
     Task StopAsync(CancellationToken cancellationToken = default);
 }

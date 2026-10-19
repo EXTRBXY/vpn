@@ -1,3 +1,5 @@
+using NothingVpn.Domain.Models;
+
 namespace NothingVpn.Domain.Policies;
 
 /// <summary>
@@ -27,10 +29,10 @@ public static class TunInterfacePolicy
         return $"fdfe:dcba:9876:{hextet}::1/126";
     }
 
-    /// <summary>Пустой стек в настройках означает «по умолчанию для платформы».</summary>
-    public static string SingBoxStack(string normalizedStack) =>
-        normalizedStack.Length != 0
-            ? normalizedStack
+    /// <summary>Значение <c>stack</c> для sing-box: <see cref="TunStack.Default"/> означает «по умолчанию для платформы».</summary>
+    public static string SingBoxStack(TunStack stack) =>
+        TunSettingsPolicy.NormalizeStack(stack) != TunStack.Default
+            ? stack.ToValue()
             : OperatingSystem.IsWindows() ? "system" : "mixed";
 
     private static int ProfileHash(string profileId)

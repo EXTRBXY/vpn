@@ -1,4 +1,5 @@
 using NothingVpn.Application.Models;
+using NothingVpn.Domain.Models;
 using NothingVpn.Domain.Policies;
 
 namespace NothingVpn.Tray.Internal.UI;
@@ -29,15 +30,15 @@ internal sealed class ConnectionSettingsUi
     public required Label DnsNotice { get; init; }
     public required TableLayoutPanel DohFieldsPanel { get; init; }
 
-    public void UpdateVisibility(string? mode)
+    public void UpdateVisibility(ConnectionMode mode)
     {
-        var normalized = ConnectionPolicy.NormalizeMode(mode);
-        var isProxy = normalized == ConnectionPolicy.ProxyMode;
+        var normalized = ConnectionPolicy.Modes.Normalize(mode);
+        var isProxy = normalized == ConnectionMode.Proxy;
         var isTun = ConnectionPolicy.IsTunMode(normalized);
 
         ProxySection.Visible = isProxy;
         TunSection.Visible = isTun;
-        TunStrictRouteHint.Visible = string.Equals(normalized, ConnectionPolicy.TunAppsMode, StringComparison.Ordinal);
+        TunStrictRouteHint.Visible = normalized == ConnectionMode.TunApps;
     }
 
     public void UpdateDohFieldsEnabled()
@@ -73,21 +74,20 @@ internal sealed class ConnectionSettingsUi
         }
 
         TunMtu.Value = TunSettingsPolicy.NormalizeMtu(state.TunMtu);
-        TunStackCombo.SelectedIndex = TunSettingsPolicy.StackToComboIndex(state.TunStack);
+        TunStackCombo.SelectedIndex = ComboIndexes.FromStack(state.TunStack);
         TunAutoRoute.Checked = state.TunAutoRoute;
         TunStrictRoute.Checked = state.TunStrictRoute;
 
-        var dnsMode = (state.DnsMode ?? "doh").Trim().ToLowerInvariant();
-        DnsModeCombo.SelectedIndex = dnsMode == "system" ? 0 : 1;
+        DnsModeCombo.SelectedIndex = ComboIndexes.FromDnsMode(state.DnsMode);
         DohServerBox.Text = state.DohServer ?? "";
         DohPathBox.Text = state.DohPath ?? "/dns-query";
         DohSniBox.Text = state.DohSni ?? "";
-        DnsDetourCombo.SelectedIndex = DnsPolicy.DetourToComboIndex(state.DnsDetour);
-        DnsPresetCombo.SelectedIndex = DnsPolicy.StateToPresetIndex(new Domain.Models.DnsSettings
+        DnsDetourCombo.SelectedIndex = ComboIndexes.FromDetour(state.DnsDetour);
+        DnsPresetCombo.SelectedIndex = ComboIndexes.FromPreset(DnsPolicy.DetectPreset(new DnsSettings
         {
             DohServer = state.DohServer ?? "",
             DohSni = state.DohSni ?? ""
-        });
+        }));
 
         UpdateDohFieldsEnabled();
     }

@@ -1,5 +1,6 @@
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Services;
+using NothingVpn.Domain.Models;
 using NothingVpn.Domain.Policies;
 
 namespace NothingVpn.Presentation;
@@ -23,7 +24,7 @@ public sealed class ConnectionScreenController : IConnectionScreenController
         var state = _settingsService.GetState();
         NormalizeCollections(state);
         var normalizedDetour = DnsDetourPolicy.EffectiveDetour(state.Mode, state.DnsDetour);
-        var detourChanged = !string.Equals(state.DnsDetour, normalizedDetour, StringComparison.Ordinal);
+        var detourChanged = state.DnsDetour != normalizedDetour;
         state.DnsDetour = normalizedDetour;
 
         var selected = profiles.FirstOrDefault(p =>
@@ -80,9 +81,9 @@ public sealed class ConnectionScreenController : IConnectionScreenController
         target.CloseBehavior = source.CloseBehavior;
     }
 
-    public void SelectMode(AppStateModel state, string mode)
+    public void SelectMode(AppStateModel state, ConnectionMode mode)
     {
-        var normalized = ConnectionPolicy.NormalizeMode(mode);
+        var normalized = ConnectionPolicy.Modes.Normalize(mode);
         _settingsService.UpdateState(current => current.Mode = normalized);
         state.Mode = normalized;
         state.DnsDetour = DnsDetourPolicy.EffectiveDetour(normalized, state.DnsDetour);
@@ -99,7 +100,5 @@ public sealed class ConnectionScreenController : IConnectionScreenController
     {
         state.TunAppProcessPaths ??= new List<string>();
         state.UserRuleSets ??= new List<UserRuleSetModel>();
-        if (string.IsNullOrWhiteSpace(state.DnsDetour))
-            state.DnsDetour = DnsPolicy.DefaultDetour;
     }
 }

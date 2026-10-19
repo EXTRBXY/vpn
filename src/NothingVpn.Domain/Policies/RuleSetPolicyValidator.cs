@@ -4,14 +4,24 @@ namespace NothingVpn.Domain.Policies;
 
 public static class RuleSetPolicyValidator
 {
-    public const string DirectAction = "direct";
-    public const string BlockAction = "block";
+    public const RuleSetAction DefaultAction = RuleSetAction.Direct;
 
-    public static void ValidateEnabled(IEnumerable<UserRuleSetEntry> entries, string ruleSetsDir)
+    public static readonly SettingValueMap<RuleSetAction> Actions = new(
+        DefaultAction,
+        new Dictionary<RuleSetAction, string>
+        {
+            [RuleSetAction.Direct] = "direct",
+            [RuleSetAction.Block] = "block"
+        });
+
+    /// <summary>
+    /// Проверяет включённые записи: tag, имя файла, действие, уникальность тегов. Наличие файлов на диске
+    /// проверяет вызывающий код (Application, через порт файлов rule-set).
+    /// </summary>
+    public static void ValidateEnabled(IEnumerable<UserRuleSetEntry> entries)
     {
-        var missing = new List<string>();
-        var bad = new List<string>();
-        var duplicateTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var bad = false;
+        var duplicateTags = false;
         var seenTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var rs in entries)
@@ -19,48 +29,28 @@ public static class RuleSetPolicyValidator
             if (!rs.Enabled) continue;
             if (string.IsNullOrWhiteSpace(rs.FileName) || string.IsNullOrWhiteSpace(rs.Tag))
             {
-                bad.Add(string.IsNullOrWhiteSpace(rs.Name) ? "(без имени)" : rs.Name);
+                bad = true;
                 continue;
             }
 
-            var tag = rs.Tag.Trim();
-            if (!seenTags.Add(tag))
-                duplicateTags.Add(tag);
-
-            if (!IsSupportedAction(rs.Action))
-            {
-                bad.Add(string.IsNullOrWhiteSpace(rs.Name) ? rs.Tag : rs.Name);
-                continue;
-            }
+            if (!seenTags.Add(rs.Tag.Trim()))
+                duplicateTags = true;
 
             var fileName = rs.FileName.Trim();
-            if (!IsSafeRuleSetFileName(fileName) || !fileName.EndsWith(".srs", StringComparison.OrdinalIgnoreCase))
+            if (!Actions.IsDefined(rs.Action)
+                || !IsSafeRuleSetFileName(fileName)
+                || !fileName.EndsWith(".srs", StringComparison.OrdinalIgnoreCase))
             {
-                bad.Add(string.IsNullOrWhiteSpace(rs.Name) ? rs.Tag : rs.Name);
-                continue;
-            }
-
-            var fullPath = Path.Combine(ruleSetsDir, fileName);
-            if (!File.Exists(fullPath))
-            {
-                var name = string.IsNullOrWhiteSpace(rs.Name) ? rs.Tag : rs.Name;
-                missing.Add($"{name} -> {rs.FileName}");
+                bad = true;
             }
         }
 
-        if (bad.Count != 0)
+        if (bad)
             throw new InvalidOperationException("Некоторые rule-set записи повреждены (нет tag/filename/action или небезопасный filename).");
 
-        if (duplicateTags.Count != 0)
+        if (duplicateTags)
             throw new InvalidOperationException("Найдены дублирующиеся rule-set tag.");
-
-        if (missing.Count != 0)
-            throw new InvalidOperationException("Не найдены файлы включённых rule-set (.srs).");
     }
-
-    public static string NormalizeAction(string? action) => (action ?? string.Empty).Trim().ToLowerInvariant();
-
-    public static bool IsSupportedAction(string? action) => NormalizeAction(action) is DirectAction or BlockAction;
 
     public static bool IsSafeRuleSetFileName(string fileName)
     {
@@ -73,4 +63,3 @@ public static class RuleSetPolicyValidator
         return true;
     }
 }
-

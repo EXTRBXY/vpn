@@ -7,6 +7,7 @@ using System.Windows.Media;
 using MediaBrush = System.Windows.Media.Brush;
 using MediaColor = System.Windows.Media.Color;
 using NothingVpn.Application.Models;
+using NothingVpn.Domain.Models;
 using NothingVpn.Domain.Policies;
 using NothingVpn.Presentation;
 
@@ -46,9 +47,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         Diagnostics = new DiagnosticsViewModel(diagnosticController, logStore, () => _state.Mode, () => _connectionController.IsRunning);
         Modes =
         [
-            new ModeOption(ConnectionPolicy.ProxyMode, "Прокси"),
-            new ModeOption(ConnectionPolicy.TunMode, "TUN — весь трафик"),
-            new ModeOption(ConnectionPolicy.TunAppsMode, "TUN — выбранные приложения")
+            new ModeOption(ConnectionMode.Proxy, "Прокси"),
+            new ModeOption(ConnectionMode.Tun, "TUN — весь трафик"),
+            new ModeOption(ConnectionMode.TunApps, "TUN — выбранные приложения")
         ];
         _toggleCommand = new AsyncRelayCommand(ToggleConnectionAsync, () => CanStart || CanStop);
         ToggleConnectionCommand = _toggleCommand;
@@ -75,7 +76,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ProfileViewModel ProfileManager { get; }
     public SettingsViewModel Settings { get; }
     public DiagnosticsViewModel Diagnostics { get; }
-    public bool CloseToTray => AppCloseBehavior.Normalize(_state.CloseBehavior) == AppCloseBehavior.HideToTray;
+    public bool CloseToTray => AppCloseBehaviors.Values.Normalize(_state.CloseBehavior) == AppCloseBehavior.HideToTray;
     public void RequestExit() => _requestExit();
     public bool ShowProfiles
     {
@@ -167,7 +168,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
     internal async Task ApplyStartupAsync(StartupOptions options)
     {
-        if (!string.IsNullOrWhiteSpace(options.Mode)) SelectedMode=Modes.FirstOrDefault(x=>string.Equals(x.Id,options.Mode,StringComparison.OrdinalIgnoreCase))??SelectedMode;
+        if (ConnectionPolicy.Modes.TryParse(options.Mode, out var mode)) SelectedMode=Modes.FirstOrDefault(x=>x.Id==mode)??SelectedMode;
         if (!string.IsNullOrWhiteSpace(options.ProfileId)) SelectedProfile=Profiles.FirstOrDefault(x=>string.Equals(x.Id,options.ProfileId,StringComparison.OrdinalIgnoreCase))??SelectedProfile;
         if(options.Start&&!_connectionController.IsRunning) await ToggleConnectionAsync();
     }
@@ -179,7 +180,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var snapshot = _screenController.Load();
         _state = snapshot.State;
         ReplaceProfiles(snapshot);
-        _selectedMode = Modes.FirstOrDefault(x => string.Equals(x.Id, _state.Mode, StringComparison.OrdinalIgnoreCase)) ?? Modes[0];
+        _selectedMode = Modes.FirstOrDefault(x => x.Id == _state.Mode) ?? Modes[0];
         OnPropertyChanged(nameof(SelectedProfile));
         OnPropertyChanged(nameof(SelectedMode));
         RefreshViewState();

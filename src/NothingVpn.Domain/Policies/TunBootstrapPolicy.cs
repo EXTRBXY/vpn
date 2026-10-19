@@ -1,4 +1,5 @@
 using System.Net;
+using NothingVpn.Domain.Models;
 
 namespace NothingVpn.Domain.Policies;
 
@@ -21,22 +22,21 @@ public static class TunBootstrapPolicy
         return BootstrapLocalDnsTag;
     }
 
-    public static string? ResolveSingBoxDohDetour(string? connectionMode, bool tunStrictRoute, string? userDetour)
+    /// <summary>Detour DoH-сервера в конфиге sing-box: тег outbound <c>proxy</c> или null (напрямую).</summary>
+    public static string? ResolveSingBoxDohDetour(ConnectionMode connectionMode, bool tunStrictRoute, DnsDetour userDetour)
     {
-        var mode = ConnectionPolicy.NormalizeMode(connectionMode);
-        if (!ConnectionPolicy.IsTunMode(mode))
+        if (!ConnectionPolicy.IsTunMode(connectionMode))
             return null;
 
         // tun_apps: DNS через proxy запрещён (модель split-tunnel + DnsDetourPolicy).
-        if (TunAppsPolicy.IsTunApps(mode))
+        if (TunAppsPolicy.IsTunApps(connectionMode))
             return null;
 
-        var effectiveStrictRoute = TunAppsPolicy.UseStrictRoute(mode, tunStrictRoute);
-        var detour = NormalizeDetour(userDetour);
-        if (effectiveStrictRoute && detour != "proxy")
-            return "proxy";
+        var effectiveStrictRoute = TunAppsPolicy.UseStrictRoute(connectionMode, tunStrictRoute);
+        if (effectiveStrictRoute || userDetour == DnsDetour.Proxy)
+            return DnsDetour.Proxy.ToValue();
 
-        return detour == "proxy" ? "proxy" : null;
+        return null;
     }
 
     private static void AddDomain(ISet<string> set, string? value)
@@ -45,11 +45,5 @@ public static class TunBootstrapPolicy
         if (domain.Length == 0 || IPAddress.TryParse(domain, out _))
             return;
         set.Add(domain);
-    }
-
-    private static string NormalizeDetour(string? detour)
-    {
-        var normalized = (detour ?? string.Empty).Trim().ToLowerInvariant();
-        return normalized == "proxy" ? "proxy" : "direct";
     }
 }

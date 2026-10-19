@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 using NothingVpn.Application.Mappers;
 using NothingVpn.Application.Models;
+using NothingVpn.Domain.Models;
 using NothingVpn.Domain.Policies;
 using NothingVpn.Infrastructure.Store;
 
@@ -18,7 +19,7 @@ internal static class SingBoxConfigGenerator
         var config = Build(paths, profile, state);
         var json = JsonSerializer.Serialize(config, JsonOptions());
 
-        var path = Path.Combine(paths.ConfigsDir, $"{profile.Id}.{state.Mode}.json");
+        var path = Path.Combine(paths.ConfigsDir, $"{profile.Id}.{state.Mode.ToValue()}.json");
         File.WriteAllText(path, json);
         return path;
     }
@@ -45,14 +46,14 @@ internal static class SingBoxConfigGenerator
         outbound.Transport = BuildTransport(profile);
 
         var routing = EvaluateRoutingPolicy(state, useTun);
-        var useDohResolver = state.DnsMode == DnsPolicy.DohMode;
+        var useDohResolver = state.DnsMode == DnsMode.Doh;
         var dnsDetour = ResolveDnsDetour(state, mode, useTun);
         if (dnsDetour == "proxy")
             outbound.DomainResolver = TunBootstrapPolicy.BootstrapLocalDnsTag;
 
         return new SingBoxConfig
         {
-            Log = new SingBoxLog { Level = state.SingBoxLogLevel },
+            Log = new SingBoxLog { Level = state.SingBoxLogLevel.ToValue() },
             Dns = BuildDns(state, useTun, profile, routing, dnsDetour),
             Inbounds = inbounds,
             Outbounds = new List<SingBoxOutbound>
@@ -68,22 +69,22 @@ internal static class SingBoxConfigGenerator
     private static RuleSetRoutingDecision EvaluateRoutingPolicy(AppStateModel state, bool useTun) =>
         RuleSetRoutingPolicy.Evaluate(ConnectionSettingsMapper.ToRuleSetEntries(state.UserRuleSets), state.DnsMode, useTun);
 
-    private static string? ResolveDnsDetour(AppStateModel state, string mode, bool useTun)
+    private static string? ResolveDnsDetour(AppStateModel state, ConnectionMode mode, bool useTun)
     {
         if (!DnsDetourPolicy.AllowsProxyDetour(mode))
             return null;
 
-        var requestedProxy = DnsDetourPolicy.EffectiveDetour(mode, state.DnsDetour) == "proxy";
+        var requestedProxy = DnsDetourPolicy.EffectiveDetour(mode, state.DnsDetour) == DnsDetour.Proxy;
         if (!useTun)
             return requestedProxy ? "proxy" : null;
 
         return TunBootstrapPolicy.ResolveSingBoxDohDetour(
             mode,
             TunAppsPolicy.UseStrictRoute(mode, state.TunStrictRoute),
-            requestedProxy ? "proxy" : "direct");
+            requestedProxy ? DnsDetour.Proxy : DnsDetour.Direct);
     }
 
-    private static List<SingBoxRouteRule> BuildTunHeadRules(VpnProfile profile, string mode)
+    private static List<SingBoxRouteRule> BuildTunHeadRules(VpnProfile profile, ConnectionMode mode)
     {
         var rules = new List<SingBoxRouteRule>
         {
@@ -123,7 +124,7 @@ internal static class SingBoxConfigGenerator
         return rules;
     }
 
-    private static void AddTunFallbackRules(List<SingBoxRouteRule> rules, string mode)
+    private static void AddTunFallbackRules(List<SingBoxRouteRule> rules, ConnectionMode mode)
     {
         // Rule evaluation is first-match-wins. These broad protocol/address rules must
         // stay after domain rule-sets, otherwise a direct/block .srs entry is bypassed
@@ -151,7 +152,7 @@ internal static class SingBoxConfigGenerator
 
     private static SingBoxRoute BuildRoute(
         AppPaths paths,
-        string mode,
+        ConnectionMode mode,
         AppStateModel state,
         VpnProfile profile,
         bool useDohResolver)
@@ -187,7 +188,7 @@ internal static class SingBoxConfigGenerator
         rules.AddRange(userRules);
         AddTunFallbackRules(rules, mode);
 
-        if (string.Equals(mode, ConnectionPolicy.TunAppsMode, StringComparison.Ordinal))
+        if (mode == ConnectionMode.TunApps)
         {
             var procPaths = state.TunAppProcessPaths;
             if (procPaths.Count == 0)
@@ -259,10 +260,9 @@ internal static class SingBoxConfigGenerator
                 Format = "binary"
             });
 
-            var action = RuleSetPolicyValidator.NormalizeAction(rs.Action);
-            if (!RuleSetPolicyValidator.IsSupportedAction(action))
+            if (!RuleSetPolicyValidator.Actions.IsDefined(rs.Action))
                 throw new ArgumentException("User rule-set action must be direct|block.");
-            var outbound = action == RuleSetPolicyValidator.BlockAction ? "block" : "direct";
+            var outbound = rs.Action == RuleSetAction.Block ? "block" : "direct";
 
             rules.Add(new SingBoxRouteRule
             {
@@ -296,7 +296,7 @@ internal static class SingBoxConfigGenerator
         ListenPort = localMixedPort
     };
 
-    private static SingBoxInbound BuildTunInbound(AppStateModel state, VpnProfile profile, string mode) => new()
+    private static SingBoxInbound BuildTunInbound(AppStateModel state, VpnProfile profile, ConnectionMode mode) => new()
     {
         Type = "tun",
         Tag = "tun-in",
@@ -319,7 +319,7 @@ internal static class SingBoxConfigGenerator
         RuleSetRoutingDecision routing,
         string? dnsDetour)
     {
-        var useDoh = state.DnsMode == DnsPolicy.DohMode;
+        var useDoh = state.DnsMode == DnsMode.Doh;
         var hasEnabledUserRuleSets = state.UserRuleSets.Any(x => x.Enabled);
         if (!useTun && !useDoh && !hasEnabledUserRuleSets) return null;
 

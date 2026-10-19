@@ -1,4 +1,6 @@
 ﻿using NothingVpn.Application.Models;
+using NothingVpn.Domain.Models;
+using NothingVpn.Domain.Policies;
 using NothingVpn.Infrastructure.SingBox;
 using NothingVpn.Infrastructure.Store;
 
@@ -37,12 +39,12 @@ public sealed class SingBoxConfigGeneratorTests
 
         var state = new AppStateModel
         {
-            Mode = "tun",
-            DnsMode = "doh",
+            Mode = ConnectionMode.Tun,
+            DnsMode = DnsMode.Doh,
             DohServer = "8.8.8.8",
             DohPath = "/dns-query",
             DohSni = "dns.google",
-            DnsDetour = "direct",
+            DnsDetour = DnsDetour.Direct,
             UserRuleSets =
             [
                 new UserRuleSetModel
@@ -51,7 +53,7 @@ public sealed class SingBoxConfigGeneratorTests
                     Name = "RU",
                     FileName = "geosite-category-ru.srs",
                     Enabled = true,
-                    Action = "direct",
+                    Action = RuleSetAction.Direct,
                     BuiltinId = "sing-geosite:category-ru"
                 },
                 new UserRuleSetModel
@@ -60,7 +62,7 @@ public sealed class SingBoxConfigGeneratorTests
                     Name = "GeoIP RU",
                     FileName = "geoip-ru.srs",
                     Enabled = true,
-                    Action = "direct",
+                    Action = RuleSetAction.Direct,
                     BuiltinId = "sing-geoip:ru"
                 }
             ]
@@ -118,8 +120,8 @@ public sealed class SingBoxConfigGeneratorTests
         };
         var state = new AppStateModel
         {
-            Mode = mode,
-            DnsMode = mode == "tun" ? "doh" : "doh",
+            Mode = ConnectionPolicy.Modes.Parse(mode),
+            DnsMode = DnsMode.Doh,
             TunAppProcessPaths = mode == "tun_apps"
                 ? ["C:\\Apps\\firefox.exe"]
                 : []
@@ -160,8 +162,8 @@ public sealed class SingBoxConfigGeneratorTests
 
         var state = new AppStateModel
         {
-            Mode = "proxy",
-            DnsMode = "system",
+            Mode = ConnectionMode.Proxy,
+            DnsMode = DnsMode.System,
             UserRuleSets = []
         };
 
@@ -203,8 +205,8 @@ public sealed class SingBoxConfigGeneratorTests
 
         var state = new AppStateModel
         {
-            Mode = "proxy",
-            DnsMode = "system",
+            Mode = ConnectionMode.Proxy,
+            DnsMode = DnsMode.System,
             UserRuleSets =
             [
                 new UserRuleSetModel
@@ -212,7 +214,7 @@ public sealed class SingBoxConfigGeneratorTests
                     Tag = "geosite-category-ru",
                     FileName = "geosite-category-ru.srs",
                     Enabled = true,
-                    Action = "direct"
+                    Action = RuleSetAction.Direct
                 }
             ]
         };
@@ -252,12 +254,12 @@ public sealed class SingBoxConfigGeneratorTests
 
         var state = new AppStateModel
         {
-            Mode = "proxy",
-            DnsMode = "doh",
+            Mode = ConnectionMode.Proxy,
+            DnsMode = DnsMode.Doh,
             DohServer = "1.1.1.1",
             DohPath = "/dns-query",
             DohSni = "cloudflare-dns.com",
-            DnsDetour = "proxy",
+            DnsDetour = DnsDetour.Proxy,
             UserRuleSets = []
         };
 
@@ -298,12 +300,12 @@ public sealed class SingBoxConfigGeneratorTests
 
         var state = new AppStateModel
         {
-            Mode = "tun_apps",
-            DnsMode = "doh",
+            Mode = ConnectionMode.TunApps,
+            DnsMode = DnsMode.Doh,
             DohServer = "1.1.1.1",
             DohPath = "/dns-query",
             DohSni = "cloudflare-dns.com",
-            DnsDetour = "proxy",
+            DnsDetour = DnsDetour.Proxy,
             TunAppProcessPaths = [@"C:\Windows\System32\notepad.exe"],
             UserRuleSets = []
         };
@@ -332,8 +334,8 @@ public sealed class SingBoxConfigGeneratorTests
         };
         var state = new AppStateModel
         {
-            Mode = "tun_apps",
-            DnsMode = "doh",
+            Mode = ConnectionMode.TunApps,
+            DnsMode = DnsMode.Doh,
             TunStrictRoute = true,
             TunAppProcessPaths = ["C:\\Apps\\firefox.exe"]
         };
@@ -396,8 +398,8 @@ public sealed class SingBoxConfigGeneratorTests
 
         var state = new AppStateModel
         {
-            Mode = "tun_apps",
-            DnsMode = "system",
+            Mode = ConnectionMode.TunApps,
+            DnsMode = DnsMode.System,
             TunAppProcessPaths = [@"C:\Apps\browser.exe"],
             UserRuleSets =
             [
@@ -406,7 +408,7 @@ public sealed class SingBoxConfigGeneratorTests
                     Tag = "geosite-category-ru",
                     FileName = "geosite-category-ru.srs",
                     Enabled = true,
-                    Action = "direct"
+                    Action = RuleSetAction.Direct
                 }
             ]
         };
@@ -434,7 +436,7 @@ public sealed class SingBoxConfigGeneratorTests
             Security = "tls",
             Sni = "node.example"
         };
-        var state = new AppStateModel { Mode = "tun", DnsMode = "doh", TunStrictRoute = true };
+        var state = new AppStateModel { Mode = ConnectionMode.Tun, DnsMode = DnsMode.Doh, TunStrictRoute = true };
 
         var config = SingBoxConfigGenerator.Build(paths, profile, state);
         var rules = config.Route.Rules ?? [];
@@ -474,8 +476,8 @@ public sealed class SingBoxConfigGeneratorTests
         };
         var state = new AppStateModel
         {
-            Mode = "tun",
-            DnsMode = "system",
+            Mode = ConnectionMode.Tun,
+            DnsMode = DnsMode.System,
             UserRuleSets =
             [
                 new UserRuleSetModel
@@ -483,7 +485,7 @@ public sealed class SingBoxConfigGeneratorTests
                     Tag = "marketplaces",
                     FileName = "marketplaces.srs",
                     Enabled = true,
-                    Action = "direct"
+                    Action = RuleSetAction.Direct
                 }
             ]
         };
@@ -513,9 +515,9 @@ public sealed class SingBoxConfigGeneratorTests
         };
         var state = new AppStateModel
         {
-            Mode = "proxy",
+            Mode = ConnectionMode.Proxy,
             LocalMixedPort = 2080,
-            DnsMode = "system"
+            DnsMode = DnsMode.System
         };
 
         var config = SingBoxConfigGenerator.Build(paths, profile, state);
@@ -543,10 +545,10 @@ public sealed class SingBoxConfigGeneratorTests
         };
         var state = new AppStateModel
         {
-            Mode = "tun",
-            DnsMode = "doh",
+            Mode = ConnectionMode.Tun,
+            DnsMode = DnsMode.Doh,
             TunMtu = 1400,
-            TunStack = "gvisor",
+            TunStack = TunStack.Gvisor,
             TunStrictRoute = false,
             TunInterfaceName = "CustomVpn",
             TunAddressCidr = "198.18.50.1/30"

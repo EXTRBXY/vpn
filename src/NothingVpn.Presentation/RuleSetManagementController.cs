@@ -1,5 +1,6 @@
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Services;
+using NothingVpn.Domain.Policies;
 
 namespace NothingVpn.Presentation;
 
@@ -38,7 +39,7 @@ public sealed class RuleSetManagementController : IRuleSetManagementController
                 : normalizedName,
             FileName = normalizedFileName,
             Enabled = true,
-            Action = "direct"
+            Action = RuleSetPolicyValidator.DefaultAction
         };
     }
 

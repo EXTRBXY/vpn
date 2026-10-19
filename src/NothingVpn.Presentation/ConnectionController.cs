@@ -1,5 +1,6 @@
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Services;
+using NothingVpn.Domain.Models;
 
 namespace NothingVpn.Presentation;
 
@@ -30,7 +31,7 @@ public sealed class ConnectionController : IConnectionController
 
     public async Task<ConnectionStartOutcome> StartAsync(
         string profileId,
-        string mode,
+        ConnectionMode mode,
         CancellationToken cancellationToken = default)
     {
         try

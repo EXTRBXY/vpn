@@ -180,8 +180,8 @@ public sealed class UpdateViewModelTests
         public event EventHandler<AppStateModel>? StateChanged { add { } remove { } }
         public AppStateModel GetState() => _state;
         public void UpdateState(Action<AppStateModel> update) => update(_state);
-        public void UpdateMode(string mode) => throw new NotSupportedException();
-        public void UpdateDns(string mode, string dohServer, string dohPath, string dohSni, string detour) => throw new NotSupportedException();
+        public void UpdateMode(ConnectionMode mode) => throw new NotSupportedException();
+        public void UpdateDns(DnsMode mode, string dohServer, string dohPath, string dohSni, DnsDetour detour) => throw new NotSupportedException();
         public void UpdateTunSettings(TunSettings settings) => throw new NotSupportedException();
         public void UpdateProxySettings(ProxyConnectionSettings settings) => throw new NotSupportedException();
         public void UpdateRuleSets(IReadOnlyCollection<UserRuleSetModel> ruleSets) => throw new NotSupportedException();

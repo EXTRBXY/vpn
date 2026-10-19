@@ -1,4 +1,5 @@
 ﻿using System.Text;
+using NothingVpn.Domain.Models;
 using NothingVpn.Infrastructure.Security;
 
 namespace NothingVpn.Infrastructure.Diagnostics;
@@ -29,7 +30,7 @@ public sealed class InMemoryLogStore
     }
 
     public void AppendStructured(
-        int level,
+        LogLevel level,
         string source,
         string message,
         string? raw = null,
@@ -71,9 +72,9 @@ public sealed class InMemoryLogStore
         }
     }
 
-    public string SnapshotText(int minLevel) => SnapshotText(minLevel, out _);
+    public string SnapshotText(LogLevel minLevel) => SnapshotText(minLevel, out _);
 
-    public string SnapshotText(int minLevel, out int version)
+    public string SnapshotText(LogLevel minLevel, out int version)
     {
         LogEntry[] snapshot;
         int bytes;
@@ -94,9 +95,9 @@ public sealed class InMemoryLogStore
         return sb.ToString();
     }
 
-    public string SnapshotAll() => SnapshotText(minLevel: 0);
+    public string SnapshotAll() => SnapshotText(LogLevel.Trace);
 
-    public string? TryGetLatestMessage(int minLevel)
+    public string? TryGetLatestMessage(LogLevel minLevel)
     {
         lock (_gate)
         {
@@ -111,23 +112,23 @@ public sealed class InMemoryLogStore
         return null;
     }
 
-    private static string LevelToText(int level)
+    private static string LevelToText(LogLevel level)
     {
         return level switch
         {
-            <= 0 => "TRACE",
-            1 => "DEBUG",
-            2 => "INFO",
-            3 => "WARN",
-            4 => "ERROR",
-            5 => "FATAL",
+            <= LogLevel.Trace => "TRACE",
+            LogLevel.Debug => "DEBUG",
+            LogLevel.Info => "INFO",
+            LogLevel.Warn => "WARN",
+            LogLevel.Error => "ERROR",
+            LogLevel.Fatal => "FATAL",
             _ => "PANIC"
         };
     }
 
     private readonly record struct LogEntry(
         DateTimeOffset TimestampUtc,
-        int Level,
+        LogLevel Level,
         string Source,
         string Message,
         string Raw,

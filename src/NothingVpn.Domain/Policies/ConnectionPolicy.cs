@@ -1,38 +1,30 @@
+using NothingVpn.Domain.Models;
+
 namespace NothingVpn.Domain.Policies;
 
 public static class ConnectionPolicy
 {
-    public const string ProxyMode = "proxy";
-    public const string TunMode = "tun";
-    public const string TunAppsMode = "tun_apps";
-
-    public const string DefaultMode = ProxyMode;
+    public const ConnectionMode DefaultMode = ConnectionMode.Proxy;
     public const int DefaultLocalMixedPort = 1080;
 
-    public static string NormalizeMode(string? mode)
-    {
-        var value = (mode ?? string.Empty).Trim().ToLowerInvariant();
-        return value switch
+    public static readonly SettingValueMap<ConnectionMode> Modes = new(
+        DefaultMode,
+        new Dictionary<ConnectionMode, string>
         {
-            TunMode => TunMode,
-            TunAppsMode => TunAppsMode,
-            _ => DefaultMode
-        };
-    }
+            [ConnectionMode.Proxy] = "proxy",
+            [ConnectionMode.Tun] = "tun",
+            [ConnectionMode.TunApps] = "tun_apps"
+        });
 
-    public static bool IsTunMode(string? mode)
-    {
-        var normalized = NormalizeMode(mode);
-        return normalized is TunMode or TunAppsMode;
-    }
+    public static bool IsTunMode(ConnectionMode mode) =>
+        Modes.Normalize(mode) is ConnectionMode.Tun or ConnectionMode.TunApps;
 
-    public static void EnsureTunAppsHasTargets(string? mode, IReadOnlyCollection<string> processPaths)
+    public static void EnsureTunAppsHasTargets(ConnectionMode mode, IReadOnlyCollection<string> processPaths)
     {
-        if (!string.Equals(NormalizeMode(mode), TunAppsMode, StringComparison.Ordinal))
+        if (mode != ConnectionMode.TunApps)
             return;
 
         if (processPaths.Count == 0)
             throw new InvalidOperationException("В режиме TUN (выбранные приложения) нужно добавить хотя бы один .exe.");
     }
 }
-

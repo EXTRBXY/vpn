@@ -1,4 +1,5 @@
 using System.Text.Json;
+using NothingVpn.Domain.Models;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Services;
 using NothingVpn.Domain.Policies;
@@ -23,36 +24,36 @@ public sealed class AppStateNormalizerTests
     {
         var state = new AppStateModel
         {
-            Mode = " TUN ",
-            DnsMode = "garbage",
+            Mode = ConnectionPolicy.Modes.Parse(" TUN "),
+            DnsMode = DnsPolicy.Modes.Parse("garbage"),
             DohServer = " 9.9.9.9 ",
             DohPath = " ",
             DohSni = " dns.quad9.net ",
-            DnsDetour = "PROXY",
+            DnsDetour = DnsPolicy.Detours.Parse("PROXY"),
             TunInterfaceName = "bad:name",
             TunAddressCidr = "172.19.0.1/30",
             TunMtu = 9000,
-            TunStack = " GVISOR ",
+            TunStack = TunSettingsPolicy.Stacks.Parse(" GVISOR "),
             ProxyOverride = "",
-            SingBoxLogLevel = "Warning",
-            CloseBehavior = "EXIT",
+            SingBoxLogLevel = SingBoxLogLevelPolicy.Levels.Parse("Warning"),
+            CloseBehavior = AppCloseBehaviors.Values.Parse("EXIT"),
             TunAppProcessPaths = [@" C:\Apps\one.exe ", @"C:\APPS\ONE.EXE", "relative.exe"]
         };
 
         AppStateNormalizer.Normalize(state, new PathPolicyPort());
 
-        Assert.Equal("tun", state.Mode);
-        Assert.Equal("doh", state.DnsMode);
+        Assert.Equal("tun", state.Mode.ToValue());
+        Assert.Equal("doh", state.DnsMode.ToValue());
         Assert.Equal("9.9.9.9", state.DohServer);
         Assert.Equal("/dns-query", state.DohPath);
         Assert.Equal("dns.quad9.net", state.DohSni);
-        Assert.Equal("proxy", state.DnsDetour);
+        Assert.Equal("proxy", state.DnsDetour.ToValue());
         Assert.Equal("NothingVpn", state.TunInterfaceName);
         Assert.Equal("auto", state.TunAddressCidr);
         Assert.Equal(1500, state.TunMtu);
-        Assert.Equal("gvisor", state.TunStack);
+        Assert.Equal("gvisor", state.TunStack.ToValue());
         Assert.Equal(ProxyConnectionPolicy.DefaultProxyOverride, state.ProxyOverride);
-        Assert.Equal("warn", state.SingBoxLogLevel);
+        Assert.Equal("warn", state.SingBoxLogLevel.ToValue());
         Assert.Equal(AppCloseBehavior.Exit, state.CloseBehavior);
         Assert.Equal([@"C:\Apps\one.exe"], state.TunAppProcessPaths);
     }
@@ -76,19 +77,19 @@ public sealed class AppStateNormalizerTests
     {
         var raw = new AppStateModel
         {
-            Mode = mode.ToUpperInvariant(),
-            DnsMode = " DOH ",
+            Mode = ConnectionPolicy.Modes.Parse(mode.ToUpperInvariant()),
+            DnsMode = DnsPolicy.Modes.Parse(" DOH "),
             DohServer = " 8.8.8.8 ",
             DohPath = "",
             DohSni = " dns.google ",
             TunInterfaceName = " NothingVpn ",
             TunAddressCidr = " AUTO ",
             TunMtu = 0,
-            TunStack = "unknown",
-            SingBoxLogLevel = "WARN",
+            TunStack = TunSettingsPolicy.Stacks.Parse("unknown"),
+            SingBoxLogLevel = SingBoxLogLevelPolicy.Levels.Parse("WARN"),
             TunAppProcessPaths = [@"C:\Apps\browser.exe", @"c:\apps\BROWSER.exe "]
         };
-        var clean = new AppStateModel { Mode = mode, TunAppProcessPaths = [@"C:\Apps\browser.exe"] };
+        var clean = new AppStateModel { Mode = ConnectionPolicy.Modes.Parse(mode), TunAppProcessPaths = [@"C:\Apps\browser.exe"] };
 
         AppStateNormalizer.Normalize(raw, new PathPolicyPort());
 
@@ -99,7 +100,7 @@ public sealed class AppStateNormalizerTests
     public void Generator_EmptyDohServer_FallsBackToDefaultServer()
     {
         // До шага 3 генератор подставлял 1.1.1.1, хотя значение по умолчанию везде 8.8.8.8 (REFACTORING 2.5).
-        var state = new AppStateModel { Mode = "proxy", DohServer = "" };
+        var state = new AppStateModel { Mode = ConnectionMode.Proxy, DohServer = "" };
         AppStateNormalizer.Normalize(state, new PathPolicyPort());
 
         var config = SingBoxConfigGenerator.Build(Paths, Profile(), state);
@@ -115,8 +116,8 @@ public sealed class AppStateNormalizerTests
     [InlineData("WARN", "warn")]
     [InlineData("debug", "debug")]
     [InlineData("panic", "panic")]
-    public void SingBoxLogLevelPolicy_Normalize(string? input, string expected) =>
-        Assert.Equal(expected, SingBoxLogLevelPolicy.Normalize(input));
+    public void SingBoxLogLevelPolicy_Parse(string? input, string expected) =>
+        Assert.Equal(expected, SingBoxLogLevelPolicy.Levels.Parse(input).ToValue());
 
     [Fact]
     public void TunInterfacePolicy_KeepsProfileDerivedValuesStable()
@@ -129,8 +130,8 @@ public sealed class AppStateNormalizerTests
         Assert.Equal("fdfe:dcba:9876:97ab::1/126", TunInterfacePolicy.Ipv6Address("0123456789abcdef"));
         Assert.Equal("198.18.201.161/30", TunInterfacePolicy.Ipv4Address("auto", "fedcba9876543210"));
         Assert.Equal("fdfe:dcba:9876:6018::1/126", TunInterfacePolicy.Ipv6Address("fedcba9876543210"));
-        Assert.Equal("system", TunInterfacePolicy.SingBoxStack(""));
-        Assert.Equal("gvisor", TunInterfacePolicy.SingBoxStack("gvisor"));
+        Assert.Equal("system", TunInterfacePolicy.SingBoxStack(TunStack.Default));
+        Assert.Equal("gvisor", TunInterfacePolicy.SingBoxStack(TunStack.Gvisor));
     }
 
     private static string BuildJson(AppStateModel state) =>

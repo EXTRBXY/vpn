@@ -49,7 +49,7 @@ public static class ApplicationServicesFactory
             proxyPort,
             diagnosticsPort,
             elevationPort,
-            appPaths,
+            ruleSetFileService,
             pathPolicy,
             logPort);
         stateStore.SaveMissingBuiltinRuleSets();

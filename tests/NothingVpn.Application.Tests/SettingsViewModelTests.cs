@@ -1,4 +1,6 @@
 using System.Text.Json;
+using NothingVpn.Domain.Models;
+using NothingVpn.Domain.Policies;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
 using NothingVpn.Application.Services;
@@ -63,12 +65,12 @@ public sealed class SettingsViewModelTests
     public void EditingDns_UpdatesPreset_AndAllowsReapplyingIt()
     {
         var vm = new Harness().Create();
-        Assert.Equal("google", vm.DnsPreset);
+        Assert.Equal(DnsPreset.Google, vm.DnsPreset);
         vm.DohServer = "8.8.4.4";
-        Assert.Equal("custom", vm.DnsPreset);
-        vm.DnsPreset = "google";
+        Assert.Equal(DnsPreset.Custom, vm.DnsPreset);
+        vm.DnsPreset = DnsPreset.Google;
         Assert.Equal("8.8.8.8", vm.DohServer);
-        Assert.Equal("google", vm.DnsPreset);
+        Assert.Equal(DnsPreset.Google, vm.DnsPreset);
     }
 
     [Fact]
@@ -79,17 +81,17 @@ public sealed class SettingsViewModelTests
         vm.InterfaceName = "Edited";
         vm.MtuText = "1400";
         vm.AddTunApp(@"C:\Apps\four.exe");
-        vm.BuiltinRuleSets[0].Action = "block";
-        Assert.Equal("direct", h.Store.State.UserRuleSets[0].Action);
-        h.Settings.UpdateMode("tun_apps");
-        vm.DnsDetour = "proxy";
+        vm.BuiltinRuleSets[0].Action = RuleSetAction.Block;
+        Assert.Equal("direct", h.Store.State.UserRuleSets[0].Action.ToValue());
+        h.Settings.UpdateMode(ConnectionMode.TunApps);
+        vm.DnsDetour = DnsDetour.Proxy;
         vm.Reload();
         Assert.Equal("Edited", vm.InterfaceName);
         Assert.Equal("1400", vm.MtuText);
         Assert.Equal(4, vm.TunApps.Count);
-        Assert.Equal("block", vm.BuiltinRuleSets[0].Action);
+        Assert.Equal("block", vm.BuiltinRuleSets[0].Action.ToValue());
         Assert.False(vm.IsDnsDetourEditable);
-        Assert.Equal("direct", vm.DnsDetour);
+        Assert.Equal("direct", vm.DnsDetour.ToValue());
     }
 
     [Fact]
@@ -99,9 +101,9 @@ public sealed class SettingsViewModelTests
         var vm = h.Create();
         vm.InterfaceName = "Edited";
         vm.MtuText = "1400";
-        vm.CloseBehavior = "exit";
-        vm.LogLevel = "debug";
-        vm.BuiltinRuleSets[0].Action = "block";
+        vm.CloseBehavior = AppCloseBehavior.Exit;
+        vm.LogLevel = LogLevel.Debug;
+        vm.BuiltinRuleSets[0].Action = RuleSetAction.Block;
         vm.AddTunApp(@"C:\Apps\four.exe");
         h.Settings.UpdateState(state =>
         {
@@ -118,9 +120,9 @@ public sealed class SettingsViewModelTests
         var state = h.Store.State;
         Assert.Equal("Edited", state.TunInterfaceName);
         Assert.Equal(1400, state.TunMtu);
-        Assert.Equal("exit", state.CloseBehavior);
-        Assert.Equal("debug", state.SingBoxLogLevel);
-        Assert.Equal("block", state.UserRuleSets[0].Action);
+        Assert.Equal("exit", state.CloseBehavior.ToValue());
+        Assert.Equal("debug", state.SingBoxLogLevel.ToValue());
+        Assert.Equal("block", state.UserRuleSets[0].Action.ToValue());
         Assert.Equal(4, state.TunAppProcessPaths.Count);
         Assert.Equal("v9.9.9", state.UpdateDismissedModalForTag);
         Assert.Equal("changed-in-background", state.ActiveProfileId);
@@ -151,13 +153,13 @@ public sealed class SettingsViewModelTests
         var h = new Harness();
         var vm = h.Create();
         vm.DohServer = "";
-        vm.CloseBehavior = "exit";
+        vm.CloseBehavior = AppCloseBehavior.Exit;
         vm.SelectedTunApp = vm.TunApps[0];
         vm.RemoveSelectedTunApp();
         vm.SaveCommand.Execute(null);
         Assert.Equal(0, h.Store.SaveCalls);
         Assert.Equal(Paths, h.Store.State.TunAppProcessPaths);
-        Assert.Equal("tray", h.Store.State.CloseBehavior);
+        Assert.Equal("tray", h.Store.State.CloseBehavior.ToValue());
         Assert.Equal(2, vm.TunApps.Count);
         Assert.Contains("DoH", vm.Message);
     }

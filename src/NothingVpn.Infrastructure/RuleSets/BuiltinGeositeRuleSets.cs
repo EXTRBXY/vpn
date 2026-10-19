@@ -1,5 +1,5 @@
 ﻿using NothingVpn.Application.Models;
-using NothingVpn.Domain.Policies;
+using NothingVpn.Domain.Models;
 
 namespace NothingVpn.Infrastructure.RuleSets;
 
@@ -73,8 +73,8 @@ internal static class BuiltinGeositeRuleSets
                 FileName = def.FileName,
                 Enabled = false,
                 Action = string.Equals(def.BuiltinId, "sing-geosite:category-ru-ads", StringComparison.Ordinal)
-                    ? RuleSetPolicyValidator.BlockAction
-                    : RuleSetPolicyValidator.DirectAction
+                    ? RuleSetAction.Block
+                    : RuleSetAction.Direct
             });
             changed = true;
         }

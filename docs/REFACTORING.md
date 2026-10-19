@@ -136,12 +136,27 @@ Domain-политик; производные от Id профиля значе�
 (уровни журнала 0..6 в `ILogPort`/`InMemoryLogStore`). Сравнения разбросаны с разной чувствительностью к регистру.
 При переходе на enum сохраните строковое представление в JSON (раздел 1).
 
+✅ **Исправлено (шаг 4).** Enum'ы `ConnectionMode`, `DnsMode`, `DnsDetour`, `RuleSetAction`, `TunStack`, `LogLevel`
+(и для настройки sing-box, и для `ILogPort`/`InMemoryLogStore`), `DnsPreset`, `AppCloseBehavior`. Строки — в
+`SettingValueMap<T>` Domain-политик (`ToValue()`/`Parse`); в state.json, `--mode` и конфиге sing-box они прежние.
+Чтение state.json толерантное (`Application/Serialization/SettingValueJsonConverter.cs`): регистр не важен, неизвестная
+строка или значение другого типа → значение по умолчанию поля, а не потеря всего файла. Строками остались поля профиля
+VLESS (`type`, `security`, `flow`…: открытый набор из ссылки, неизвестные значения нужно сохранять как есть) и сырой
+`--mode` в `StartupOptions`/`StartupArgs` (разбирается на границе). Характеризационные тесты прошли без изменения
+ожиданий; новые — `SettingValueSerializationTests`.
+
 ### 3.4. Логика представления и UI-артефакты в Domain
 
 - В Domain русские тексты для UI и исключений: `DnsPolicy.DetourToDisplayLabel`, `TunSettingsPolicy.StackToDisplayLabel`.
 - Индексы комбобоксов WinForms: `StackToComboIndex`, `ComboIndexToStack`, `DetourToComboIndex`, `ComboIndexToDetour`,
   `StateToPresetIndex`, `ApplyPreset(int)`.
 - `RuleSetPolicyValidator.ValidateEnabled` обращается к файловой системе (`File.Exists`).
+
+✅ **Исправлено (шаг 4).** Подписи — `Presentation/SettingLabels`; индексы комбобоксов WinForms —
+`Tray/Internal/UI/ComboIndexes`; пресеты DoH — типизированные `DnsPolicy.DetectPreset`/`ApplyPreset(DnsPreset)`.
+`ValidateEnabled` проверяет только записи (теги, имена, действия), наличие файлов `VpnConnectionService` проверяет через
+`IRuleSetFileService.Exists` (вместо `IAppPathsPort`). В Domain остались русские сообщения исключений валидации —
+это ошибки для пользователя, а не подписи UI.
 
 ### 3.5. Нарушение границ слоёв в WPF
 
@@ -217,7 +232,8 @@ WinForms-клиент ещё в решении как эталон (`docs/WPF-MI
 3. **Одна модель данных.** ✅ Готово: генератор и хранилища на Application-моделях, `LegacyModelMapper` удалён,
    имена JSON зафиксированы атрибутами; одна точка нормализации (`AppStateNormalizer`) и значений по умолчанию
    (константы Domain-политик) (3.1, 3.2).
-4. **Типизация.** Enum'ы для режимов/DNS/действий с сохранением строк в JSON (3.3); очистить Domain от UI (3.4).
+4. **Типизация.** ✅ Готово: enum'ы для режимов/DNS/действий/стека/уровней журнала с прежними строками в JSON и
+   толерантным чтением (3.3); Domain очищен от UI-подписей, индексов комбобоксов и файловой системы (3.4).
 5. **Границы WPF.** Порты для журнала и поиска приложений, вынести composition root из `App`, разделить
    `SettingsViewModel`, глобальная обработка исключений (2.4, 3.5).
 6. **Граница «интерфейс ↔ ядро».** Порт с командами `Connect`/`Disconnect`/`GetStatus` и потоком журнала;

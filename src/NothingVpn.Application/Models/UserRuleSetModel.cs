@@ -1,4 +1,6 @@
 using System.Text.Json.Serialization;
+using NothingVpn.Application.Serialization;
+using NothingVpn.Domain.Models;
 using NothingVpn.Domain.Policies;
 
 namespace NothingVpn.Application.Models;
@@ -20,9 +22,10 @@ public sealed class UserRuleSetModel
     [JsonPropertyName("enabled")]
     public bool Enabled { get; set; } = true;
 
-    /// <summary>direct|block.</summary>
+    /// <summary>direct | block; неизвестное значение читается как direct.</summary>
     [JsonPropertyName("action")]
-    public string Action { get; set; } = RuleSetPolicyValidator.DirectAction;
+    [JsonConverter(typeof(RuleSetActionJsonConverter))]
+    public RuleSetAction Action { get; set; } = RuleSetPolicyValidator.DefaultAction;
 
     /// <summary>Встроенный каталог (например sing-geosite:category-ru). Пусто — пользовательский импорт.</summary>
     [JsonPropertyName("builtinId")]

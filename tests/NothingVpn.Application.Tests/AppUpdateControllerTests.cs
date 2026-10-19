@@ -190,8 +190,8 @@ public sealed class AppUpdateControllerTests
         private AppStateModel State { get; } = new();
         public AppStateModel GetState() => State;
         public void UpdateState(Action<AppStateModel> update) { update(State); SaveCalls++; }
-        public void UpdateMode(string mode) => throw new NotSupportedException();
-        public void UpdateDns(string mode, string dohServer, string dohPath, string dohSni, string detour) => throw new NotSupportedException();
+        public void UpdateMode(ConnectionMode mode) => throw new NotSupportedException();
+        public void UpdateDns(DnsMode mode, string dohServer, string dohPath, string dohSni, DnsDetour detour) => throw new NotSupportedException();
         public void UpdateTunSettings(TunSettings settings) => throw new NotSupportedException();
         public void UpdateProxySettings(ProxyConnectionSettings settings) => throw new NotSupportedException();
         public void UpdateRuleSets(IReadOnlyCollection<UserRuleSetModel> ruleSets) => throw new NotSupportedException();

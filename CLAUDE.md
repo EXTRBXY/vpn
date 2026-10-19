@@ -22,7 +22,7 @@ dotnet test NothingVpn.sln -c Release --no-build --filter "FullyQualifiedName~Si
 .\build\Test-UpdateHandoff.ps1           # desktop-тесты обновления; повторить с -RequireElevated из админ-терминала
 ```
 
-Базовая линия (18.10.2026): сборка без предупреждений, 312 тестов проходят, 3 desktop-теста пропущены намеренно.
+Базовая линия (19.10.2026): сборка без предупреждений, 326 тестов проходят, 3 desktop-теста пропущены намеренно.
 Только Windows. `Publish` берёт `sing-box.exe`/`wintun.dll` из `-RuntimeAssetsDirectory` или из установленного
 клиента в `%LOCALAPPDATA%\Programs\NothingVpn`.
 
@@ -66,7 +66,10 @@ build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/Noth
 - Каталог данных `%LOCALAPPDATA%\NothingVpn.Tray` (историческое имя).
 - Значения `[JsonPropertyName]` в `AppStateModel`, `UserRuleSetModel`, `ProxySettingsSnapshotModel`, `VpnProfile`
   и имена свойств `SubscriptionRecord` — это схема JSON на диске (camelCase).
-- Строковые значения в состоянии: `proxy|tun|tun_apps`, `doh|system`, `direct|proxy|block`, `tray|exit`.
+- Строковые значения enum-настроек в состоянии: `proxy|tun|tun_apps`, `doh|system`, DNS detour `direct|proxy`,
+  действие rule-set `direct|block`, стек `""|system|mixed|gvisor` (`""` — по умолчанию), `tray|exit`,
+  `trace…panic`. В коде это enum'ы; строки задаёт `SettingValueMap<T>` в Domain-политиках, чтение state.json
+  толерантное (неизвестное → значение по умолчанию, не исключение). Enum в строку — только `ToValue()`, не `ToString()`.
 - `VlessLinkParser.StableId` — Id профиля; на нём держатся активный профиль и синхронизация подписок.
 - Хеш profileId → адреса TUN; `BuiltinId`/`Tag` встроенных rule-set.
 - Аргументы `--takeover --start --mode --profile`, `--smoke-test`; мьютекс `Global\NothingVpn.Desktop.Wpf`;

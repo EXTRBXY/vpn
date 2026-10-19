@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using NothingVpn.Application.Services;
+using NothingVpn.Domain.Models;
 using NothingVpn.Domain.Policies;
 
 namespace NothingVpn.Presentation;
@@ -14,7 +15,7 @@ public sealed class ConnectionDiagnosticController : IConnectionDiagnosticContro
     }
 
     public async Task<ConnectionDiagnosticResult> RunAsync(
-        string? connectionMode,
+        ConnectionMode connectionMode,
         bool isRunning,
         CancellationToken cancellationToken = default)
     {
@@ -25,9 +26,9 @@ public sealed class ConnectionDiagnosticController : IConnectionDiagnosticContro
                 "Сначала нажмите «Старт».");
         }
 
-        var mode = ConnectionPolicy.NormalizeMode(connectionMode);
+        var mode = connectionMode;
         var isTun = ConnectionPolicy.IsTunMode(mode);
-        var isTunApps = string.Equals(mode, ConnectionPolicy.TunAppsMode, StringComparison.OrdinalIgnoreCase);
+        var isTunApps = TunAppsPolicy.IsTunApps(mode);
         var stopwatch = Stopwatch.StartNew();
         try
         {

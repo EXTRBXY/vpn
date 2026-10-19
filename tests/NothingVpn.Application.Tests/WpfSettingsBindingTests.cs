@@ -4,6 +4,8 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Threading;
+using NothingVpn.Domain.Models;
+using NothingVpn.Domain.Policies;
 using NothingVpn.Desktop.Wpf;
 using NothingVpn.Application.Models;
 using NothingVpn.Infrastructure.Diagnostics;
@@ -63,10 +65,10 @@ public sealed class WpfSettingsBindingTests
                 grid.UpdateLayout();
                 var actions = Descendants<ComboBox>(grid).Where(x => x.GetBindingExpression(Selector.SelectedValueProperty)?.ParentBinding.Path.Path == "Action").ToArray();
                 Assert.Equal(2, actions.Length);
-                actions[0].SelectedValue = "block";
+                actions[0].SelectedValue = RuleSetAction.Block;
                 Pump(view);
-                Assert.Equal("block", vm.BuiltinRuleSets[0].Action);
-                Assert.Equal("direct", vm.BuiltinRuleSets[1].Action);
+                Assert.Equal("block", vm.BuiltinRuleSets[0].Action.ToValue());
+                Assert.Equal("direct", vm.BuiltinRuleSets[1].Action.ToValue());
 
                 var save = Descendants<Button>(view).Single(x => Equals(x.Content, "Сохранить все настройки"));
                 save.Command.Execute(null);
@@ -74,7 +76,7 @@ public sealed class WpfSettingsBindingTests
                 Assert.Equal(1, h.Store.SaveCalls);
                 Assert.Equal(1400, h.Store.State.TunMtu);
                 Assert.Equal(2, list.Items.Count);
-                Assert.Equal("block", h.Store.State.UserRuleSets[0].Action);
+                Assert.Equal("block", h.Store.State.UserRuleSets[0].Action.ToValue());
                 CheckHomeScreenBindings(h);
                 CheckBuiltinRuleSetDownloads();
                 CheckSettingsWheelScrolling();
@@ -258,7 +260,7 @@ public sealed class WpfSettingsBindingTests
         public ConnectionScreenSnapshot Load() => new(h.Settings.GetState(), [Profile], Profile);
         public void Save(AppStateModel state) => throw new NotSupportedException();
         public void SelectProfile(AppStateModel state, string? profileId) => SelectedIds.Add(profileId);
-        public void SelectMode(AppStateModel state, string mode) => h.Settings.UpdateMode(mode);
+        public void SelectMode(AppStateModel state, ConnectionMode mode) => h.Settings.UpdateMode(mode);
     }
 
     private sealed class FakeConnection : IConnectionController
@@ -270,7 +272,7 @@ public sealed class WpfSettingsBindingTests
         public int Starts { get; private set; }
         public int Stops { get; private set; }
         public VpnConnectionStatus GetStatus() => new() { IsRunning = IsRunning };
-        public Task<ConnectionStartOutcome> StartAsync(string profileId, string mode, CancellationToken cancellationToken = default) { Starts++; return _start.Task; }
+        public Task<ConnectionStartOutcome> StartAsync(string profileId, ConnectionMode mode, CancellationToken cancellationToken = default) { Starts++; return _start.Task; }
         public void CompleteStart() { IsRunning = true; ConnectionStateChanged?.Invoke(this, true); _start.SetResult(new ConnectionStartOutcome(true, false)); }
         public Task StopAsync(CancellationToken cancellationToken = default) { Stops++; IsRunning = false; ConnectionStateChanged?.Invoke(this, false); return Task.CompletedTask; }
     }

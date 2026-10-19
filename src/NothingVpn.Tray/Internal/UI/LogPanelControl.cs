@@ -1,3 +1,4 @@
+using NothingVpn.Domain.Models;
 using NothingVpn.Infrastructure.Diagnostics;
 using NothingVpn.Tray.Internal.Diagnostics;
 
@@ -12,7 +13,7 @@ internal sealed class LogPanelControl : UserControl
     private readonly CheckBox _debug;
     private readonly System.Windows.Forms.Timer _timer;
     private int _lastVersion = -1;
-    private int _lastMinLevel = -1;
+    private LogLevel? _lastMinLevel;
 
     public event EventHandler? DebugLogsChanged;
 
@@ -98,13 +99,13 @@ internal sealed class LogPanelControl : UserControl
         _logBox.ScrollToCaret();
     }
 
-    private int SelectedMinLevel() => _filter.SelectedIndex switch
+    private LogLevel SelectedMinLevel() => _filter.SelectedIndex switch
     {
-        0 => 0,
-        1 => 1,
-        3 => 3,
-        4 => 4,
-        _ => 2
+        0 => LogLevel.Trace,
+        1 => LogLevel.Debug,
+        3 => LogLevel.Warn,
+        4 => LogLevel.Error,
+        _ => LogLevel.Info
     };
 
     private void CopyLogs()

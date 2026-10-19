@@ -82,6 +82,22 @@
 | `lastRecordedAppSemver` | null | версия при последнем запуске |
 | `updateLastCheckUtc` | null | время последней проверки обновлений |
 
+### Enum-поля в `state.json`
+
+`mode`, `tunStack`, `dnsMode`, `dnsDetour`, `singBoxLogLevel`, `closeBehavior` и `userRuleSets[].action` в модели —
+enum'ы, а на диске — прежние строки из таблицы выше (`tunStack` по умолчанию — пустая строка `""`, она отличается от
+явного `system`). Строки задаёт `SettingValueMap<T>` в Domain-политиках; сериализацию — толерантные конвертеры
+`Application/Serialization/SettingValueJsonConverter.cs`, подключённые атрибутом `[JsonConverter]` к свойствам моделей:
+
+- запись — всегда каноническая строка (неопределённое числовое значение enum'а пишется как значение по умолчанию);
+- чтение не зависит от регистра и пробелов по краям (`" TUN "` → `tun`, `"Warning"` → `warn`);
+- неизвестная строка, `null` или значение другого типа (число, объект, массив) дают значение по умолчанию поля, а
+  **не исключение**: стандартный `JsonStringEnumConverter` бросил бы `JsonException`, `DpapiJsonFile` счёл бы файл
+  повреждённым и пользователь потерял бы все настройки. Для `singBoxLogLevel` значение по умолчанию при неизвестной
+  строке — `info` (как и до перехода на enum), при отсутствии поля — `warn`; для `action` — `direct`.
+
+Тесты: `SettingValueSerializationTests`; формат по-прежнему фиксируют `StorageFormatCompatibilityTests`.
+
 `StateStorePort.Load` ничего не пишет: недостающие встроенные rule-set добавляются только в возвращаемую модель.
 На диск их дописывает явная миграция `SaveMissingBuiltinRuleSets` при старте (`ApplicationServicesFactory`, под локом
 `AppStateStore`); кроме того, они попадают в файл при любом следующем сохранении состояния.

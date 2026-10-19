@@ -1,3 +1,4 @@
+using NothingVpn.Domain.Models;
 using NothingVpn.Application.Models;
 using NothingVpn.Presentation;
 
@@ -10,7 +11,7 @@ public sealed class ConnectionViewStateFactoryTests
     {
         var state = new AppStateModel
         {
-            Mode = "proxy",
+            Mode = ConnectionMode.Proxy,
             LocalMixedPort = 1080,
             ProxyOverride = string.Empty
         };
@@ -33,7 +34,7 @@ public sealed class ConnectionViewStateFactoryTests
     [Fact]
     public void Create_RunningConnection_DisablesEditing()
     {
-        var state = new AppStateModel { Mode = "tun_apps" };
+        var state = new AppStateModel { Mode = ConnectionMode.TunApps };
 
         var viewState = ConnectionViewStateFactory.Create(
             state,
@@ -53,9 +54,9 @@ public sealed class ConnectionViewStateFactoryTests
     {
         var state = new AppStateModel
         {
-            Mode = "tun_apps",
-            DnsMode = "doh",
-            DnsDetour = "proxy"
+            Mode = ConnectionMode.TunApps,
+            DnsMode = DnsMode.Doh,
+            DnsDetour = DnsDetour.Proxy
         };
 
         var viewState = ConnectionViewStateFactory.Create(
@@ -69,4 +70,18 @@ public sealed class ConnectionViewStateFactoryTests
         Assert.Contains("hijack", viewState.DnsText, StringComparison.Ordinal);
         Assert.Equal("TUN (выбранные приложения)", viewState.ModeText);
     }
+
+    [Theory]
+    [InlineData(DnsDetour.Proxy, "Через VPN")]
+    [InlineData(DnsDetour.Direct, "Напрямую")]
+    public void SettingLabels_Detour(DnsDetour detour, string expected) =>
+        Assert.Equal(expected, SettingLabels.Detour(detour));
+
+    [Theory]
+    [InlineData(TunStack.Default, "Системный")]
+    [InlineData(TunStack.System, "Системный")]
+    [InlineData(TunStack.Mixed, "Смешанный")]
+    [InlineData(TunStack.Gvisor, "gVisor")]
+    public void SettingLabels_Stack(TunStack stack, string expected) =>
+        Assert.Equal(expected, SettingLabels.Stack(stack));
 }

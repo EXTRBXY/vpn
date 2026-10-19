@@ -1,4 +1,6 @@
 using System.Text.Json.Serialization;
+using NothingVpn.Application.Serialization;
+using NothingVpn.Domain.Models;
 using NothingVpn.Domain.Policies;
 
 namespace NothingVpn.Application.Models;
@@ -13,7 +15,8 @@ public sealed class AppStateModel
     public string? ActiveProfileId { get; set; }
 
     [JsonPropertyName("mode")]
-    public string Mode { get; set; } = ConnectionPolicy.DefaultMode;
+    [JsonConverter(typeof(ConnectionModeJsonConverter))]
+    public ConnectionMode Mode { get; set; } = ConnectionPolicy.DefaultMode;
 
     [JsonPropertyName("tunAppProcessPaths")]
     public List<string> TunAppProcessPaths { get; set; } = new();
@@ -43,7 +46,8 @@ public sealed class AppStateModel
     public int TunMtu { get; set; } = TunSettingsPolicy.DefaultMtu;
 
     [JsonPropertyName("tunStack")]
-    public string TunStack { get; set; } = TunSettingsPolicy.DefaultStack;
+    [JsonConverter(typeof(TunStackJsonConverter))]
+    public TunStack TunStack { get; set; } = TunSettingsPolicy.DefaultStack;
 
     [JsonPropertyName("tunAutoRoute")]
     public bool TunAutoRoute { get; set; } = true;
@@ -52,7 +56,8 @@ public sealed class AppStateModel
     public bool TunStrictRoute { get; set; } = true;
 
     [JsonPropertyName("dnsMode")]
-    public string DnsMode { get; set; } = DnsPolicy.DefaultMode;
+    [JsonConverter(typeof(DnsModeJsonConverter))]
+    public DnsMode DnsMode { get; set; } = DnsPolicy.DefaultMode;
 
     [JsonPropertyName("dohServer")]
     public string DohServer { get; set; } = DnsPolicy.DefaultDohServer;
@@ -64,16 +69,19 @@ public sealed class AppStateModel
     public string DohSni { get; set; } = DnsPolicy.DefaultDohSni;
 
     [JsonPropertyName("dnsDetour")]
-    public string DnsDetour { get; set; } = DnsPolicy.DefaultDetour;
+    [JsonConverter(typeof(DnsDetourJsonConverter))]
+    public DnsDetour DnsDetour { get; set; } = DnsPolicy.DefaultDetour;
 
     [JsonPropertyName("debugLogs")]
     public bool DebugLogs { get; set; }
 
     [JsonPropertyName("singBoxLogLevel")]
-    public string SingBoxLogLevel { get; set; } = SingBoxLogLevelPolicy.DefaultLevel;
+    [JsonConverter(typeof(LogLevelJsonConverter))]
+    public LogLevel SingBoxLogLevel { get; set; } = SingBoxLogLevelPolicy.DefaultLevel;
 
     [JsonPropertyName("closeBehavior")]
-    public string CloseBehavior { get; set; } = AppCloseBehavior.HideToTray;
+    [JsonConverter(typeof(AppCloseBehaviorJsonConverter))]
+    public AppCloseBehavior CloseBehavior { get; set; } = AppCloseBehaviors.Default;
 
     /// <summary>Тег релиза (например v1.2.3), для которого скрыто всплывающее предложение обновиться.</summary>
     [JsonPropertyName("updateDismissedModalForTag")]

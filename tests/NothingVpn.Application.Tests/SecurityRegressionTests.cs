@@ -1,3 +1,5 @@
+using NothingVpn.Domain.Models;
+using NothingVpn.Domain.Policies;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Services;
 using NothingVpn.Infrastructure.Profile;
@@ -52,7 +54,7 @@ public sealed class SecurityRegressionTests
         };
         var state = new AppStateModel
         {
-            Mode = mode, DnsMode = dnsMode, DohSni = "dns.google",
+            Mode = ConnectionPolicy.Modes.Parse(mode), DnsMode = DnsPolicy.Modes.Parse(dnsMode), DohSni = "dns.google",
             TunAppProcessPaths = [@"C:\Apps\browser.exe"]
         };
         var config = SingBoxConfigGenerator.Build(paths, profile, state);

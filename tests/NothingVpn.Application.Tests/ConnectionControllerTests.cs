@@ -1,3 +1,4 @@
+using NothingVpn.Domain.Models;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Services;
 using NothingVpn.Presentation;
@@ -15,7 +16,7 @@ public sealed class ConnectionControllerTests
         };
         var controller = new ConnectionController(vpn, new FakeAppLifecycleService());
 
-        var outcome = await controller.StartAsync("profile-1", "proxy");
+        var outcome = await controller.StartAsync("profile-1", ConnectionMode.Proxy);
 
         Assert.True(outcome.Connected);
         Assert.False(outcome.ExitCurrentProcess);
@@ -36,7 +37,7 @@ public sealed class ConnectionControllerTests
         var lifecycle = new FakeAppLifecycleService { RestartResult = true };
         var controller = new ConnectionController(vpn, lifecycle);
 
-        var outcome = await controller.StartAsync("profile-1", "tun");
+        var outcome = await controller.StartAsync("profile-1", ConnectionMode.Tun);
 
         Assert.False(outcome.Connected);
         Assert.True(outcome.ExitCurrentProcess);
@@ -54,7 +55,7 @@ public sealed class ConnectionControllerTests
         var controller = new ConnectionController(vpn, lifecycle);
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            controller.StartAsync("profile-1", "tun"));
+            controller.StartAsync("profile-1", ConnectionMode.Tun));
 
         Assert.Contains("UAC", error.Message, StringComparison.Ordinal);
         Assert.Equal(1, vpn.DisconnectCalls);
@@ -69,7 +70,7 @@ public sealed class ConnectionControllerTests
         var controller = new ConnectionController(vpn, new FakeAppLifecycleService());
 
         var actual = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            controller.StartAsync("profile-1", "proxy"));
+            controller.StartAsync("profile-1", ConnectionMode.Proxy));
 
         Assert.Same(expected, actual);
         Assert.Equal(1, vpn.DisconnectCalls);
@@ -131,7 +132,7 @@ public sealed class ConnectionControllerTests
             return RestartResult;
         }
 
-        public string BuildTakeoverArgs(string mode, string profileId) =>
-            $"--takeover --start --mode {mode} --profile \"{profileId}\"";
+        public string BuildTakeoverArgs(ConnectionMode mode, string profileId) =>
+            StartupArguments.Takeover(mode, profileId);
     }
 }
