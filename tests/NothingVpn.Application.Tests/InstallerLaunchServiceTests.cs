@@ -3,61 +3,129 @@ using NothingVpn.Infrastructure.Updates;
 
 namespace NothingVpn.Application.Tests;
 
-public sealed class InstallerLaunchServiceTests
+public sealed class InstallerLaunchServiceTests : IDisposable
 {
-    private static readonly WindowsUserProcessLauncher.TokenFacts Elevated = new("S-1-5-21-1", 1, true, 12288, true);
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "NothingVpnLaunchTests", Guid.NewGuid().ToString("N"));
 
-    [Fact]
-    public void ElevatedCaller_CanUseSameUserNormalToken() => WindowsUserProcessLauncher.ValidateTarget(
-        Elevated, new(Elevated.UserSid, Elevated.SessionId, false, 8192, false));
+    public InstallerLaunchServiceTests() => Directory.CreateDirectory(_directory);
 
-    [Theory]
-    [InlineData("S-1-5-21-2", 1, false, 8192, false)]
-    [InlineData("S-1-5-21-1", 2, false, 8192, false)]
-    [InlineData("S-1-5-21-1", 1, true, 8192, false)]
-    [InlineData("S-1-5-21-1", 1, false, 12288, false)]
-    [InlineData("S-1-5-21-1", 1, false, 8192, true)]
-    [InlineData("S-1-5-21-1", 1, false, 4096, false)]
-    public void UnsafeOrWrongUserToken_IsRejected(string sid, int session, bool elevated, int integrity, bool administrator) =>
-        Assert.Throws<InvalidOperationException>(() => WindowsUserProcessLauncher.ValidateTarget(Elevated, new(sid, session, elevated, integrity, administrator)));
-
-    [Fact]
-    public void PreflightFailure_IsNotSwallowed()
+    public void Dispose()
     {
-        var launcher = new FailedLauncher();
-        Assert.Throws<UnauthorizedAccessException>(() => new InstallerLaunchService(launcher).EnsureLaunchAllowed());
-        Assert.Equal(0, launcher.Starts);
+        try { Directory.Delete(_directory, recursive: true); }
+        catch { }
     }
 
     [Fact]
-    public void SchedulingFailure_HasNoElevatedFallback()
+    public void ElevatedClient_RefusesWithoutStartingInstaller()
     {
-        var launcher = new FailedLauncher();
-        Assert.Throws<UnauthorizedAccessException>(() => new InstallerLaunchService(launcher).Schedule("unused.exe", "", 1, 1));
-        Assert.Equal(1, launcher.Starts);
+        var starts = new List<ProcessStartInfo>();
+        var service = new InstallerLaunchService(() => true, starts.Add);
+        var installer = CreateInstaller("NothingVpnSetup-1.2.3.exe");
+
+        var ensure = Assert.Throws<InvalidOperationException>(service.EnsureLaunchAllowed);
+        Assert.Throws<InvalidOperationException>(() => service.Prepare(installer));
+        Assert.Throws<InvalidOperationException>(() => service.Launch(installer));
+
+        Assert.Equal(InstallerLaunchService.ElevatedClientMessage, ensure.Message);
+        Assert.Empty(starts);
     }
 
-    [Theory]
-    [InlineData(@"C:\Users\O'Brien\%TEMP% & тест\NothingVpnSetup-1.2.3.exe")]
-    [InlineData(@"C:\Temp\$(whoami);`literal`\NothingVpnSetup-1.2.3.exe")]
-    public void InstallerPath_IsDataNotCommandText(string path)
+    [Fact]
+    public void DefaultService_RefusesExactlyWhenProcessIsElevated()
     {
-        var info = InstallerLaunchService.BuildWorkerStartInfo(path, InstallerLaunchService.SilentUpgradeArguments, 123, 456, "test-pipe");
-        Assert.Equal(path, info.Environment["NOTHINGVPN_UPDATE_EXE"]);
-        Assert.DoesNotContain(path, info.Arguments);
-        Assert.DoesNotContain(path, info.Environment["NOTHINGVPN_UPDATE_SCRIPT"]!);
-        Assert.Equal(InstallerLaunchService.SilentUpgradeArguments, info.Environment["NOTHINGVPN_UPDATE_ARGS"]);
+        var service = new InstallerLaunchService();
+
+        if (Environment.IsPrivilegedProcess)
+            Assert.Throws<InvalidOperationException>(service.EnsureLaunchAllowed);
+        else
+            service.EnsureLaunchAllowed();
+    }
+
+    [Fact]
+    public void Launch_StartsInstallerDirectlyWithSilentUpgradeArguments()
+    {
+        var starts = new List<ProcessStartInfo>();
+        var service = new InstallerLaunchService(() => false, starts.Add);
+        var installer = CreateInstaller("NothingVpnSetup-1.2.3.exe");
+
+        service.Launch(service.Prepare(installer));
+
+        var info = Assert.Single(starts);
+        Assert.Equal(Path.GetFullPath(installer), info.FileName);
         Assert.False(info.UseShellExecute);
-        Assert.True(info.CreateNoWindow);
-        Assert.Equal(ProcessWindowStyle.Hidden, info.WindowStyle);
-        Assert.True(Path.IsPathFullyQualified(info.FileName));
-        Assert.DoesNotContain("runas", info.Arguments, StringComparison.OrdinalIgnoreCase);
+        Assert.True(string.IsNullOrEmpty(info.Verb));
+        Assert.Equal(string.Empty, info.Arguments);
+        Assert.Equal(
+            new[] { "/SILENT", "/SP-", "/SUPPRESSMSGBOXES", "/CLOSEAPPLICATIONS", "/NORESTART" },
+            info.ArgumentList);
     }
 
-    private sealed class FailedLauncher : IUserProcessLauncher
+    [Theory]
+    [InlineData("setup.exe")]
+    [InlineData("NothingVpnSetup-1.2.3.exe.cmd")]
+    [InlineData("NothingVpnSetup-1.2.3.ps1")]
+    public void Launch_UnexpectedInstallerName_IsRejected(string fileName)
     {
-        public int Starts;
-        public void EnsureAvailable() => throw new UnauthorizedAccessException("No safe token");
-        public Process Start(ProcessStartInfo info) { Starts++; throw new UnauthorizedAccessException("No safe token"); }
+        var starts = new List<ProcessStartInfo>();
+        var service = new InstallerLaunchService(() => false, starts.Add);
+        var installer = CreateInstaller(fileName);
+
+        Assert.Throws<InvalidOperationException>(() => service.Prepare(installer));
+        Assert.Throws<InvalidOperationException>(() => service.Launch(installer));
+        Assert.Empty(starts);
+    }
+
+    [Fact]
+    public void Launch_MissingInstaller_IsRejected()
+    {
+        var starts = new List<ProcessStartInfo>();
+        var service = new InstallerLaunchService(() => false, starts.Add);
+
+        Assert.Throws<FileNotFoundException>(() => service.Launch(Path.Combine(_directory, "NothingVpnSetup-9.9.9.exe")));
+        Assert.Empty(starts);
+    }
+
+    [Theory]
+    [InlineData("O'Brien %TEMP% & тест")]
+    [InlineData("$(whoami);`literal`")]
+    public void InstallerPath_IsDataNotCommandText(string folder)
+    {
+        var starts = new List<ProcessStartInfo>();
+        var service = new InstallerLaunchService(() => false, starts.Add);
+        Directory.CreateDirectory(Path.Combine(_directory, folder));
+        var installer = CreateInstaller(Path.Combine(folder, "NothingVpnSetup-1.2.3.exe"));
+
+        service.Launch(installer);
+
+        var info = Assert.Single(starts);
+        Assert.Equal(Path.GetFullPath(installer), info.FileName);
+        Assert.DoesNotContain(info.ArgumentList, argument => argument.Contains(folder, StringComparison.Ordinal));
+        Assert.False(info.UseShellExecute);
+    }
+
+    [Fact]
+    public void StartInfo_DoesNotPassClientDevelopmentVariablesToInstaller()
+    {
+        var name = "NOTHINGVPN_LAUNCH_TEST_" + Guid.NewGuid().ToString("N");
+        Environment.SetEnvironmentVariable(name, "inprocess");
+        try
+        {
+            var info = InstallerLaunchService.BuildStartInfo(@"C:\Temp\NothingVpnSetup-1.2.3.exe");
+
+            Assert.False(info.Environment.ContainsKey(name));
+            Assert.DoesNotContain(info.Environment.Keys, key => key.StartsWith("NOTHINGVPN_", StringComparison.OrdinalIgnoreCase));
+            Assert.True(info.Environment.ContainsKey("SystemRoot"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(name, null);
+        }
+    }
+
+    private string CreateInstaller(string relativePath)
+    {
+        var path = Path.Combine(_directory, relativePath);
+        File.WriteAllBytes(path, []);
+        return path;
     }
 }

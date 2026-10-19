@@ -1,6 +1,4 @@
 using System.Diagnostics;
-using System.IO.Pipes;
-using System.Text;
 using NothingVpn.Application.Services;
 using NothingVpn.Domain.Updates;
 
@@ -8,68 +6,65 @@ namespace NothingVpn.Infrastructure.Updates;
 
 public sealed class InstallerLaunchService : IInstallerLaunchService
 {
-    internal const string SilentUpgradeArguments = "/SILENT /SP- /SUPPRESSMSGBOXES /CLOSEAPPLICATIONS /NORESTART";
-    private readonly IUserProcessLauncher _launcher;
+    internal static readonly string[] SilentUpgradeArguments =
+        ["/SILENT", "/SP-", "/SUPPRESSMSGBOXES", "/CLOSEAPPLICATIONS", "/NORESTART"];
 
-    public InstallerLaunchService() : this(new WindowsUserProcessLauncher()) { }
-    internal InstallerLaunchService(IUserProcessLauncher launcher) => _launcher = launcher;
+    internal const string ElevatedClientMessage =
+        "Интерфейс запущен от имени администратора: установщик унаследовал бы эти права. " +
+        "Закройте Nothing VPN, запустите его обычным способом и повторите обновление.";
 
-    public void EnsureLaunchAllowed() => _launcher.EnsureAvailable();
+    private const string ClientVariablePrefix = "NOTHINGVPN_";
 
-    public void ScheduleAfterApplicationExits(string installerPath)
+    private readonly Func<bool> _isElevated;
+    private readonly Action<ProcessStartInfo> _start;
+
+    public InstallerLaunchService() : this(() => Environment.IsPrivilegedProcess, StartDetached) { }
+
+    internal InstallerLaunchService(Func<bool> isElevated, Action<ProcessStartInfo> start)
     {
-        var fullPath = InstallerFilePolicy.ValidateExistingInstaller(installerPath);
-        using var parent = Process.GetCurrentProcess();
-        Schedule(fullPath, SilentUpgradeArguments, parent.Id, parent.StartTime.ToUniversalTime().Ticks);
+        _isElevated = isElevated;
+        _start = start;
     }
 
-    internal void Schedule(string executable, string arguments, int parentId, long parentStartTicks)
+    public void EnsureLaunchAllowed()
     {
-        var pipeName = "NothingVpn.Update." + Guid.NewGuid().ToString("N");
-        using var worker = _launcher.Start(BuildWorkerStartInfo(executable, arguments, parentId, parentStartTicks, pipeName));
-        try
-        {
-            using var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-            pipe.Connect(15000);
-            if (WindowsUserProcessLauncher.GetPipeServerId(pipe.SafePipeHandle) != worker.Id)
-                throw new InvalidOperationException("Не удалось подтвердить процесс обновления.");
-            using var reader = new StreamReader(pipe, Encoding.UTF8, false, 1024, leaveOpen: true);
-            using var writer = new StreamWriter(pipe, new UTF8Encoding(false), 1024, leaveOpen: true) { AutoFlush = true };
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            var response = reader.ReadLineAsync(timeout.Token).AsTask().GetAwaiter().GetResult();
-            if (response != "READY")
-                throw new InvalidOperationException(response ?? "Процесс обновления не подтвердил готовность.");
-            writer.WriteLine("COMMIT");
-            if (reader.ReadLineAsync(timeout.Token).AsTask().GetAwaiter().GetResult() != "COMMITTED")
-                throw new InvalidOperationException("Не удалось передать обновление установщику.");
-        }
-        catch
-        {
-            try { if (!worker.HasExited) worker.Kill(); } catch { }
-            throw;
-        }
+        if (_isElevated())
+            throw new InvalidOperationException(ElevatedClientMessage);
     }
 
-    internal static ProcessStartInfo BuildWorkerStartInfo(string executable, string arguments, int parentId, long parentStartTicks, string pipeName)
+    public string Prepare(string installerPath)
     {
-        var system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+        EnsureLaunchAllowed();
+        return InstallerFilePolicy.ValidateExistingInstaller(installerPath);
+    }
+
+    public void Launch(string installerPath) => _start(BuildStartInfo(Prepare(installerPath)));
+
+    internal static ProcessStartInfo BuildStartInfo(string installerPath)
+    {
+        // UseShellExecute=false: без ShellExecute нет автоматического повышения по манифесту, ассоциаций и runas.
+        // Установщик per-machine (asInvoker, PrivilegesRequired=admin) запрашивает UAC сам.
         var info = new ProcessStartInfo
         {
-            FileName = Path.Combine(system, "WindowsPowerShell", "v1.0", "powershell.exe"),
-            // Private environment transport avoids native command-line length limits and quoting input as code.
-            Arguments = "-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -Command \"& ([scriptblock]::Create($env:NOTHINGVPN_UPDATE_SCRIPT))\"",
-            WorkingDirectory = system,
+            FileName = installerPath,
             UseShellExecute = false,
-            CreateNoWindow = true,
-            WindowStyle = ProcessWindowStyle.Hidden
+            WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.System)
         };
-        info.Environment.Clear();
-        info.Environment["NOTHINGVPN_UPDATE_SCRIPT"] = InstallerUpdateWorker.Script;
-        info.Environment["NOTHINGVPN_UPDATE_EXE"] = executable;
-        info.Environment["NOTHINGVPN_UPDATE_ARGS"] = arguments;
-        info.Environment["NOTHINGVPN_UPDATE_PARENT"] = parentId.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        info.Environment["NOTHINGVPN_UPDATE_STARTED"] = parentStartTicks.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        info.Environment["NOTHINGVPN_UPDATE_PIPE"] = pipeName;
+        foreach (var argument in SilentUpgradeArguments)
+            info.ArgumentList.Add(argument);
+        // Установщик перезапустит интерфейс от имени пользователя; настройки разработки (NOTHINGVPN_ENGINE)
+        // текущего процесса туда переходить не должны.
+        foreach (var name in info.Environment.Keys.Where(IsClientVariable).ToArray())
+            info.Environment.Remove(name);
         return info;
+    }
+
+    private static bool IsClientVariable(string name) =>
+        name.StartsWith(ClientVariablePrefix, StringComparison.OrdinalIgnoreCase);
+
+    private static void StartDetached(ProcessStartInfo info)
+    {
+        using var process = Process.Start(info)
+            ?? throw new InvalidOperationException("Не удалось запустить установщик обновления.");
     }
 }

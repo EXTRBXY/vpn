@@ -92,6 +92,9 @@ TUN-режим требует прав администратора. Сейча�
 нужен.** Не проверено: запуск из 0.6.8, перед этим подключённой в TUN (повышенной), и настоящее обновление через
 GitHub — это делается после публикации релиза со службой (чек-лист, раздел 7в-Б).
 
+Шаг 8 этот переход не затрагивает: обновление с 0.6.8 запускает код самого 0.6.8, а установщик не менялся.
+Новый путь запуска (без помощника) касается только обновлений с версий со службой.
+
 План:
 
 1. Собрать тестовый per-machine установщик и вручную обновить на него установленный 0.6.8 через встроенное
@@ -122,7 +125,7 @@ UAC-перезапуска и механизма UPDATE-HANDOFF.
 | 7а | Проект `NothingVpn.Service`, протокол и транспорт по каналу, клиент `PipeVpnEngine`, контракт v2. Установщик не меняется, клиент по умолчанию работает с ядром внутри процесса — поведение релиза прежнее | сделано |
 | 7б | Per-machine установщик в `Program Files`, регистрация и запуск службы, удаление старой per-user установки, интерфейс работает через службу | сделано и проверено вручную 19.10.2026 ([чек-лист](../SERVICE-INSTALL-CHECKLIST.md)) |
 | 7в | Ручная проверка обновления с 0.6.8 и решение о промежуточном релизе (раздел «Переход со старых версий») | эмуляция пройдена 19.10.2026, промежуточный релиз не нужен; настоящее обновление — после релиза ([чек-лист](../SERVICE-INSTALL-CHECKLIST.md#б-настоящее-обновление)) |
-| 8 | Удаление UAC-перезапуска (`--takeover`), `WindowsUserProcessLauncher`, `InstallerUpdateWorker`, `READY/COMMIT` | впереди |
+| 8 | Удаление UAC-перезапуска (`--takeover`), `WindowsUserProcessLauncher`, `InstallerUpdateWorker`, `READY/COMMIT` | сделано 19.10.2026 (раздел «Шаг 8») |
 
 ### Шаг 6 — граница «интерфейс ↔ ядро» (сделано, 19.10.2026)
 
@@ -153,7 +156,8 @@ UAC-перезапуска и механизма UPDATE-HANDOFF.
   Сделано на шаге 7а.
 - Статус ядра содержит режим и Id профиля работающей сессии — по ним перезапущенный интерфейс восстанавливает
   отображение после `GetStatus`.
-- Проверка прав для TUN пока остаётся в интерфейсе (`VpnConnectionService` → `--takeover`); удаляется на шаге 8.
+- Проверка прав для TUN пока остаётся в интерфейсе (`VpnConnectionService` → `--takeover`); удаляется на шаге 8
+  (сделано: теперь ошибка без перезапуска).
 
 ### Шаг 7а — служба и транспорт по каналу (сделано, 19.10.2026)
 
@@ -324,15 +328,15 @@ WindowsDesktop runtime (~72 МБ со сжатием single-file). Уйдёт с
   не отвечает. Запустите службу «Nothing VPN» (services.msc) или переустановите приложение.», «Нет доступа к службе…»
   или `ServiceAuthenticationException` показывается при подключении.
 - **TUN без UAC**: `IVpnEngine.TunRequiresElevatedCaller` — `false` у `PipeVpnEngine`, `true` у `SingBoxVpnEngine`;
-  `VpnConnectionService` запрашивает `--takeover` только во втором случае. Код UAC-перезапуска и UPDATE-HANDOFF
-  остаётся до шага 8.
+  `VpnConnectionService` запрашивал `--takeover` только во втором случае. Код UAC-перезапуска и UPDATE-HANDOFF
+  оставался до шага 8 (удалён, см. «Шаг 8»).
 - **Старт и перезапуск интерфейса** при работающем VPN: `RefreshStatusAsync` (до 3 с) до `RecoverStaleRuntimeState`;
   работающая сессия службы не застряла — флаги WinINET в state.json и включённый прокси остаются. `GetStatus` без
   своей сессии берёт режим и профиль из `EngineStatus`, событие «работает» без своей сессии поднимает
   `ConnectionStateChanged(true)`. Отключение восстанавливает прокси по флагам state.json. Если служба при старте не
   ответила за 3 с, ядро считается остановленным и прокси восстанавливается: служба недоступна — значит, её sing-box не
   работает (Job Object).
-- **Обновление из интерфейса** — прежний путь (`InstallerLaunchService` → помощник PowerShell →
+- **Обновление из интерфейса** (до шага 8; новый путь — «Шаг 8») — прежний путь (`InstallerLaunchService` → помощник PowerShell →
   `Process.Start(UseShellExecute=false)` с `/SILENT /SP- /SUPPRESSMSGBOXES /CLOSEAPPLICATIONS /NORESTART`). Клиент
   неповышен, поэтому `WindowsUserProcessLauncher` запускает помощника с тем же токеном; установщик `asInvoker`
   стартует и сам запрашивает UAC. Ручная проверка — появится ли UAC в тихом режиме и пройдёт ли установка до
@@ -354,3 +358,31 @@ ACL (без окна с унаследованными правами). Не в�
 файлы, данные пользователя целы, путь из HKCU на чужой каталог, новый каталог не трогается, автозапуск; каталог
 данных службы), `ServiceChannelTests.EngineSelection_DefaultsToService`. Установщик, служба и обновление — ручной
 [чек-лист](../SERVICE-INSTALL-CHECKLIST.md).
+
+### Шаг 8 — удаление повышения клиента (сделано, 19.10.2026)
+
+Интерфейс с шага 7б не повышается, поэтому удалено всё, что существовало ради повышенного клиента.
+
+- **UAC-перезапуск**: аргумент `--takeover` (теперь игнорируется) и ожидание мьютекса в `SingleInstance.Acquire`,
+  `ConnectResult.RequiresElevation`/`ElevationArgs`, `ConnectionStartOutcome.ExitCurrentProcess`,
+  `IAppLifecycleService`/`AppLifecycleService`, `StartupArguments`, `IElevationPort.RestartElevated` и
+  `Elevation.RestartElevated` (`runas`). `IElevationPort.IsAdministrator` остался — для строки статуса и проверки
+  ниже. `ConnectionController.StartAsync` больше не принимает режим (он нужен был только для аргументов перезапуска).
+- **Ядро в процессе** (`NOTHINGVPN_ENGINE=inprocess`, разработка): TUN без прав администратора отклоняется ошибкой
+  «Ядро в процессе: для TUN запустите клиент от имени администратора.» до обращения к ядру; клиент разработчик сам
+  запускает от имени администратора ([DEVELOPMENT.md](../../DEVELOPMENT.md)).
+- **Обновление**: `WindowsUserProcessLauncher`, `InstallerUpdateWorker` (помощник PowerShell), протокол
+  `READY/COMMIT/COMMITTED` и его канал удалены вместе с `WindowsUpdateHandoffTests` и
+  `build/Test-UpdateHandoff.ps1`. Новый `InstallerLaunchService`: `Prepare` до выхода (процесс не повышен, имя файла
+  по `InstallerFilePolicy`, файл существует), затем штатный выход клиента (VPN отключён, мьютекс освобождён), затем
+  `Launch` — `Process.Start` с `UseShellExecute=false`, тихими аргументами в `ArgumentList` и без переменных
+  `NOTHINGVPN_*`. Повышенный процесс клиента (запущен «от имени администратора») обновление не запускает: установщик
+  унаследовал бы его права. Установщик запускается после освобождения мьютекса, потому что это `AppMutex`
+  установщика, а в тихом режиме Inno не ждёт закрытия приложения, а прерывается
+  ([UPDATE-HANDOFF.md](../UPDATE-HANDOFF.md)).
+- **`NothingVpn.Tray`** адаптирован минимально (запуск установщика после `Application.Run` и освобождения мьютекса),
+  удаляется на шаге 9.
+
+Ручная проверка — [чек-лист, раздел 7](../SERVICE-INSTALL-CHECKLIST.md#7-обновление-из-интерфейса). Тесты:
+`InstallerLaunchServiceTests`, `UpdateViewModelTests` (порядок «проверки → выход → запуск»),
+`VpnConnectionServiceTests.ConnectAsync_InProcessEngineTunWithoutAdmin_FailsWithoutStartingOrRestarting`.

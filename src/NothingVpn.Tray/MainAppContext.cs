@@ -40,7 +40,7 @@ internal sealed class MainAppContext : ApplicationContext
         _subscriptionService = services.SubscriptionService;
         var connectionController = new ConnectionController(
             services.VpnConnectionService,
-            services.AppLifecycleService);
+            services.ElevationPort);
         var connectionScreenController = new ConnectionScreenController(
             services.ProfileService,
             services.SettingsService);

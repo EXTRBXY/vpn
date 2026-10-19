@@ -9,6 +9,7 @@ namespace NothingVpn.Desktop.Wpf.Composition;
 /// <summary>Действия оболочки (окно, трей, выход), которые нужны view model'ям.</summary>
 internal sealed record DesktopShell(
     Action RequestExit,
+    Action<Action> ExitThenLaunch,
     Action<AppReleaseModel> NotifyUpdateAvailable,
     Action<ReleaseChangelog> ShowChangelog);
 
@@ -33,7 +34,7 @@ internal static class DesktopCompositionRoot
         var services = ApplicationServicesFactory.CreateDefault();
         var connectionController = new ConnectionController(
             services.VpnConnectionService,
-            services.AppLifecycleService);
+            services.ElevationPort);
         var screenController = new ConnectionScreenController(
             services.ProfileService,
             services.SettingsService);
@@ -50,7 +51,7 @@ internal static class DesktopCompositionRoot
             launcher: services.InstallerLaunchService,
             settings: services.SettingsService,
             state: services.SettingsService.GetState(),
-            exit: shell.RequestExit,
+            exitThenLaunch: shell.ExitThenLaunch,
             notifyAvailable: shell.NotifyUpdateAvailable,
             showChangelog: shell.ShowChangelog);
         var settingsViewModel = new SettingsViewModel(

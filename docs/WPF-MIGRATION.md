@@ -4,7 +4,8 @@
 
 `NothingVpn.Desktop.Wpf` is the packaged desktop client. It includes connection control, profiles,
 subscriptions, DNS/proxy/TUN settings, application routing, rule sets, diagnostics, logs, updates,
-single-instance activation, startup arguments, UAC takeover, storage recovery notices, and tray lifecycle.
+single-instance activation, startup arguments, storage recovery notices, and tray lifecycle (UAC takeover was
+removed in refactoring step 8: TUN runs through the Windows service).
 `NothingVpn.Tray` remains in the solution temporarily as a reference implementation; release publish and
 Inno Setup use only `NothingVpn.Desktop.Wpf.exe`.
 
@@ -73,7 +74,7 @@ into Presentation.
 ## Acceptance criteria before removing WinForms
 
 - Proxy, full TUN, and selected-app TUN connect and disconnect correctly.
-- UAC restart and stale-runtime recovery work.
+- TUN through the service without UAC and stale-runtime recovery work.
 - Profile and subscription CRUD and refresh behavior match WinForms.
 - DNS/TUN/proxy settings persist and validate identically.
 - Rule-set import, download, update, disable, and deletion work.

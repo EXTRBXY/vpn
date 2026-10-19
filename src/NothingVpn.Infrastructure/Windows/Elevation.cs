@@ -1,4 +1,3 @@
-﻿using System.Diagnostics;
 using System.Security.Principal;
 
 namespace NothingVpn.Infrastructure.Windows;
@@ -18,27 +17,4 @@ internal static class Elevation
             return false;
         }
     }
-
-    public static bool RestartElevated(string arguments)
-    {
-        var exe = System.Windows.Forms.Application.ExecutablePath;
-        var psi = new ProcessStartInfo
-        {
-            FileName = exe,
-            Arguments = arguments,
-            UseShellExecute = true,
-            Verb = "runas",
-        };
-
-        try
-        {
-            Process.Start(psi);
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
 }
-

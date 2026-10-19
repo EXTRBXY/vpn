@@ -6,6 +6,4 @@ namespace NothingVpn.Infrastructure.Ports;
 public sealed class ElevationPort : IElevationPort
 {
     public bool IsAdministrator() => Elevation.IsAdministrator();
-    public bool RestartElevated(string arguments) => Elevation.RestartElevated(arguments);
 }
-

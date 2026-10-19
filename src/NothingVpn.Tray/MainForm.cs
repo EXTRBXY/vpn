@@ -1168,13 +1168,7 @@ internal sealed class MainForm : Form
         try
         {
             UpdateButtons();
-            var result = await _connectionController.StartAsync(p.Id, _state.Mode);
-            if (result.ExitCurrentProcess)
-            {
-                BeginInvoke(_requestExit);
-                return;
-            }
-
+            var result = await _connectionController.StartAsync(p.Id);
             if (result.Connected)
             {
                 _logPanel.Start();
@@ -1341,7 +1335,7 @@ internal sealed class MainForm : Form
         OfferInstallDownloadedThenExit(path);
     }
 
-    private async void OfferInstallDownloadedThenExit(string installerPath)
+    private void OfferInstallDownloadedThenExit(string installerPath)
     {
         if (_updateInstallBusy) return;
         var confirm = MessageBox.Show(
@@ -1371,11 +1365,8 @@ internal sealed class MainForm : Form
             _updateInstallBusy = true;
             _updateBannerDownloadBtn.Enabled = false;
             _updateBannerInstallCachedBtn.Enabled = false;
-            await Task.Run(() =>
-            {
-                _installerLaunchService.EnsureLaunchAllowed();
-                _installerLaunchService.ScheduleAfterApplicationExits(installerPath);
-            });
+            var preparedPath = _installerLaunchService.Prepare(installerPath);
+            Program.LaunchAfterExit = () => _installerLaunchService.Launch(preparedPath);
             _requestExit();
         }
         catch (Exception ex)

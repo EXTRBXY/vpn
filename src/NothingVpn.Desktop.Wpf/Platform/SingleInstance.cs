@@ -30,30 +30,13 @@ internal sealed class SingleInstance : IDisposable
 
     /// <summary>
     /// Стать основным экземпляром. Если основной уже работает, аргументы пересылаются ему и возвращается null.
-    /// При <c>--takeover</c> новый (повышенный) процесс до 20 с ждёт, пока прежний освободит мьютекс.
     /// </summary>
-    public static SingleInstance? Acquire(string appId, string[] args, bool takeover)
+    public static SingleInstance? Acquire(string appId, string[] args)
     {
-        if (takeover)
-            return WaitForPrimaryTakeover(appId);
-
         var instance = TryCreatePrimary(appId, out var alreadyRunning);
         if (alreadyRunning)
             ForwardToPrimary(appId, args);
         return instance;
-    }
-
-    private static SingleInstance? WaitForPrimaryTakeover(string appId)
-    {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(20);
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            var instance = TryCreatePrimary(appId, out var alreadyRunning);
-            if (!alreadyRunning && instance is not null)
-                return instance;
-            Thread.Sleep(200);
-        }
-        return null;
     }
 
     public static void ForwardToPrimary(string appId, string[] args)

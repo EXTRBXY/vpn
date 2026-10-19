@@ -98,6 +98,53 @@ public sealed class UpdateViewModelTests
         Assert.Equal(new[] { "check" }, controller.Calls);
     }
 
+    [Fact]
+    public async Task Install_PreparesBeforeExit_AndLaunchesOnlyFromExitCallback()
+    {
+        var launcher = new FakeInstallerLauncher();
+        var exits = new List<Action>();
+        var viewModel = await CreateWithReleaseAsync(launcher, exits.Add);
+
+        await ((AsyncRelayCommand)viewModel.InstallCommand).ExecuteAsync(null);
+
+        Assert.Equal(new[] { "ensure", @"prepare:C:\Temp\NothingVpnSetup-2.0.0.exe" }, launcher.Calls);
+        var launch = Assert.Single(exits);
+        launch();
+        Assert.Equal(@"launch:C:\Prepared\NothingVpnSetup-2.0.0.exe", launcher.Calls[^1]);
+    }
+
+    [Fact]
+    public async Task Install_PrepareFailure_DoesNotExitOrLaunch()
+    {
+        var launcher = new FakeInstallerLauncher { PrepareError = new InvalidOperationException("elevated") };
+        var exits = new List<Action>();
+        var viewModel = await CreateWithReleaseAsync(launcher, exits.Add);
+
+        await ((AsyncRelayCommand)viewModel.InstallCommand).ExecuteAsync(null);
+
+        Assert.Empty(exits);
+        Assert.DoesNotContain(launcher.Calls, call => call.StartsWith("launch:", StringComparison.Ordinal));
+        Assert.Equal("elevated", viewModel.Status);
+    }
+
+    private static async Task<UpdateViewModel> CreateWithReleaseAsync(FakeInstallerLauncher launcher, Action<Action> exitThenLaunch)
+    {
+        var settings = new FakeSettingsService();
+        var controller = new FakeUpdateController
+        {
+            AvailableRelease = new AppReleaseModel("v2.0.0", "2.0.0", "", "https://github.com/example/setup.exe")
+        };
+        var viewModel = new UpdateViewModel(
+            controller,
+            new FakeInstallerUpdateService { DownloadedPath = @"C:\Temp\NothingVpnSetup-2.0.0.exe" },
+            launcher,
+            settings,
+            settings.GetState(),
+            exitThenLaunch);
+        await viewModel.CheckAsync();
+        return viewModel;
+    }
+
     private static UpdateViewModel Create(FakeUpdateController controller, Action<ReleaseChangelog>? showChangelog)
     {
         var settings = new FakeSettingsService();
@@ -107,8 +154,25 @@ public sealed class UpdateViewModelTests
             null!,
             settings,
             settings.GetState(),
-            () => { },
+            _ => { },
             showChangelog: showChangelog);
+    }
+
+    private sealed class FakeInstallerLauncher : IInstallerLaunchService
+    {
+        public Exception? PrepareError { get; init; }
+        public List<string> Calls { get; } = [];
+
+        public void EnsureLaunchAllowed() => Calls.Add("ensure");
+
+        public string Prepare(string installerPath)
+        {
+            Calls.Add("prepare:" + installerPath);
+            if (PrepareError is not null) throw PrepareError;
+            return @"C:\Prepared\" + Path.GetFileName(installerPath);
+        }
+
+        public void Launch(string installerPath) => Calls.Add("launch:" + installerPath);
     }
 
     private sealed class FakeUpdateController : IAppUpdateController
@@ -118,6 +182,7 @@ public sealed class UpdateViewModelTests
             "2.0.0",
             new AppReleaseModel("v2.0.0", "2.0.0", "Исправления", "https://github.com/example/setup.exe"));
         public Exception? ChangelogError { get; init; }
+        public AppReleaseModel? AvailableRelease { get; init; }
         public List<string> ChangelogRequests { get; } = [];
         public List<string> Calls { get; } = [];
 
@@ -132,7 +197,7 @@ public sealed class UpdateViewModelTests
             CancellationToken cancellationToken = default)
         {
             Calls.Add("check");
-            return Task.FromResult(new AppUpdateCheckResult(true, null));
+            return Task.FromResult(new AppUpdateCheckResult(true, AvailableRelease));
         }
 
         public Task<AppReleaseModel?> GetCurrentReleaseAsync(
@@ -160,6 +225,7 @@ public sealed class UpdateViewModelTests
 
     private sealed class FakeInstallerUpdateService : IInstallerUpdateService
     {
+        public string? DownloadedPath { get; init; }
         public string GetCachedInstallerPath(string version) => throw new NotSupportedException();
         public bool IsCached(string version) => false;
 
@@ -171,7 +237,9 @@ public sealed class UpdateViewModelTests
             AppReleaseModel release,
             IProgress<InstallerDownloadProgressModel>? progress = null,
             CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            DownloadedPath is null
+                ? throw new NotSupportedException()
+                : Task.FromResult(new InstallerDownloadResult(true, null, DownloadedPath));
     }
 
     private sealed class FakeSettingsService : ISettingsService

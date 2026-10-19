@@ -242,9 +242,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 _state.Mode = SelectedMode.Id;
                 _screenController.SelectProfile(_state, SelectedProfile.Id);
-                var outcome = await _connectionController.StartAsync(SelectedProfile.Id, SelectedMode.Id);
-                if (outcome.ExitCurrentProcess)
-                    _requestExit();
+                await _connectionController.StartAsync(SelectedProfile.Id);
             }
         }
         catch (Exception ex)

@@ -14,7 +14,7 @@ public sealed class UpdateViewModel : INotifyPropertyChanged
     private readonly IInstallerUpdateService _installer;
     private readonly IInstallerLaunchService _launcher;
     private readonly ISettingsService _settings;
-    private readonly Action _exit;
+    private readonly Action<Action> _exitThenLaunch;
     private readonly Action<AppReleaseModel>? _notifyAvailable;
     private readonly Action<ReleaseChangelog>? _showChangelog;
     private readonly AsyncRelayCommand _checkCommand;
@@ -31,7 +31,7 @@ public sealed class UpdateViewModel : INotifyPropertyChanged
         IInstallerLaunchService launcher,
         ISettingsService settings,
         AppStateModel state,
-        Action exit,
+        Action<Action> exitThenLaunch,
         Action<AppReleaseModel>? notifyAvailable = null,
         Action<ReleaseChangelog>? showChangelog = null)
     {
@@ -40,7 +40,7 @@ public sealed class UpdateViewModel : INotifyPropertyChanged
         _launcher = launcher;
         _settings = settings;
         _state = state;
-        _exit = exit;
+        _exitThenLaunch = exitThenLaunch;
         _notifyAvailable = notifyAvailable;
         _showChangelog = showChangelog;
         _checkCommand = new AsyncRelayCommand(CheckAsync, () => _operationRunning == 0);
@@ -172,9 +172,10 @@ public sealed class UpdateViewModel : INotifyPropertyChanged
                 Status = download.Error ?? "Не удалось загрузить обновление.";
                 return;
             }
-            Status = "Подготовка установки…";
-            await Task.Run(() => _launcher.ScheduleAfterApplicationExits(download.InstallerPath));
-            _exit();
+            // Проверки — до выхода: их ошибка не отключает VPN. Запуск — после выхода, см. IInstallerLaunchService.
+            var installerPath = _launcher.Prepare(download.InstallerPath);
+            Status = "Закрытие приложения и запуск установщика…";
+            _exitThenLaunch(() => _launcher.Launch(installerPath));
         }
         catch (Exception ex)
         {

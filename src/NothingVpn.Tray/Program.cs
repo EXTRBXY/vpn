@@ -2,34 +2,21 @@ namespace NothingVpn.Tray;
 
 static class Program
 {
+    /// <summary>Запуск установщика обновления после выхода и освобождения мьютекса (см. IInstallerLaunchService).</summary>
+    internal static Action? LaunchAfterExit;
+
     [STAThread]
     static void Main(string[] args)
     {
         const string appId = "NothingVpn.Tray";
         args ??= Array.Empty<string>();
-        var takeover = HasFlag(args, "--takeover");
 
-        Internal.Windows.SingleInstance? primary = null;
-        if (takeover)
+        var primary = Internal.Windows.SingleInstance.TryCreatePrimary(appId, out var alreadyRunning);
+        if (alreadyRunning)
         {
-            // Elevated takeover: wait until the previous instance exits and releases the mutex.
-            var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(20);
-            while (DateTimeOffset.UtcNow < deadline)
-            {
-                primary = Internal.Windows.SingleInstance.TryCreatePrimary(appId, out var alreadyRunning);
-                if (!alreadyRunning && primary is not null) break;
-                try { Thread.Sleep(200); } catch { }
-            }
-        }
-        else
-        {
-            primary = Internal.Windows.SingleInstance.TryCreatePrimary(appId, out var alreadyRunning);
-            if (alreadyRunning)
-            {
-                // Forward to the already running instance and exit immediately.
-                Internal.Windows.SingleInstance.ForwardToPrimary(appId, args, TimeSpan.FromMilliseconds(650));
-                return;
-            }
+            // Forward to the already running instance and exit immediately.
+            Internal.Windows.SingleInstance.ForwardToPrimary(appId, args, TimeSpan.FromMilliseconds(650));
+            return;
         }
 
         if (primary is null) return;
@@ -41,17 +28,12 @@ static class Program
         {
             System.Windows.Forms.Application.Run(new MainAppContext(startup, primary));
         }
-    }    
 
-    private static bool HasFlag(string[] args, string flag)
-    {
-        foreach (var a0 in args)
+        try { LaunchAfterExit?.Invoke(); }
+        catch (Exception ex)
         {
-            var a = (a0 ?? "").Trim();
-            if (a.Equals(flag, StringComparison.OrdinalIgnoreCase)) return true;
-            if (a.StartsWith(flag + "=", StringComparison.OrdinalIgnoreCase)) return true;
+            MessageBox.Show(ex.Message, "Nothing VPN", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
-        return false;
     }
 }
 

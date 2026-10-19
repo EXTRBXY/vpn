@@ -2,7 +2,7 @@
 
 Nothing VPN — Windows-клиент VLESS. Приложение не реализует туннелирование само: оно генерирует JSON-конфигурацию
 [sing-box](https://sing-box.sagernet.org/), запускает `sing-box.exe` дочерним процессом и управляет системным
-окружением (WinINET-прокси, UAC, трей). Всё остальное — хранение профилей и подписок, политики маршрутизации,
+окружением (WinINET-прокси, трей). Всё остальное — хранение профилей и подписок, политики маршрутизации,
 обновления — живёт в .NET-коде.
 
 Платформа: .NET 8, Windows x64, WPF (основной клиент) + WinForms (`NothingVpn.Tray`, оставлен как эталон до удаления).
@@ -14,7 +14,7 @@ Nothing VPN — Windows-клиент VLESS. Приложение не реали
 | `NothingVpn.Domain` | `net8.0` | Модели настроек и чистые политики: режимы, DNS, TUN, rule-set, подписки, версии и файлы обновлений. Зависимостей нет. |
 | `NothingVpn.Application` | `net8.0` | Use-case сервисы (`VpnConnectionService`, `SettingsService`, `SubscriptionService`, …), DTO-модели, **порты** (`I*Port`) — интерфейсы к внешнему миру — и граница ядра (`Engine/`: `IVpnEngine`, контракт запроса, `SingBoxVpnEngine`). |
 | `NothingVpn.Presentation` | `net8.0` | UI-независимые контроллеры экранов (`*Controller`) и снимки состояния для любого фронтенда. |
-| `NothingVpn.Infrastructure` | `net8.0-windows` | Реализации портов: sing-box (генератор + раннер), DPAPI-хранилище, WinINET, UAC, GitHub-обновления, поиск приложений. Содержит composition root `ApplicationServicesFactory`. |
+| `NothingVpn.Infrastructure` | `net8.0-windows` | Реализации портов: sing-box (генератор + раннер), DPAPI-хранилище, WinINET, GitHub-обновления, поиск приложений. Содержит composition root `ApplicationServicesFactory`. |
 | `NothingVpn.Desktop.Wpf` | `net8.0-windows` | Упаковываемый клиент: окна, view model'и, трей, single-instance, тема, обработка исключений. UI-композиция — `Composition/DesktopCompositionRoot`. |
 | `NothingVpn.Service` | `net8.0-windows` | Служба Windows (шаг 7а): хостит ядро и канал `NothingVpn.Service`. Тонкий exe над `Infrastructure/ServiceHost`. Публикуется рядом с клиентом, установщик её пока не ставит. |
 | `NothingVpn.Tray` | `net8.0-windows` | Legacy WinForms-клиент. Не публикуется и не входит в установщик. |
@@ -43,14 +43,14 @@ WinForms-клиент (`NothingVpn.Tray`) по-прежнему обращает
 
 ```text
 UI / Presentation ──► VpnConnectionService (оркестрация, процесс интерфейса) ──► IVpnEngine
-                       профиль и state.json, UAC (--takeover,                     │
-                       только для ядра в процессе), WinINET и                     ├─ PipeVpnEngine → канал → служба (по умолчанию, шаг 7б)
+                       профиль и state.json, проверка прав                        │
+                       (только для ядра в процессе), WinINET и                    ├─ PipeVpnEngine → канал → служба (по умолчанию, шаг 7б)
                        runtime-флаги, откат, восстановление                       └─ SingBoxVpnEngine (в процессе, NOTHINGVPN_ENGINE=inprocess)
 ```
 
 - **Команды**: `ConnectAsync(EngineConnectRequest)`, `DisconnectAsync`, `GetStatus`; событие `StatusChanged(EngineStatus)`.
-  Свойство `TunRequiresElevatedCaller`: у ядра в процессе — да (TUN требует повышенного интерфейса, `--takeover`),
-  у службы — нет, и оркестрация UAC-перезапуск не запрашивает.
+  Свойство `TunRequiresElevatedCaller`: у ядра в процессе — да (TUN работает, только если интерфейс запущен от имени
+  администратора; иначе оркестрация отклоняет подключение ошибкой), у службы — нет.
 - **`EngineConnectRequest`** — типизированный и сериализуемый (System.Text.Json, явные camelCase-имена, строки enum'ов
   те же, что в state.json): параметры VLESS-профиля (`EngineProfile`), режим, уровень журнала, порт mixed-inbound,
   DNS (`EngineDnsSettings`), TUN (`EngineTunSettings`), пути `.exe` для `tun_apps`, включённые rule-set
@@ -69,7 +69,7 @@ UI / Presentation ──► VpnConnectionService (оркестрация, про
 `VpnProfile`/`AppStateModel` (`EngineRequestMapper`), прогоняет через `AppStateNormalizer` и Domain-политики
 (`VlessEndpointPolicy`, `ConnectionPolicy.EnsureTunAppsHasTargets`, `RuleSetPolicyValidator`), строит конфиг тем же
 `SingBoxConfigGenerator`, делает `sing-box check`, запускает и ждёт процесс, в режиме proxy проверяет порт
-mixed-inbound. При ошибке сам останавливает sing-box и удаляет конфиг. О state.json, WinINET и UAC ядро не знает.
+mixed-inbound. При ошибке сам останавливает sing-box и удаляет конфиг. О state.json, WinINET и правах интерфейса ядро не знает.
 Нормализация идемпотентна, поэтому конфиг из запроса совпадает с конфигом из состояния напрямую
 (`EngineContractTests` прогоняет матрицу эталонов генератора через JSON запроса).
 
@@ -169,7 +169,7 @@ C:\Program Files\NothingVpn\                 ← запись только ад�
 `App` (`App.xaml.cs`) только запускает, связывает и завершает части клиента (классы — в `Platform/`):
 
 1. `SystemThemeWatcher` — тема Windows (событие `UserPreferenceChanged` + опрос раз в секунду).
-2. `SingleInstance.Acquire` — мьютекс, пересылка аргументов первому экземпляру, ожидание при `--takeover`.
+2. `SingleInstance.Acquire` — мьютекс, пересылка аргументов первому экземпляру.
 3. `DesktopCompositionRoot.Create`, затем `GlobalExceptionHandler.Attach` (см. «Обработка исключений»).
 4. `MainWindow` и `TrayIcon` (меню, состояние, balloon-уведомление).
 5. При `--smoke-test` — выход с кодом 0. Иначе: сообщение о повреждённых файлах, `UpdateCheckScheduler`
@@ -179,8 +179,8 @@ C:\Program Files\NothingVpn\                 ← запись только ад�
 Порядок шагов и интервалы те же, что были в `App.xaml.cs` до шага 5.
 
 Ядро выбирается там же: `PipeVpnEngine` (служба) по умолчанию, `SingBoxVpnEngine` внутри процесса — только при
-переменной окружения `NOTHINGVPN_ENGINE=inprocess` (разработка без установленной службы; TUN снова через
-`--takeover`). Любое другое значение — служба. Composition root службы — `ServiceHost/ServiceEngineHost`.
+переменной окружения `NOTHINGVPN_ENGINE=inprocess` (разработка без установленной службы; для TUN клиент нужно
+запустить от имени администратора). Любое другое значение — служба. Composition root службы — `ServiceHost/ServiceEngineHost`.
 
 `LegacyRuntimeContext` — внутренний контейнер, который делят `SingBoxPort` и `LogPort`: пути, общий `InMemoryLogStore`
 и единственный экземпляр `SingBoxRunner`.
@@ -219,7 +219,7 @@ Domain содержит отдельное представление групп
 `DnsPolicy.Modes`/`Detours`, `RuleSetPolicyValidator.Actions`, `TunSettingsPolicy.Stacks`,
 `SingBoxLogLevelPolicy.Levels`, `AppCloseBehaviors.Values`). Карта задаёт каноническую строку (`ToValue()`), толерантный
 разбор (регистр и пробелы не важны, неизвестное → значение по умолчанию) и `Normalize` для неопределённых числовых
-значений. Эти же строки попадают в state.json, аргумент `--mode` (`StartupArguments.Takeover`) и конфиг sing-box.
+значений. Эти же строки попадают в state.json, аргумент `--mode` и конфиг sing-box.
 Никогда не пишите enum в строку через `ToString()` или интерполяцию — только `ToValue()`.
 
 Domain не содержит UI: подписи значений — `Presentation/SettingLabels`, порядок пунктов комбобоксов WinForms —
@@ -251,8 +251,8 @@ Domain не содержит UI: подписи значений — `Presentati
 3. Нормализация снимка (`AppStateNormalizer`); `ConnectionPolicy.EnsureTunAppsHasTargets`; `RuleSetPolicyValidator.ValidateEnabled`
    (теги, имена файлов, действия); наличие `.srs` на диске — через `IRuleSetFileService.Exists` (Domain файловую систему
    не трогает).
-4. TUN без прав администратора и ядро в процессе (`TunRequiresElevatedCaller`) → `ConnectResult { RequiresElevation,
-   ElevationArgs }` (см. «Повышение прав»). С ядром в службе шага нет.
+4. TUN без прав администратора и ядро в процессе (`TunRequiresElevatedCaller`) → `InvalidOperationException`
+   «Ядро в процессе: для TUN запустите клиент от имени администратора.» (см. «Права для TUN»). С ядром в службе шага нет.
 5. Если ядро уже работает — полный disconnect (с восстановлением прокси).
 6. `EngineRequestMapper.CreateRequest(profile, state)` → `IVpnEngine.ConnectAsync` (по умолчанию — через канал в
    службу, см. «Служба и транспорт по каналу»). Ядро (`SingBoxVpnEngine`):
@@ -290,31 +290,24 @@ Domain не содержит UI: подписи значений — `Presentati
 `SingBoxRunner` привязывает процесс к Job Object с `KILL_ON_JOB_CLOSE` (`Windows/ProcessJobScope.cs`): при падении
 клиента sing-box завершается вместе с ним.
 
-### Повышение прав (TUN)
+### Права для TUN
 
-С ядром в службе (по умолчанию, шаг 7б) этого пути нет: TUN поднимает служба, `VpnConnectionService` не просит
-повышения (`IVpnEngine.TunRequiresElevatedCaller = false`). Ниже — поведение с ядром в процессе
-(`NOTHINGVPN_ENGINE=inprocess`); код удаляется на шаге 8.
+Интерфейс никогда не повышает себя сам (шаг 8, ADR-0001): UAC-перезапуска (`runas`, `--takeover`) нет. С ядром в
+службе (по умолчанию) права интерфейсу не нужны: TUN поднимает служба (`IVpnEngine.TunRequiresElevatedCaller = false`).
 
-TUN требует администратора. Клиент не повышает себя «на месте»:
-
-1. `VpnConnectionService` (оркестрация, до обращения к ядру) возвращает `ElevationArgs = --takeover --start --mode {mode} --profile "{id}"`.
-2. `ConnectionController` вызывает `Elevation.RestartElevated` (`runas`). Отмена UAC → исключение.
-3. `ConnectionStartOutcome.ExitCurrentProcess = true` → `MainViewModel` вызывает `App.RequestExit`, текущий процесс
-   останавливает VPN и выходит, освобождая мьютекс.
-4. Новый процесс с `--takeover` до 20 с ждёт мьютекс (`SingleInstance.Acquire`), затем `ApplyStartupAsync`
-   выбирает режим/профиль и подключается.
-
-После этого клиент работает повышенным до выхода; in-process ядро запускает sing-box от его имени. На шаге 8
-этот путь удаляется (ADR-0001). Обновление из повышенного клиента — отдельная история, см.
-[UPDATE-HANDOFF.md](UPDATE-HANDOFF.md).
+С ядром в процессе (`NOTHINGVPN_ENGINE=inprocess`, только разработка) sing-box запускается от имени интерфейса, и
+TUN требует администратора. Если интерфейс запущен без прав, `VpnConnectionService` до обращения к ядру отклоняет
+подключение ошибкой «Ядро в процессе: для TUN запустите клиент от имени администратора.» — она показывается
+пользователю, `ConnectionController` откатывает попытку. Разработчик сам запускает клиент от имени администратора
+([DEVELOPMENT.md](../DEVELOPMENT.md)). Обновление из такого повышенного клиента отклоняется (см. «Обновления
+приложения»).
 
 ### Single instance и аргументы командной строки
 
 - Мьютекс `Global\NothingVpn.Desktop.Wpf`, именованный канал `NothingVpn.Desktop.Wpf.pipe` (ACL — только текущий
   пользователь). Второй экземпляр пересылает аргументы построчно и выходит; первый показывает окно и применяет
   `StartupOptions`.
-- Аргументы: `--start`, `--mode <proxy|tun|tun_apps>`, `--profile <id>` (также `--key=value`), `--takeover`,
+- Аргументы: `--start`, `--mode <proxy|tun|tun_apps>`, `--profile <id>` (также `--key=value`),
   `--smoke-test` (поднять UI и выйти с кодом 0; ошибка пишется в `wpf-smoke-error.txt` рядом с exe).
 - WinForms-клиент использует свой мьютекс `Global\NothingVpn.Tray`; установщик закрывает оба (`AppMutex` в `.iss`).
 
@@ -339,16 +332,16 @@ TUN требует администратора. Клиент не повыша�
 проверка `GET api.github.com/repos/EXTRBXY/vpn/releases/latest` раз в ~23,5 ч (таймер каждые 30 мин). Новая версия
 показывается balloon-уведомлением трея один раз на тег. Установка: загрузка `NothingVpnSetup.exe` в
 `%TEMP%\NothingVpn\NothingVpnSetup-x.y.z.exe` (allowlist хостов GitHub, проверка финального URL после редиректов) →
-`InstallerLaunchService.ScheduleAfterApplicationExits` → выход клиента → установщик запускается тихо
-(`/SILENT /SP- /SUPPRESSMSGBOXES /CLOSEAPPLICATIONS /NORESTART`). Подробности и граница безопасности — в
+`InstallerLaunchService.Prepare` (процесс не повышен, имя и наличие файла; ошибка VPN не трогает) →
+`App.ExitThenLaunch`: штатный выход (VPN отключён, мьютекс освобождён), затем `InstallerLaunchService.Launch` —
+установщик запускается напрямую (`Process.Start`, `UseShellExecute=false`) с тихими аргументами
+(`/SILENT /SP- /SUPPRESSMSGBOXES /CLOSEAPPLICATIONS /NORESTART`). Подробности, выбор порядка и граница безопасности — в
 [UPDATE-HANDOFF.md](UPDATE-HANDOFF.md).
 
-С шага 7б интерфейс не повышен, поэтому помощник просто запускает установщик с правами пользователя
-(`UseShellExecute=false`). Манифест установщика Inno — `asInvoker`; с `PrivilegesRequired=admin` он сам
-перезапускается с запросом UAC, останавливает службу, заменяет файлы, запускает службу и снова открывает интерфейс
-(`runasoriginaluser`). Выход клиента перед установкой отключает VPN, как раньше. Появление UAC в тихом режиме —
-ручная проверка ([SERVICE-INSTALL-CHECKLIST.md](SERVICE-INSTALL-CHECKLIST.md)). Помощник и протокол `READY/COMMIT`
-удаляются на шаге 8.
+Манифест установщика Inno — `asInvoker`; с `PrivilegesRequired=admin` он сам перезапускается с запросом UAC,
+останавливает службу, заменяет файлы, запускает службу и снова открывает интерфейс (`runasoriginaluser`).
+Появление UAC в тихом режиме проверено вручную на шаге 7в ([SERVICE-INSTALL-CHECKLIST.md](SERVICE-INSTALL-CHECKLIST.md)).
+Помощника PowerShell и протокола `READY/COMMIT` с шага 8 нет.
 
 ### Настройки
 
