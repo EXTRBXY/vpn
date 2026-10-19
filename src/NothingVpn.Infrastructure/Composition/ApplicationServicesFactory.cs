@@ -13,13 +13,15 @@ namespace NothingVpn.Infrastructure.Composition;
 public static class ApplicationServicesFactory
 {
     /// <summary>
-    /// Переменная окружения выбора ядра для разработки (шаг 7а): <c>service</c> — ядро в службе через канал
-    /// (<see cref="PipeVpnEngine"/>). По умолчанию и при любом другом значении — ядро внутри процесса, как в релизе.
+    /// Переменная окружения выбора ядра. По умолчанию (шаг 7б) — служба через канал (<see cref="PipeVpnEngine"/>).
+    /// <c>inprocess</c> — ядро внутри процесса интерфейса: только для разработки без установленной службы; TUN тогда
+    /// снова требует UAC-перезапуска (<c>--takeover</c>). Другие значения — служба: опечатка не должна молча
+    /// переводить ядро в процесс интерфейса.
     /// </summary>
     public const string EngineVariable = "NOTHINGVPN_ENGINE";
 
-    internal static bool UseServiceEngine(string? value) =>
-        string.Equals(value?.Trim(), "service", StringComparison.OrdinalIgnoreCase);
+    internal static bool UseInProcessEngine(string? value) =>
+        string.Equals(value?.Trim(), "inprocess", StringComparison.OrdinalIgnoreCase);
 
     public static ApplicationServiceBundle CreateDefault()
     {
@@ -93,11 +95,16 @@ public static class ApplicationServicesFactory
         LogPort logPort,
         LegacyRuntimeContext runtime)
     {
-        if (!UseServiceEngine(Environment.GetEnvironmentVariable(EngineVariable)))
+        if (UseInProcessEngine(Environment.GetEnvironmentVariable(EngineVariable)))
+        {
+            logPort.Append(Domain.Models.LogLevel.Warn, "app", $"Ядро внутри процесса интерфейса ({EngineVariable}=inprocess).");
             return new SingBoxVpnEngine(singBoxPort, diagnosticsPort, pathPolicy, logPort);
+        }
 
         var engine = new PipeVpnEngine(logPort, runtime.Paths.RuleSetsDir);
-        // Состояние службы нужно до RecoverStaleRuntimeState; недоступная служба — не ошибка запуска клиента.
+        // Состояние службы нужно до RecoverStaleRuntimeState: работающая в службе сессия (интерфейс перезапущен)
+        // не застряла. Недоступная служба — не ошибка запуска: ядро считается остановленным (sing-box живёт в Job
+        // Object службы), а при подключении пользователь увидит причину.
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));

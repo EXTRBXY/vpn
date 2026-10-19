@@ -29,7 +29,7 @@ rule `action`).
 | `route.final` | `proxy` | `proxy` | `direct` |
 | `auto_detect_interface` | `false` | `true` | `true` |
 | Системный прокси WinINET | включается | нет | нет |
-| Права администратора | нет | да | да |
+| Права администратора у процесса sing-box | нет | да | да (sing-box запускает служба LocalSystem; интерфейсу права не нужны) |
 | `strict_route` | — | настройка пользователя | всегда `false` |
 | DNS hijack | — | да | да |
 | QUIC и IPv6 → proxy | — | да (после пользовательских правил) | нет |

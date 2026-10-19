@@ -40,6 +40,9 @@ public sealed class PipeVpnEngine : IVpnEngine, IDisposable
     private long _nextId;
     private volatile bool _disposed;
 
+    internal const string ServiceUnavailableMessage =
+        "Служба Nothing VPN не отвечает. Запустите службу «Nothing VPN» (services.msc) или переустановите приложение.";
+
     public PipeVpnEngine(ILogPort log, string ruleSetsDirectory, PipeVpnEngineOptions? options = null)
         : this(log, ruleSetsDirectory, options ?? new PipeVpnEngineOptions(), LocalSystemPipeServerVerifier.Instance)
     {
@@ -54,6 +57,8 @@ public sealed class PipeVpnEngine : IVpnEngine, IDisposable
     }
 
     public event EventHandler<EngineStatus>? StatusChanged;
+
+    public bool TunRequiresElevatedCaller => false;
 
     public async Task<EngineStatus> ConnectAsync(EngineConnectRequest request, CancellationToken cancellationToken = default)
     {
@@ -144,7 +149,13 @@ public sealed class PipeVpnEngine : IVpnEngine, IDisposable
             catch (TimeoutException ex)
             {
                 pipe.Dispose();
-                throw new InvalidOperationException("Служба Nothing VPN не отвечает. Проверьте, что она установлена и запущена.", ex);
+                throw new InvalidOperationException(ServiceUnavailableMessage, ex);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                // ACL канала пускает только интерактивных пользователей (не сетевых, не службы).
+                pipe.Dispose();
+                throw new InvalidOperationException("Нет доступа к службе Nothing VPN: подключаться может только пользователь, вошедший в Windows на этом компьютере.", ex);
             }
             catch
             {

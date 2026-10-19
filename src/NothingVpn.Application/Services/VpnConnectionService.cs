@@ -9,9 +9,14 @@ namespace NothingVpn.Application.Services;
 
 /// <summary>
 /// Клиентская оркестрация подключения: профиль и настройки из хранилищ, запрос к ядру (<see cref="IVpnEngine"/>),
-/// UAC-перезапуск для TUN, системный прокси WinINET и его runtime-флаги в state.json, восстановление после
-/// остановки ядра и откат. Всё это остаётся на стороне интерфейса и после перехода на службу: прокси хранится
-/// в HKCU пользователя (ADR-0001).
+/// UAC-перезапуск для TUN (только если ядро в процессе интерфейса), системный прокси WinINET и его runtime-флаги
+/// в state.json, восстановление после остановки ядра и откат. Всё это остаётся на стороне интерфейса и с ядром
+/// в службе: прокси хранится в HKCU пользователя (ADR-0001).
+/// <para>
+/// Ядро в службе переживает перезапуск интерфейса. Тогда сессии в памяти нет, а статус ядра «работает»: режим и
+/// профиль берутся из статуса ядра, runtime-флаги прокси в state.json остаются (их восстановит отключение), а
+/// <see cref="RecoverStaleRuntimeState"/> такую сессию застрявшей не считает.
+/// </para>
 /// </summary>
 public sealed class VpnConnectionService : IVpnConnectionService
 {
@@ -42,13 +47,18 @@ public sealed class VpnConnectionService : IVpnConnectionService
         _elevationPort = elevationPort;
         _ruleSetFiles = ruleSetFiles;
         _pathPolicy = pathPolicy;
-        // Во время собственных Connect/Disconnect лок занят, и RecoverStaleRuntimeState ничего не делает;
-        // здесь срабатывает только неожиданная остановка ядра (например, выход sing-box).
+        // Во время собственных Connect/Disconnect лок занят, и обработчики ничего не делают. Здесь срабатывают
+        // неожиданная остановка ядра (выход sing-box, остановка службы) и «работает» без своей сессии: ядро службы
+        // уже работало (интерфейс перезапущен) или его подключил другой интерфейс.
         _engine.StatusChanged += (_, status) =>
         {
-            if (status.IsRunning)
-                return;
-            try { RecoverStaleRuntimeState(); }
+            try
+            {
+                if (status.IsRunning)
+                    AdoptRunningEngineSession();
+                else
+                    RecoverStaleRuntimeState();
+            }
             catch { }
         };
     }
@@ -72,7 +82,7 @@ public sealed class VpnConnectionService : IVpnConnectionService
             ConnectionPolicy.EnsureTunAppsHasTargets(state.Mode, state.TunAppProcessPaths);
             ValidateRuleSets(state);
 
-            if (ConnectionPolicy.IsTunMode(state.Mode) && !_elevationPort.IsAdministrator())
+            if (ConnectionPolicy.IsTunMode(state.Mode) && _engine.TunRequiresElevatedCaller && !_elevationPort.IsAdministrator())
             {
                 var args = StartupArguments.Takeover(state.Mode, profile.Id);
                 return new ConnectResult
@@ -144,16 +154,21 @@ public sealed class VpnConnectionService : IVpnConnectionService
 
     public VpnConnectionStatus GetStatus()
     {
-        var isRunning = _engine.GetStatus().IsRunning;
+        var engine = _engine.GetStatus();
         var session = Volatile.Read(ref _session);
-        return session is null
-            ? new VpnConnectionStatus { IsRunning = isRunning }
-            : new VpnConnectionStatus
+        if (session is not null)
+        {
+            return new VpnConnectionStatus
             {
-                IsRunning = isRunning,
+                IsRunning = engine.IsRunning,
                 Mode = session.Mode,
                 ActiveProfileId = session.ProfileId
             };
+        }
+
+        return engine.IsRunning
+            ? new VpnConnectionStatus { IsRunning = true, Mode = engine.Mode, ActiveProfileId = engine.ProfileId }
+            : new VpnConnectionStatus { IsRunning = false };
     }
 
     public void RecoverStaleRuntimeState()
@@ -190,6 +205,24 @@ public sealed class VpnConnectionService : IVpnConnectionService
         {
             _sessionLock.Release();
         }
+    }
+
+    private void AdoptRunningEngineSession()
+    {
+        if (!_sessionLock.Wait(0))
+            return;
+
+        try
+        {
+            if (Volatile.Read(ref _session) is not null)
+                return;
+        }
+        finally
+        {
+            _sessionLock.Release();
+        }
+
+        ConnectionStateChanged?.Invoke(this, true);
     }
 
     private async Task DisconnectCoreAsync(CancellationToken cancellationToken)

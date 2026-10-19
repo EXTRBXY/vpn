@@ -21,7 +21,8 @@
 | Имя exe `NothingVpn.Desktop.Wpf.exe` | csproj, `.iss`, `Build.ps1`, `release.yml` | ярлыки, автозапуск в `HKCU\...\Run`, обновление поверх |
 | Ассет релиза `NothingVpnSetup.exe`, репозиторий `EXTRBXY/vpn` | `Infrastructure/Updates/GitHubAppUpdateService.cs`, `Domain/Updates/*` | автообновление уже установленных версий |
 | Тихие аргументы установщика и протокол `READY`/`COMMIT`/`COMMITTED` | `Infrastructure/Updates/InstallerLaunchService.cs`, `InstallerUpdateWorker.cs` | обновление из повышенного клиента |
-| `AppId` Inno Setup `{A2D610D2-…}` | `.iss` | обновление поверх, а не параллельная установка |
+| `AppId` Inno Setup `{A2D610D2-…}` | `.iss`, `LegacyUserInstallMigration` | обновление поверх, а не параллельная установка; по нему находится старая per-user установка |
+| Служба `NothingVpn` (LocalSystem), канал `NothingVpn.Service`, каталог `%ProgramFiles%\NothingVpn`, ключ `NothingVpn.Service.exe --migrate-user-install` | `NothingVpnWindowsService`, `ServiceProtocol`, `.iss` | установщик останавливает и удаляет службу по имени; установленные версии обновляются поверх |
 | Итоговый JSON sing-box | `SingBoxConfigGenerator` | поведение маршрутизации; порядок правил значим |
 
 Рекомендация: характеризационные тесты описаны в [TESTING.md](TESTING.md#характеризационные-тесты); прогоняйте их после каждого шага.
@@ -280,10 +281,17 @@ WinForms-клиент ещё в решении как эталон (`docs/WPF-MI
      (служба — только при `NOTHINGVPN_ENGINE=service`), поведение релиза прежнее. Служба публикуется рядом с
      клиентом. Итоговый JSON sing-box внутри процесса не изменился (эталоны те же); у службы отличаются только пути
      rule-set.
-   - **7б. Установка.** Per-machine установщик в `Program Files`, регистрация и запуск службы, удаление старой
-     per-user установки с сохранением данных, интерфейс работает через службу.
-   - **7в. Переход.** Ручная проверка обновления с 0.6.8 (раздел «Переход» в ADR); по её итогам при необходимости
-     промежуточный релиз.
+   - **7б. Установка.** ✅ Готово (код и сборка; ручная проверка установки — за пользователем,
+     [SERVICE-INSTALL-CHECKLIST.md](SERVICE-INSTALL-CHECKLIST.md)): per-machine установщик в `C:\Program Files\NothingVpn`
+     (выбор каталога отключён), регистрация, запуск, остановка при обновлении и удаление службы; старая per-user
+     копия удаляется от имени исходного пользователя без запуска её деинсталлятора, каталог данных не трогается;
+     автозапуск переносится на новый exe. Интерфейс по умолчанию работает через службу, TUN без UAC; ядро в процессе —
+     только при `NOTHINGVPN_ENGINE=inprocess`. Перезапущенный интерфейс подхватывает работающую в службе сессию.
+     Каталог данных службы, созданный заранее пользователем, служба не принимает. Код UAC-перезапуска и
+     UPDATE-HANDOFF оставлен до шага 8.
+   - **7в. Переход.** Ручная проверка обновления установленной 0.6.8 на per-machine установщик через её встроенное
+     обновление — за пользователем ([SERVICE-INSTALL-CHECKLIST.md](SERVICE-INSTALL-CHECKLIST.md#шаг-7в-обновление-068-через-встроенный-механизм));
+     по её итогам при необходимости промежуточный релиз (ADR, «Переход со старых версий»).
 8. **Удаление повышения клиента.** Убрать `--takeover`/`runas`, `WindowsUserProcessLauncher`,
    `InstallerUpdateWorker`, протокол `READY/COMMIT`; обновить UPDATE-HANDOFF.md и SECURITY.md.
 9. **Удаление WinForms.** После закрытия разрывов (раздел 4): удалить `NothingVpn.Tray`, `TunAppIconCache`,

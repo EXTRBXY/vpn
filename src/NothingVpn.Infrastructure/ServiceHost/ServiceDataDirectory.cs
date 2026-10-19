@@ -17,9 +17,10 @@ internal static class ServiceDataDirectory
     public static AppPaths Create(string root, bool applyAcl)
     {
         var paths = PathsFor(root);
-        var info = Directory.CreateDirectory(paths.BaseDir);
         if (applyAcl)
-            info.SetAccessControl(CreateSecurity());
+            EnsureTrustedDirectory(paths.BaseDir, CreateSecurity(), IsOwnedBySystemOrAdministrators);
+        else
+            Directory.CreateDirectory(paths.BaseDir);
         Directory.CreateDirectory(paths.ConfigsDir);
         Directory.CreateDirectory(paths.RuleSetsDir);
         Directory.CreateDirectory(paths.LogsDir);
@@ -38,6 +39,59 @@ internal static class ServiceDataDirectory
             ProfilesJsonPath: string.Empty,
             SubscriptionsJsonPath: string.Empty,
             StateJsonPath: string.Empty);
+    }
+
+    /// <summary>
+    /// В <c>%ProgramData%</c> любой пользователь может создать подкаталог раньше службы. Такой каталог (или ссылка на
+    /// чужой каталог) остаётся под контролем пользователя даже после смены ACL: владелец может вернуть себе доступ и
+    /// подменить конфиг, который sing-box читает от SYSTEM. Поэтому каталог с чужим владельцем или точка повторной
+    /// обработки откладывается в сторону, и создаётся новый — сразу с защищённым ACL, без окна с унаследованными
+    /// правами. Каталог, которым владеют SYSTEM или администраторы, пользователи изменить не могут.
+    /// </summary>
+    internal static void EnsureTrustedDirectory(string path, DirectorySecurity security, Func<DirectoryInfo, bool> isTrusted)
+    {
+        if (File.Exists(path))
+            File.Delete(path);
+
+        var info = new DirectoryInfo(path);
+        if (info.Exists && !isTrusted(info))
+        {
+            var aside = path + ".untrusted-" + Guid.NewGuid().ToString("N");
+            // Перемещение переименовывает саму ссылку, а не каталог, на который она указывает.
+            Directory.Move(path, aside);
+            try
+            {
+                var moved = new DirectoryInfo(aside);
+                if (moved.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                    moved.Delete();
+                else
+                    moved.Delete(recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
+
+            info.Refresh();
+        }
+
+        if (info.Exists)
+            info.SetAccessControl(security);
+        else
+            info.Create(security);
+
+        info.Refresh();
+        if (!isTrusted(info))
+            throw new InvalidOperationException($"Каталог данных службы {path} не принадлежит SYSTEM или администраторам.");
+    }
+
+    private static bool IsOwnedBySystemOrAdministrators(DirectoryInfo directory)
+    {
+        if (directory.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            return false;
+
+        var owner = directory.GetAccessControl(AccessControlSections.Owner).GetOwner(typeof(SecurityIdentifier));
+        return owner is SecurityIdentifier sid
+            && (sid.IsWellKnown(WellKnownSidType.LocalSystemSid) || sid.IsWellKnown(WellKnownSidType.BuiltinAdministratorsSid));
     }
 
     public static DirectorySecurity CreateSecurity()

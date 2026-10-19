@@ -22,10 +22,11 @@ dotnet test NothingVpn.sln -c Release --no-build --filter "FullyQualifiedName~Si
 .\build\Test-UpdateHandoff.ps1           # desktop-тесты обновления; повторить с -RequireElevated из админ-терминала
 ```
 
-Базовая линия (19.10.2026, после шага 7а): сборка без предупреждений, 441 тест проходит, 3 desktop-теста пропущены
+Базовая линия (19.10.2026, после шага 7б): сборка без предупреждений, 453 теста проходят, 3 desktop-теста пропущены
 намеренно.
 Только Windows. `Publish` берёт `sing-box.exe`/`wintun.dll` из `-RuntimeAssetsDirectory` или из установленного
-клиента в `%LOCALAPPDATA%\Programs\NothingVpn`.
+клиента (`%ProgramFiles%\NothingVpn`, затем старый `%LOCALAPPDATA%\Programs\NothingVpn`). Ничего не устанавливайте и
+не регистрируйте службу на машине пользователя; установку проверяет он сам по `docs/SERVICE-INSTALL-CHECKLIST.md`.
 
 ## Структура
 
@@ -37,11 +38,12 @@ src/NothingVpn.Infrastructure  реализации портов: sing-box, DPAP
                                Composition/ApplicationServicesFactory — composition root
 src/NothingVpn.Desktop.Wpf     упаковываемый клиент: Composition/DesktopCompositionRoot — UI-композиция,
                                Platform/ — трей, таймеры, тема, single-instance, обработка исключений
-src/NothingVpn.Service         служба Windows (шаг 7а): ядро sing-box и канал NothingVpn.Service; публикуется рядом
-                               с клиентом, установщик её пока не ставит
+src/NothingVpn.Service         служба Windows NothingVpn (LocalSystem): ядро sing-box и канал NothingVpn.Service;
+                               ставится установщиком рядом с клиентом; --migrate-user-install — миграция старой
+                               per-user установки от имени пользователя
 src/NothingVpn.Tray            legacy WinForms, эталон до удаления; не публикуется
 tests/NothingVpn.Application.Tests  единственный тестовый проект, покрывает все слои включая WPF
-build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/NothingVpn.iss
+build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/NothingVpn.iss (per-machine, служба)
 ```
 
 Ключевые файлы:
@@ -58,7 +60,8 @@ build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/Noth
 - `Infrastructure/Security/DpapiJsonFile.cs` — формат всех файлов данных.
 - `Infrastructure/ServiceChannel/*` — протокол канала службы, сервер, клиент `PipeVpnEngine`, ACL и проверка сервера;
   `Infrastructure/ServiceHost/ServiceEngineHost.cs` — composition root службы. Протокол — ADR-0001, шаг 7а.
-  Клиент использует службу только при `NOTHINGVPN_ENGINE=service`; по умолчанию ядро внутри процесса.
+  Клиент по умолчанию работает через службу (шаг 7б); ядро внутри процесса — только при `NOTHINGVPN_ENGINE=inprocess`
+  (разработка). `Infrastructure/Installation/LegacyUserInstallMigration.cs` — переход со старой per-user установки.
 
 ## Архитектурные правила
 
@@ -85,6 +88,8 @@ build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/Noth
 - Хеш profileId → адреса TUN; `BuiltinId`/`Tag` встроенных rule-set.
 - Аргументы `--takeover --start --mode --profile`, `--smoke-test`; мьютекс `Global\NothingVpn.Desktop.Wpf`;
   имя `NothingVpn.Desktop.Wpf.exe`; ассет `NothingVpnSetup.exe` в `EXTRBXY/vpn`.
+- Служба `NothingVpn`, канал `NothingVpn.Service`, каталог установки `%ProgramFiles%\NothingVpn` (только он: служба
+  от SYSTEM запускает файлы оттуда), `AppId` установщика, `NothingVpn.Service.exe --migrate-user-install`.
 
 ## Подводные камни
 
@@ -113,9 +118,15 @@ build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/Noth
 - Страница настроек разделена на разделы (`ViewModels/Settings/*`), но сохраняется одной операцией в
   `SettingsViewModel.Save`. Новое поле настроек — в раздел (`Load`/`ToSettings`) и в черновик сохранения.
 - Конфиг sing-box в `configs\` лежит открытым текстом; он обязан удаляться при остановке и откате.
-- TUN требует админа: клиент перезапускает себя через `runas --takeover`, старый процесс выходит. Не пытаться
-  «повысить на месте». Целевая архитектура — служба Windows и интерфейс без прав
+- TUN через службу прав интерфейсу не требует (`IVpnEngine.TunRequiresElevatedCaller`). `runas --takeover` остался
+  только для ядра в процессе (`NOTHINGVPN_ENGINE=inprocess`) и удаляется на шаге 8
   ([docs/adr/0001-privileged-service.md](docs/adr/0001-privileged-service.md)); не наращивайте код вокруг повышения клиента.
+  Недоступная служба — ошибка пользователю, а не откат на ядро в процессе.
+- Перезапущенный интерфейс подхватывает сессию, работающую в службе: `RecoverStaleRuntimeState` её не трогает, флаги
+  прокси остаются в state.json до отключения.
+- Установщик повышен: пользовательское (HKCU, `%LOCALAPPDATA%`, ярлыки пользователя) — только через
+  `ExecAsOriginalUser` (`--migrate-user-install`), не из повышенного `[Code]`. Старый деинсталлятор ≤ 0.6.8 не
+  запускать: в тихом режиме он удаляет данные.
 - Обновление из повышенного клиента запускается только через неповышенный токен (`WindowsUserProcessLauncher`).
   Не добавлять запасной повышенный путь, `runas`, `UseShellExecute` для установщика. См. `docs/UPDATE-HANDOFF.md`.
 - WPF smoke-test и запуск клиента используют настоящий каталог данных текущего пользователя.

@@ -111,10 +111,13 @@ jobs:
           .\build\Build.ps1 -Target Installer `
             -Version $env:APP_VERSION `
             -RepositoryUrl $repoUrl
-          $exe = Join-Path $env:GITHUB_WORKSPACE "artifacts\publish\win-x64\NothingVpn.Desktop.Wpf.exe"
-          $pv = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion
-          if ($pv -notlike "$($env:APP_VERSION)*") {
-            throw "Версия в PE не совпадает с APP_VERSION: '$pv' vs '$($env:APP_VERSION)'"
+          # Клиент и служба NothingVpn входят в один установщик и должны быть одной версии.
+          foreach ($name in @('NothingVpn.Desktop.Wpf.exe', 'NothingVpn.Service.exe')) {
+            $exe = Join-Path $env:GITHUB_WORKSPACE "artifacts\publish\win-x64\$name"
+            $pv = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion
+            if ($pv -notlike "$($env:APP_VERSION)*") {
+              throw "Версия в PE $name не совпадает с APP_VERSION: '$pv' vs '$($env:APP_VERSION)'"
+            }
           }
           "INSTALLER_PATH=$(Join-Path $env:GITHUB_WORKSPACE 'artifacts\installer\NothingVpnSetup.exe')" >> $env:GITHUB_ENV
           "INSTALLER_CHECKSUM_PATH=$(Join-Path $env:GITHUB_WORKSPACE 'artifacts\installer\NothingVpnSetup.exe.sha256')" >> $env:GITHUB_ENV

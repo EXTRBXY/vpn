@@ -358,6 +358,100 @@ public sealed class VpnConnectionServiceTests
         Assert.Equal(before, stateStore.LoadCalls);
     }
 
+    [Fact]
+    public async Task ConnectAsync_DoesNotRequireElevation_WhenEngineIsService()
+    {
+        var stateStore = new FakeStateStorePort { State = new AppStateModel { Mode = ConnectionMode.Tun } };
+        var engine = new FakeServiceEngine();
+        var service = CreateService(new FakeProfileStorePort(), stateStore, isAdmin: false, engine: engine);
+
+        var result = await service.ConnectAsync(new ConnectRequest { ProfileId = "p1" });
+
+        Assert.True(result.Started);
+        Assert.False(result.RequiresElevation);
+        Assert.Equal(1, engine.ConnectCalls);
+        Assert.Equal("p1", stateStore.State.ActiveProfileId);
+    }
+
+    /// <summary>
+    /// Интерфейс перезапущен, пока VPN работает в службе: сессии в памяти нет, но это не «застрявшее» состояние.
+    /// Флаги прокси остаются в state.json, отображение берётся из статуса ядра, отключение восстанавливает прокси.
+    /// </summary>
+    [Fact]
+    public async Task RestartedClient_AdoptsRunningServiceSession_AndDisconnectRestoresProxy()
+    {
+        var previous = new ProxySettingsSnapshotModel { ProxyEnable = false, ProxyServer = "corp:3128" };
+        var stateStore = new FakeStateStorePort
+        {
+            State = new AppStateModel
+            {
+                Mode = ConnectionMode.Proxy,
+                ActiveProfileId = "p1",
+                ProxyWasEnabledByUs = true,
+                PreviousProxySettings = previous
+            }
+        };
+        var proxy = new FakeProxyPort();
+        var engine = new FakeServiceEngine
+        {
+            Status = new EngineStatus { IsRunning = true, Mode = ConnectionMode.Proxy, ProfileId = "p1" }
+        };
+        var service = CreateService(new FakeProfileStorePort(), stateStore, isAdmin: false, proxyPort: proxy, engine: engine);
+
+        service.RecoverStaleRuntimeState();
+
+        Assert.False(proxy.RestoreCalled);
+        Assert.True(stateStore.State.ProxyWasEnabledByUs);
+        Assert.Equal("p1", stateStore.State.ActiveProfileId);
+        var status = service.GetStatus();
+        Assert.True(status.IsRunning);
+        Assert.Equal(ConnectionMode.Proxy, status.Mode);
+        Assert.Equal("p1", status.ActiveProfileId);
+
+        await service.DisconnectAsync();
+
+        Assert.Equal(1, engine.DisconnectCalls);
+        Assert.True(proxy.RestoreCalled);
+        Assert.Equal("corp:3128", proxy.RestoredWith?.ProxyServer);
+        Assert.False(stateStore.State.ProxyWasEnabledByUs);
+        Assert.Null(stateStore.State.ActiveProfileId);
+    }
+
+    [Fact]
+    public void ServiceReportsRunningSession_RaisesConnected_WhenClientHasNoSession()
+    {
+        var engine = new FakeServiceEngine();
+        var service = CreateService(new FakeProfileStorePort(), new FakeStateStorePort(), isAdmin: false, engine: engine);
+        var events = new List<bool>();
+        service.ConnectionStateChanged += (_, connected) => events.Add(connected);
+
+        engine.Raise(new EngineStatus { IsRunning = true, Mode = ConnectionMode.Tun, ProfileId = "p1" });
+
+        Assert.Equal([true], events);
+        Assert.Equal(ConnectionMode.Tun, service.GetStatus().Mode);
+    }
+
+    [Fact]
+    public void ServiceStopped_RestoresProxyOfAdoptedSession()
+    {
+        var stateStore = new FakeStateStorePort
+        {
+            State = new AppStateModel { ActiveProfileId = "p1", ProxyWasEnabledByUs = true }
+        };
+        var proxy = new FakeProxyPort();
+        var engine = new FakeServiceEngine { Status = new EngineStatus { IsRunning = true, ProfileId = "p1" } };
+        var service = CreateService(new FakeProfileStorePort(), stateStore, isAdmin: false, proxyPort: proxy, engine: engine);
+        service.RecoverStaleRuntimeState();
+        Assert.False(proxy.RestoreCalled);
+
+        // Служба остановлена: клиент канала после неудачных переподключений сообщает «остановлено».
+        engine.Raise(EngineStatus.Stopped);
+
+        Assert.True(proxy.RestoreCalled);
+        Assert.False(stateStore.State.ProxyWasEnabledByUs);
+        Assert.Null(stateStore.State.ActiveProfileId);
+    }
+
     private static VpnConnectionService CreateService(
         FakeProfileStorePort profileStore,
         FakeStateStorePort stateStore,
@@ -366,10 +460,11 @@ public sealed class VpnConnectionServiceTests
         FakeProxyPort? proxyPort = null,
         FakeDiagnosticsPort? diagnosticsPort = null,
         AppStateStore? appStateStore = null,
-        FakeRuleSetFileService? ruleSetFiles = null)
+        FakeRuleSetFileService? ruleSetFiles = null,
+        IVpnEngine? engine = null)
     {
         // Настоящее ядро поверх поддельного sing-box: тесты проверяют оркестрацию и ядро вместе, как в приложении.
-        var engine = new SingBoxVpnEngine(
+        engine ??= new SingBoxVpnEngine(
             singBoxPort ?? new FakeSingBoxPort(),
             diagnosticsPort ?? new FakeDiagnosticsPort(),
             new FakePathPolicyPort(),
@@ -382,6 +477,38 @@ public sealed class VpnConnectionServiceTests
             new FakeElevationPort(isAdmin),
             ruleSetFiles ?? new FakeRuleSetFileService(),
             new FakePathPolicyPort());
+    }
+
+    /// <summary>Ядро в службе: TUN без повышения интерфейса, статус задаётся тестом.</summary>
+    private sealed class FakeServiceEngine : IVpnEngine
+    {
+        public EngineStatus Status { get; set; } = EngineStatus.Stopped;
+        public int ConnectCalls { get; private set; }
+        public int DisconnectCalls { get; private set; }
+        public bool TunRequiresElevatedCaller => false;
+        public event EventHandler<EngineStatus>? StatusChanged;
+
+        public Task<EngineStatus> ConnectAsync(EngineConnectRequest request, CancellationToken cancellationToken = default)
+        {
+            ConnectCalls++;
+            Status = new EngineStatus { IsRunning = true, Mode = request.Mode, ProfileId = request.Profile.Id };
+            return Task.FromResult(Status);
+        }
+
+        public Task DisconnectAsync(CancellationToken cancellationToken = default)
+        {
+            DisconnectCalls++;
+            Status = EngineStatus.Stopped;
+            return Task.CompletedTask;
+        }
+
+        public EngineStatus GetStatus() => Status;
+
+        public void Raise(EngineStatus status)
+        {
+            Status = status;
+            StatusChanged?.Invoke(this, status);
+        }
     }
 
     private sealed class FakeProfileStorePort : IProfileStorePort
