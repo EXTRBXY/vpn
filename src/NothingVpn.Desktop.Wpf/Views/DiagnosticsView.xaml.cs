@@ -1,4 +1,3 @@
-using System.IO;
 using System.Windows;
 
 namespace NothingVpn.Desktop.Wpf;
@@ -22,16 +21,23 @@ public partial class DiagnosticsView : System.Windows.Controls.UserControl
 
     private void OnExport(object sender, RoutedEventArgs e)
     {
-        if (DataContext is not DiagnosticsViewModel vm || string.IsNullOrEmpty(vm.LogText)) return;
+        if (DataContext is not DiagnosticsViewModel vm) return;
         try
         {
+            var text = vm.FullLogText();
+            if (text.Length == 0)
+            {
+                vm.ShowError("Журнал пуст.");
+                return;
+            }
+
             var dialog = new Microsoft.Win32.SaveFileDialog
             {
                 Filter = "Текст (*.txt)|*.txt",
                 FileName = $"nothingvpn-{DateTimeOffset.Now:yyyyMMdd-HHmmss}.txt"
             };
             if (dialog.ShowDialog() == true)
-                File.WriteAllText(dialog.FileName, vm.LogText);
+                vm.SaveFullLog(dialog.FileName, text);
         }
         catch (Exception ex)
         {

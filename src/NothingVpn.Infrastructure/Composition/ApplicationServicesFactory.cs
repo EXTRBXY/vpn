@@ -1,4 +1,5 @@
 ﻿using NothingVpn.Application.Engine;
+using NothingVpn.Application.Ports;
 using NothingVpn.Application.Services;
 using NothingVpn.Infrastructure.Ports;
 using NothingVpn.Infrastructure.Runtime;
@@ -48,9 +49,10 @@ public static class ApplicationServicesFactory
             subscriptionFetcher,
             profileStore,
             parser,
-            settingsService);
+            settingsService,
+            logPort);
         var diagnosticsService = new DiagnosticsService(diagnosticsPort, logPort, stateStore);
-        var storageHealthService = new StorageHealthService(storageHealthPort);
+        var storageHealthService = new StorageHealthService(storageHealthPort, logPort);
         var ruleSetFileService = new RuleSetFileService(appPaths);
         var appUpdateService = new GitHubAppUpdateService();
         var installerUpdateService = new InstallerUpdateService();
@@ -63,7 +65,8 @@ public static class ApplicationServicesFactory
             proxyPort,
             elevationPort,
             ruleSetFileService,
-            pathPolicy);
+            pathPolicy,
+            logPort);
         stateStore.SaveMissingBuiltinRuleSets();
         vpnService.RecoverStaleRuntimeState();
 
@@ -96,7 +99,7 @@ public static class ApplicationServicesFactory
     {
         if (UseInProcessEngine(Environment.GetEnvironmentVariable(EngineVariable)))
         {
-            logPort.Append(Domain.Models.LogLevel.Warn, "app", $"Ядро внутри процесса интерфейса ({EngineVariable}=inprocess).");
+            logPort.Append(Domain.Models.LogLevel.Warn, AppLogSources.App, $"Ядро внутри процесса интерфейса ({EngineVariable}=inprocess).");
             return new SingBoxVpnEngine(singBoxPort, diagnosticsPort, pathPolicy, logPort);
         }
 
@@ -111,7 +114,7 @@ public static class ApplicationServicesFactory
         }
         catch (Exception ex)
         {
-            logPort.Append(Domain.Models.LogLevel.Warn, "app", $"Служба Nothing VPN недоступна: {ex.Message}");
+            logPort.Append(Domain.Models.LogLevel.Warn, AppLogSources.App, $"Служба Nothing VPN недоступна: {ex.Message}");
         }
 
         return engine;

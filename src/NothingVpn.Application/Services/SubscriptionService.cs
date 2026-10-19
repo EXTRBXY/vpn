@@ -10,7 +10,8 @@ public sealed class SubscriptionService(
     ISubscriptionFetcherPort fetcher,
     IProfileStorePort profileStore,
     IProfileParserPort profileParser,
-    ISettingsService settingsService) : ISubscriptionService
+    ISettingsService settingsService,
+    ILogPort log) : ISubscriptionService
 {
     public IReadOnlyList<SubscriptionModel> GetSubscriptions() => subscriptionStore.Load();
 
@@ -74,6 +75,7 @@ public sealed class SubscriptionService(
             {
                 var error = fetch.Error ?? "Не удалось загрузить подписку.";
                 SaveSubscriptionError(subscription, error);
+                LogFailure(subscription, error);
                 return Failed(subscriptionId, error);
             }
 
@@ -102,6 +104,7 @@ public sealed class SubscriptionService(
                     ? "Не найдено VLESS-узлов: " + parseErrors[0]
                     : "В подписке нет поддерживаемых VLESS-ссылок.";
                 SaveSubscriptionError(subscription, error);
+                LogFailure(subscription, error);
                 return new SubscriptionRefreshResult
                 {
                     SubscriptionId = subscriptionId,
@@ -121,6 +124,13 @@ public sealed class SubscriptionService(
             subscriptionStore.Upsert(subscription);
 
             var activeCleared = ClearActiveProfileIfMissing();
+            Log(
+                LogLevel.Info,
+                $"Подписка «{Label(subscription)}» обновлена: добавлено {sync.Added}, обновлено {sync.Updated}, удалено {sync.Removed}.");
+            if (parseErrors.Count > 0)
+                Log(LogLevel.Warn, $"Подписка «{Label(subscription)}»: пропущено ссылок с ошибками: {parseErrors.Count}.");
+            if (activeCleared)
+                Log(LogLevel.Info, "Активного профиля больше нет в подписке, выбор профиля сброшен.");
 
             return new SubscriptionRefreshResult
             {
@@ -137,6 +147,7 @@ public sealed class SubscriptionService(
         catch (Exception ex)
         {
             SaveSubscriptionError(subscription, ex.Message);
+            LogFailure(subscription, ex.Message);
             return Failed(subscriptionId, ex.Message);
         }
     }
@@ -152,6 +163,12 @@ public sealed class SubscriptionService(
                 continue;
 
             results.Add(await RefreshAsync(subscription.Id, cancellationToken).ConfigureAwait(false));
+        }
+
+        if (results.Count > 0)
+        {
+            var failed = results.Count(r => !r.Success);
+            Log(LogLevel.Info, $"Автообновление подписок: успешно {results.Count - failed}, с ошибкой {failed}.");
         }
 
         return results;
@@ -197,6 +214,30 @@ public sealed class SubscriptionService(
     {
         subscription.LastError = TruncateError(error);
         subscriptionStore.Upsert(subscription);
+    }
+
+    // Название вводит пользователь или задаёт заголовок сервера; адрес в нём тоже не должен попасть в журнал.
+    private static string Label(SubscriptionModel subscription) => WithoutAddress(subscription.Name, subscription.Url);
+
+    private void LogFailure(SubscriptionModel subscription, string error) =>
+        Log(LogLevel.Warn, $"Подписка «{Label(subscription)}» не обновлена: {WithoutAddress(error, subscription.Url)}");
+
+    /// <summary>
+    /// Сообщения сетевых ошибок .NET содержат хост ("No such host is known. (host:443)"). Адрес подписки — секрет
+    /// пользователя, а <c>LogRedactor</c> узнаёт только адреса вида <c>/sub/…</c>, поэтому адрес и хост убираются здесь.
+    /// </summary>
+    private static string WithoutAddress(string error, string url)
+    {
+        var result = error.Replace(url, "***", StringComparison.OrdinalIgnoreCase);
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.Host))
+            result = result.Replace(uri.Host, "***", StringComparison.OrdinalIgnoreCase);
+        return result;
+    }
+
+    private void Log(LogLevel level, string message)
+    {
+        try { log.Append(level, AppLogSources.Subscriptions, message); }
+        catch { }
     }
 
     private static SubscriptionRefreshResult Failed(string subscriptionId, string error) => new()

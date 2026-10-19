@@ -18,7 +18,14 @@
 строк в журнал должен проходить через `ILogPort.Append` / `InMemoryLogStore.AppendStructured` (они вызывают
 редактор). Это касается и необработанных исключений: `GlobalExceptionHandler` пишет `exception.ToString()` через порт.
 
-Ограничение редактора: адрес VLESS-сервера и URL подписок без сегмента `/sub/` не маскируются.
+События клиента (ARCHITECTURE.md, «Логирование») пишутся без адреса сервера, UUID и ключей: подключение — только
+режим и имя профиля, хранилище — только имя файла. В сообщениях об ошибках подписки `SubscriptionService` заменяет
+адрес и хост подписки на `***` до записи — редактор их не узнаёт. Тесты: `VpnConnectionServiceTests`
+(`*_IsMaskedInLog`, `ConnectAndDisconnect_WriteEvents_*`), `SubscriptionServiceSyncTests` (`*_WithoutUrl*`),
+`StorageHealthServiceTests`.
+
+Ограничение редактора: адрес VLESS-сервера и URL подписок без сегмента `/sub/` не маскируются — поэтому клиент сам их
+в журнал не передаёт.
 
 ## Входные данные из сети
 

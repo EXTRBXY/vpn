@@ -13,7 +13,7 @@ namespace NothingVpn.Desktop.Wpf;
 /// </summary>
 internal sealed class GlobalExceptionHandler
 {
-    private const string LogSource = "app";
+    private const string LogSource = AppLogSources.App;
     private static readonly TimeSpan DefaultEmergencyStopTimeout = TimeSpan.FromSeconds(5);
 
     private readonly ILogPort _log;

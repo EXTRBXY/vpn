@@ -30,6 +30,7 @@ public sealed class VpnConnectionService : IVpnConnectionService
     private readonly IElevationPort _elevationPort;
     private readonly IRuleSetFileService _ruleSetFiles;
     private readonly IPathPolicyPort _pathPolicy;
+    private readonly ILogPort _log;
     private readonly SemaphoreSlim _sessionLock = new(1, 1);
     private int _sessionGeneration;
     private ConnectedSession? _session;
@@ -41,7 +42,8 @@ public sealed class VpnConnectionService : IVpnConnectionService
         IProxyPort proxyPort,
         IElevationPort elevationPort,
         IRuleSetFileService ruleSetFiles,
-        IPathPolicyPort pathPolicy)
+        IPathPolicyPort pathPolicy,
+        ILogPort log)
     {
         _profileStore = profileStore;
         _stateStore = stateStore;
@@ -50,6 +52,7 @@ public sealed class VpnConnectionService : IVpnConnectionService
         _elevationPort = elevationPort;
         _ruleSetFiles = ruleSetFiles;
         _pathPolicy = pathPolicy;
+        _log = log;
         // Во время собственных Connect/Disconnect лок занят, и обработчики ничего не делают. Здесь срабатывают
         // неожиданная остановка ядра (выход sing-box, остановка службы) и «работает» без своей сессии: ядро службы
         // уже работало (интерфейс перезапущен) или его подключил другой интерфейс.
@@ -104,6 +107,7 @@ public sealed class VpnConnectionService : IVpnConnectionService
                     _proxyPort.Enable($"127.0.0.1:{state.LocalMixedPort}", state.ProxyOverride);
                     proxyEnabled = true;
                     _stateStore.Update(new ConnectionRuntimeState(ProxyWasEnabledByUs: true, previousProxy).ApplyTo);
+                    Log(LogLevel.Info, $"Системный прокси включён: 127.0.0.1:{state.LocalMixedPort}.");
                 }
             }
             catch
@@ -120,9 +124,16 @@ public sealed class VpnConnectionService : IVpnConnectionService
 
             _stateStore.Update(current => current.ActiveProfileId = profile.Id);
             Volatile.Write(ref _session, new ConnectedSession(state.Mode, profile.Id));
+            // Только режим и имя профиля: адрес сервера, UUID и ключи в журнал не попадают.
+            Log(LogLevel.Info, $"Подключено: режим {state.Mode.ToValue()}, профиль «{DisplayName(profile)}».");
             ConnectionStateChanged?.Invoke(this, true);
 
             return new ConnectResult { Started = true };
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Log(LogLevel.Error, "Не удалось подключиться: " + ex.Message);
+            throw;
         }
         finally
         {
@@ -137,6 +148,11 @@ public sealed class VpnConnectionService : IVpnConnectionService
         {
             Interlocked.Increment(ref _sessionGeneration);
             await DisconnectCoreAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Log(LogLevel.Error, "Ошибка при отключении: " + ex.Message);
+            throw;
         }
         finally
         {
@@ -173,16 +189,26 @@ public sealed class VpnConnectionService : IVpnConnectionService
             if (_engine.GetStatus().IsRunning)
                 return;
 
-            Volatile.Write(ref _session, null);
+            var hadSession = Interlocked.Exchange(ref _session, null) is not null;
             var state = _stateStore.Load();
             var proxyWasEnabled = state.ProxyWasEnabledByUs;
             if (!proxyWasEnabled && string.IsNullOrWhiteSpace(state.ActiveProfileId))
                 return;
 
+            Log(
+                hadSession ? LogLevel.Warn : LogLevel.Info,
+                hadSession ? "Ядро остановилось: VPN отключён." : "Сброшено состояние прерванного подключения.");
             if (proxyWasEnabled)
             {
-                try { _proxyPort.Restore(state.PreviousProxySettings); }
-                catch { }
+                try
+                {
+                    _proxyPort.Restore(state.PreviousProxySettings);
+                    Log(LogLevel.Info, "Системный прокси восстановлен.");
+                }
+                catch (Exception ex)
+                {
+                    Log(LogLevel.Warn, "Не удалось восстановить системный прокси: " + ex.Message);
+                }
             }
 
             _stateStore.Update(current =>
@@ -214,6 +240,7 @@ public sealed class VpnConnectionService : IVpnConnectionService
             _sessionLock.Release();
         }
 
+        Log(LogLevel.Info, "Подхвачено подключение, работающее в службе.");
         ConnectionStateChanged?.Invoke(this, true);
     }
 
@@ -229,7 +256,10 @@ public sealed class VpnConnectionService : IVpnConnectionService
         {
             Volatile.Write(ref _session, null);
             if (runtime.ProxyWasEnabledByUs)
+            {
                 _proxyPort.Restore(runtime.PreviousProxySettings);
+                Log(LogLevel.Info, "Системный прокси восстановлен.");
+            }
 
             _stateStore.Update(current =>
             {
@@ -239,6 +269,7 @@ public sealed class VpnConnectionService : IVpnConnectionService
             });
         }
 
+        Log(LogLevel.Info, "Отключено.");
         ConnectionStateChanged?.Invoke(this, false);
     }
 
@@ -258,9 +289,19 @@ public sealed class VpnConnectionService : IVpnConnectionService
             return;
 
         try { _proxyPort.Restore(previousProxy); }
-        catch { }
+        catch (Exception ex) { Log(LogLevel.Warn, "Не удалось восстановить системный прокси после отката: " + ex.Message); }
 
         _stateStore.Update(ClearProxyFlags);
+    }
+
+    private static string DisplayName(VpnProfile profile) =>
+        string.IsNullOrWhiteSpace(profile.Name) ? "без имени" : profile.Name.Trim();
+
+    // Журнал вспомогательный: его сбой не должен ломать подключение или откат.
+    private void Log(LogLevel level, string message)
+    {
+        try { _log.Append(level, AppLogSources.Connection, message); }
+        catch { }
     }
 
     private static void ClearProxyFlags(AppStateModel state) =>
