@@ -100,9 +100,24 @@ public sealed class PipeVpnEngine : IVpnEngine, IDisposable
     private async Task<ServiceMessage> SendAsync(ServiceMessage message, TimeSpan timeout, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        ServiceMessage response;
         var connection = await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
-        var response = await connection.RequestAsync(message, Interlocked.Increment(ref _nextId), timeout, cancellationToken)
-            .ConfigureAwait(false);
+        try
+        {
+            response = await connection.RequestAsync(message, Interlocked.Increment(ref _nextId), timeout, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (RequestNotSentException)
+        {
+            // Цикл чтения ещё не заметил разрыв (например, служба перезапустилась), а запись уже упала. Служба запрос
+            // не получила, поэтому повтор на новом соединении безопасен. Если разрыв случился после отправки, повтора
+            // нет: команда могла выполниться.
+            connection.Close();
+            connection = await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
+            response = await connection.RequestAsync(message, Interlocked.Increment(ref _nextId), timeout, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         if (response.Status is not null)
             UpdateStatus(response.Status);
         return response;
@@ -299,7 +314,7 @@ public sealed class PipeVpnEngine : IVpnEngine, IDisposable
             try
             {
                 if (_closed.IsCancellationRequested)
-                    throw ConnectionLost();
+                    throw new RequestNotSentException(ConnectionLost(_failure));
 
                 await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
                 try
@@ -309,11 +324,11 @@ public sealed class PipeVpnEngine : IVpnEngine, IDisposable
                 catch (IOException ex)
                 {
                     Close();
-                    throw ConnectionLost(ex);
+                    throw new RequestNotSentException(ConnectionLost(ex));
                 }
                 catch (ObjectDisposedException ex)
                 {
-                    throw ConnectionLost(ex);
+                    throw new RequestNotSentException(ConnectionLost(ex));
                 }
                 finally
                 {
@@ -395,3 +410,10 @@ public sealed class PipeVpnEngine : IVpnEngine, IDisposable
                 : new InvalidOperationException("Связь со службой Nothing VPN потеряна.", inner);
     }
 }
+
+/// <summary>
+/// Запрос не был записан в канал: соединение уже разорвано. Текст тот же, что у обычной потери связи, — если повтор
+/// тоже не удался, пользователь видит прежнее сообщение.
+/// </summary>
+internal sealed class RequestNotSentException(Exception lost)
+    : InvalidOperationException(lost.Message, lost.InnerException ?? lost);
