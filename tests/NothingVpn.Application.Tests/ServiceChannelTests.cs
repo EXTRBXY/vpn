@@ -422,12 +422,13 @@ public sealed class ServiceChannelTests : IAsyncDisposable
     [Theory]
     [InlineData(null, false)]
     [InlineData("", false)]
-    [InlineData("inprocess", false)]
-    [InlineData("service", true)]
-    [InlineData(" Service ", true)]
-    public void EngineSelection_DefaultsToInProcess(string? value, bool expected)
+    [InlineData("service", false)]
+    [InlineData("in-process", false)]
+    [InlineData("inprocess", true)]
+    [InlineData(" InProcess ", true)]
+    public void EngineSelection_DefaultsToService(string? value, bool expected)
     {
-        Assert.Equal(expected, ApplicationServicesFactory.UseServiceEngine(value));
+        Assert.Equal(expected, ApplicationServicesFactory.UseInProcessEngine(value));
     }
 
     /// <summary>
@@ -672,6 +673,7 @@ public sealed class ServiceChannelTests : IAsyncDisposable
     private sealed class IdleEngine : IVpnEngine
     {
         public event EventHandler<EngineStatus>? StatusChanged { add { } remove { } }
+        public bool TunRequiresElevatedCaller => true;
         public Task<EngineStatus> ConnectAsync(EngineConnectRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task DisconnectAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public EngineStatus GetStatus() => EngineStatus.Stopped;

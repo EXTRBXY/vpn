@@ -6,7 +6,7 @@ namespace NothingVpn.Service;
 
 /// <summary>
 /// Служба Windows «NothingVpn» (LocalSystem, ADR-0001): ядро sing-box и канал <c>NothingVpn.Service</c>.
-/// Регистрирует службу установщик (шаг 7б); в 7а её можно поставить вручную через sc.exe.
+/// Регистрирует, запускает и удаляет службу установщик (build/installer/NothingVpn.iss, шаг 7б).
 /// </summary>
 internal sealed class NothingVpnWindowsService : ServiceBase
 {

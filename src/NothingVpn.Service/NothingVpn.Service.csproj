@@ -14,7 +14,7 @@
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <PublishTrimmed>false</PublishTrimmed>
-    <!-- PDB внутри exe: установщик пока копирует *.pdb из каталога публикации, а служба в него не входит (шаг 7б). -->
+    <!-- PDB внутри exe: служба — один файл в каталоге установки. -->
     <DebugType>embedded</DebugType>
     <!-- Infrastructure пока тянет WinForms (REFACTORING.md 3.6): без сжатия exe службы ~160 МБ. -->
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>

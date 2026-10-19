@@ -45,6 +45,8 @@ public sealed class SingBoxVpnEngine : IVpnEngine
 
     public event EventHandler<EngineStatus>? StatusChanged;
 
+    public bool TunRequiresElevatedCaller => true;
+
     public async Task<EngineStatus> ConnectAsync(EngineConnectRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);

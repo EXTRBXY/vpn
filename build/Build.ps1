@@ -78,9 +78,10 @@ function Get-VersionArguments {
 }
 
 function Copy-RuntimeAssets {
-    $installedDirectory = if ($env:LOCALAPPDATA) {
-        Join-Path $env:LOCALAPPDATA 'Programs\NothingVpn'
-    } else { $null }
+    # Fallback for local builds: an installed client, per-machine (step 7b) or the legacy per-user copy.
+    $installedDirectories = @()
+    if ($env:ProgramFiles) { $installedDirectories += Join-Path $env:ProgramFiles 'NothingVpn' }
+    if ($env:LOCALAPPDATA) { $installedDirectories += Join-Path $env:LOCALAPPDATA 'Programs\NothingVpn' }
 
     foreach ($name in @('sing-box.exe', 'wintun.dll')) {
         $destination = Join-Path $script:PublishDirectory $name
@@ -88,8 +89,8 @@ function Copy-RuntimeAssets {
         if (-not [string]::IsNullOrWhiteSpace($RuntimeAssetsDirectory)) {
             $candidates += Join-Path ([System.IO.Path]::GetFullPath($RuntimeAssetsDirectory)) $name
         }
-        if ($installedDirectory) {
-            $candidates += Join-Path $installedDirectory $name
+        foreach ($directory in $installedDirectories) {
+            $candidates += Join-Path $directory $name
         }
 
         $source = $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
@@ -115,7 +116,7 @@ function Invoke-Publish {
     }
     New-Item -ItemType Directory -Path $script:PublishDirectory -Force | Out-Null
     $versionArguments = Get-VersionArguments
-    # The service (refactoring step 7a) is published next to the client; the installer does not ship it yet (step 7b).
+    # The client and the Windows service are published into one folder; the installer ships both (step 7b).
     foreach ($project in @($script:DesktopProject, $script:ServiceProject)) {
         $arguments = @(
             'publish', $project,
@@ -154,10 +155,12 @@ function Resolve-InnoCompiler {
 }
 
 function Invoke-Installer {
-    $application = Join-Path $script:PublishDirectory 'NothingVpn.Desktop.Wpf.exe'
     $singBox = Join-Path $script:PublishDirectory 'sing-box.exe'
-    if (-not (Test-Path -LiteralPath $application)) {
-        throw "Publish the application before creating the installer: $application"
+    foreach ($name in @('NothingVpn.Desktop.Wpf.exe', 'NothingVpn.Service.exe')) {
+        $output = Join-Path $script:PublishDirectory $name
+        if (-not (Test-Path -LiteralPath $output)) {
+            throw "Publish the application before creating the installer: $output"
+        }
     }
     if (-not (Test-Path -LiteralPath $singBox)) {
         throw "Required runtime asset not found: $singBox"

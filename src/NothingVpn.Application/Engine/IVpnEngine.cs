@@ -2,8 +2,8 @@ namespace NothingVpn.Application.Engine;
 
 /// <summary>
 /// Граница «интерфейс ↔ ядро» (docs/adr/0001-privileged-service.md): единственный путь запуска sing-box.
-/// Реализации: <see cref="SingBoxVpnEngine"/> внутри процесса (по умолчанию) и клиент именованного канала службы
-/// (<c>Infrastructure/ServiceChannel/PipeVpnEngine</c>, шаг 7а). Поэтому вход и выход — сериализуемые типы контракта,
+/// Реализации: клиент именованного канала службы (<c>Infrastructure/ServiceChannel/PipeVpnEngine</c>, по умолчанию
+/// с шага 7б) и <see cref="SingBoxVpnEngine"/> внутри процесса (разработка, тесты и само ядро службы). Поэтому вход и выход — сериализуемые типы контракта,
 /// а не модели хранения.
 /// <para>
 /// Журнал ядра попадает в <see cref="Ports.ILogPort"/> интерфейса: внутри процесса — общим хранилищем, через канал —
@@ -21,6 +21,12 @@ public interface IVpnEngine
     /// <see cref="ConnectAsync"/>/<see cref="DisconnectAsync"/> выход процесса отдельным событием не сообщается.
     /// </summary>
     event EventHandler<EngineStatus>? StatusChanged;
+
+    /// <summary>
+    /// TUN требует прав администратора у процесса, который вызывает ядро: sing-box запускается в нём самом. У ядра
+    /// в службе — нет, TUN поднимает служба (ADR-0001), и интерфейсу UAC-перезапуск не нужен.
+    /// </summary>
+    bool TunRequiresElevatedCaller { get; }
 
     /// <summary>
     /// Валидирует запрос Domain-политиками, строит конфиг, проверяет и запускает sing-box. Уже работающая сессия
