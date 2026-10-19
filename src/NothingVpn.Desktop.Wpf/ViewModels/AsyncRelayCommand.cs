@@ -17,7 +17,11 @@ internal sealed class AsyncRelayCommand : ICommand
     public event EventHandler? CanExecuteChanged;
     public bool CanExecute(object? parameter) => !_isRunning && (_canExecute?.Invoke() ?? true);
 
-    public async void Execute(object? parameter)
+    // Ошибка из async void уходит в SynchronizationContext диспетчера и попадает в глобальный обработчик
+    // (журнал + сообщение), а не теряется.
+    public async void Execute(object? parameter) => await ExecuteAsync(parameter);
+
+    public async Task ExecuteAsync(object? parameter)
     {
         if (!CanExecute(parameter)) return;
         _isRunning = true;

@@ -7,6 +7,7 @@ using System.Windows.Media;
 using MediaBrush = System.Windows.Media.Brush;
 using MediaColor = System.Windows.Media.Color;
 using NothingVpn.Application.Models;
+using NothingVpn.Application.Ports;
 using NothingVpn.Domain.Models;
 using NothingVpn.Domain.Policies;
 using NothingVpn.Presentation;
@@ -35,7 +36,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ProfileViewModel profileManager,
         SettingsViewModel settings,
         IConnectionDiagnosticController diagnosticController,
-        NothingVpn.Infrastructure.Diagnostics.InMemoryLogStore logStore,
+        ILogPort log,
         Action requestExit)
     {
         _screenController = screenController;
@@ -44,7 +45,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ProfileManager = profileManager;
         Settings = settings;
         Settings.SettingsChanged += (_, _) => Load();
-        Diagnostics = new DiagnosticsViewModel(diagnosticController, logStore, () => _state.Mode, () => _connectionController.IsRunning);
+        Diagnostics = new DiagnosticsViewModel(diagnosticController, log, () => _state.Mode, () => _connectionController.IsRunning);
         Modes =
         [
             new ModeOption(ConnectionMode.Proxy, "Прокси"),

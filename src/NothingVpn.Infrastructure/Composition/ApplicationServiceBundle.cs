@@ -17,7 +17,9 @@ public sealed class ApplicationServiceBundle
     public required IInstallerUpdateService InstallerUpdateService { get; init; }
     public required IInstallerLaunchService InstallerLaunchService { get; init; }
     public required NothingVpn.Application.Ports.IPathPolicyPort PathPolicy { get; init; }
+    public required NothingVpn.Application.Ports.ILogPort Log { get; init; }
+    public required NothingVpn.Application.Ports.IAppDiscoveryPort AppDiscovery { get; init; }
 
-    /// <summary>Единый in-memory лог для UI и sing-box runner.</summary>
+    /// <summary>Единый in-memory лог для UI и sing-box runner. WPF работает с ним через <see cref="Log"/>; напрямую — только WinForms.</summary>
     public required InMemoryLogStore SharedLogStore { get; init; }
 }

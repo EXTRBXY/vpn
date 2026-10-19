@@ -21,7 +21,7 @@ public partial class TunAppPickerWindow : System.Windows.Window
         try
         {
             StatusText.Text = "Поиск приложений…";
-            var candidates = await ((SettingsViewModel)DataContext).FindTunAppsAsync(token);
+            var candidates = await ((TunAppsSettingsViewModel)DataContext).FindTunAppsAsync(token);
             var items = await Task.Run(() => candidates.Select(candidate =>
             {
                 token.ThrowIfCancellationRequested();

@@ -23,4 +23,8 @@
     <ProjectReference Include="..\NothingVpn.Infrastructure\NothingVpn.Infrastructure.csproj" />
     <ProjectReference Include="..\NothingVpn.Presentation\NothingVpn.Presentation.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="NothingVpn.Application.Tests" />
+  </ItemGroup>
 </Project>

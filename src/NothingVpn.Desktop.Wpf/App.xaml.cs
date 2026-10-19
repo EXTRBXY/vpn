@@ -1,32 +1,20 @@
-using Drawing = System.Drawing;
-using Forms = System.Windows.Forms;
-using NothingVpn.Infrastructure.Composition;
-using NothingVpn.Presentation;
-using NothingVpn.Application.Services;
-using System.Windows.Threading;
-using NothingVpn.Infrastructure.TunApps;
-using NothingVpn.Infrastructure.Windows;
+using System.IO;
+using NothingVpn.Desktop.Wpf.Composition;
 
 namespace NothingVpn.Desktop.Wpf;
 
+/// <summary>Старт, выход и связывание частей клиента. Сборка зависимостей — <see cref="DesktopCompositionRoot"/>.</summary>
 public partial class App : System.Windows.Application
 {
     private const string AppId = "NothingVpn.Desktop.Wpf";
+    private SystemThemeWatcher? _theme;
     private SingleInstance? _singleInstance;
-    private Forms.NotifyIcon? _trayIcon;
-    private Drawing.Icon? _trayBaseIcon;
-    private Drawing.Icon? _trayStatusIcon;
+    private GlobalExceptionHandler? _exceptions;
     private MainWindow? _window;
     private MainViewModel? _viewModel;
-    private SubscriptionViewModel? _subscriptionViewModel;
-    private ISubscriptionService? _subscriptionService;
-    private DispatcherTimer? _subscriptionTimer;
-    private DispatcherTimer? _updateTimer;
-    private DispatcherTimer? _themeTimer;
-    private bool _isDarkTheme;
-    private int _subscriptionRefreshRunning;
-    private Forms.ToolStripMenuItem? _trayConnect;
-    private Forms.ToolStripMenuItem? _trayDisconnect;
+    private TrayIcon? _tray;
+    private UpdateCheckScheduler? _updateChecks;
+    private SubscriptionRefreshScheduler? _subscriptionRefresh;
     private bool _exitInProgress;
 
     public static bool IsExitRequested { get; private set; }
@@ -34,32 +22,20 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(System.Windows.StartupEventArgs e)
     {
         base.OnStartup(e);
-        Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
-        ThemeManager.ApplySystemTheme();
-        _isDarkTheme = ThemeManager.IsDarkTheme();
-        _themeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _themeTimer.Tick += (_, _) => RefreshSystemTheme();
-        _themeTimer.Start();
-        var smokeTest = e.Args.Any(x => string.Equals(x, "--smoke-test", StringComparison.OrdinalIgnoreCase));
-        var smokeErrorPath = System.IO.Path.Combine(AppContext.BaseDirectory, "wpf-smoke-error.txt");
-        if (smokeTest) { try { System.IO.File.Delete(smokeErrorPath); } catch { } }
-        var takeover = e.Args.Any(x => string.Equals(x, "--takeover", StringComparison.OrdinalIgnoreCase));
-        bool alreadyRunning;
-        if (takeover)
+        _theme = new SystemThemeWatcher(Dispatcher);
+        _theme.Start();
+        var smokeTest = StartupOptions.HasSwitch(e.Args, StartupOptions.SmokeTestSwitch);
+        var smokeErrorPath = Path.Combine(AppContext.BaseDirectory, "wpf-smoke-error.txt");
+        if (smokeTest)
         {
-            _singleInstance = WaitForPrimaryTakeover();
-            alreadyRunning = false;
+            try { File.Delete(smokeErrorPath); }
+            catch { }
         }
-        else
-        {
-            _singleInstance = SingleInstance.TryCreatePrimary(AppId, out alreadyRunning);
-        }
-        if (alreadyRunning)
-        {
-            SingleInstance.ForwardToPrimary(AppId, e.Args);
-            Shutdown();
-            return;
-        }
+
+        _singleInstance = SingleInstance.Acquire(
+            AppId,
+            e.Args,
+            takeover: StartupOptions.HasSwitch(e.Args, StartupOptions.TakeoverSwitch));
         if (_singleInstance is null)
         {
             Shutdown();
@@ -68,174 +44,76 @@ public partial class App : System.Windows.Application
 
         try
         {
-            var services = ApplicationServicesFactory.CreateDefault();
-            _subscriptionService = services.SubscriptionService;
-            var connectionController = new ConnectionController(
-                services.VpnConnectionService,
-                services.AppLifecycleService);
-            var screenController = new ConnectionScreenController(
-                services.ProfileService,
-                services.SettingsService);
-            var profileController = new ProfileManagementController(
-                services.ProfileService,
-                services.SettingsService.GetState().ActiveProfileId);
-            var subscriptionController = new SubscriptionManagementController(services.SubscriptionService);
-            var subscriptionViewModel = new SubscriptionViewModel(subscriptionController);
-            _subscriptionViewModel = subscriptionViewModel;
-            var profileViewModel = new ProfileViewModel(profileController, subscriptionViewModel);
-            var updateViewModel = new UpdateViewModel(controller: new AppUpdateController(services.AppUpdateService, services.SettingsService),
-                installer: services.InstallerUpdateService, launcher: services.InstallerLaunchService,
-                settings: services.SettingsService, state: services.SettingsService.GetState(), exit: RequestExit,
-                notifyAvailable: ShowUpdateNotification,
-                showChangelog: ShowReleaseChangelog);
-            var settingsViewModel = new SettingsViewModel(
-                new ConnectionSettingsController(services.SettingsService),
-                new TunAppsController(services.PathPolicy, services.SettingsService),
-                new RuleSetManagementController(services.SettingsService),
-                services.RuleSetFileService,
-                new TunAppsSelectionService(new CompositeInstalledAppsProvider(new RegistryUninstallAppsProvider(),new AppPathsRegistryProvider(),new StartMenuShortcutAppsProvider()),new RunningProcessesProvider()),
-                services.SettingsService,
-                services.SettingsService.GetState(), updateViewModel);
+            var composition = DesktopCompositionRoot.Create(new DesktopShell(
+                RequestExit,
+                release => _tray?.ShowUpdateAvailable(release),
+                changelog => AppDialogs.ShowReleaseChangelog(_window, changelog)));
+            var exceptions = new GlobalExceptionHandler(
+                composition.Log,
+                message =>
+                {
+                    if (!IsExitRequested) AppDialogs.ShowUnexpectedError(_window, message);
+                },
+                () => composition.Connection.StopAsync());
+            exceptions.Attach(this);
+            _exceptions = exceptions;
 
-            _viewModel = new MainViewModel(screenController, connectionController, profileViewModel, settingsViewModel,
-                new ConnectionDiagnosticController(services.DiagnosticsService), services.SharedLogStore, RequestExit);
-            _viewModel.ConnectionStateChanged += (_, connected) => UpdateTrayState(connected);
-            _window = new MainWindow(_viewModel);
+            var viewModel = composition.Main;
+            _viewModel = viewModel;
+            viewModel.ConnectionStateChanged += (_, connected) => _tray?.SetConnected(connected);
+            _window = new MainWindow(viewModel);
             MainWindow = _window;
-            CreateTrayIcon();
-            UpdateTrayState(connectionController.IsRunning);
+            _tray = new TrayIcon(
+                Dispatcher,
+                ShowMainWindow,
+                viewModel.ConnectFromTrayAsync,
+                viewModel.DisconnectFromTrayAsync,
+                RequestExit,
+                ex => exceptions.HandleUiException(ex));
+            _tray.SetConnected(composition.Connection.IsRunning);
             _window.Show();
             if (smokeTest)
             {
                 Dispatcher.BeginInvoke(ExitSmokeTest);
                 return;
             }
-            ShowStorageIssues(services.StorageHealthService);
-            _ = settingsViewModel.Updates.CheckAtStartupAsync();
-            _updateTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(30) };
-            _updateTimer.Tick += async (_, _) => await updateViewModel.CheckIfDueAsync();
-            _updateTimer.Start();
-            _ = _viewModel.ApplyStartupAsync(StartupOptions.Parse(e.Args));
 
-            _subscriptionTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(15) };
-            _subscriptionTimer.Tick += async (_, _) => await RefreshDueSubscriptionsAsync();
-            _subscriptionTimer.Start();
-            _ = RefreshSubscriptionsAfterStartupAsync();
+            AppDialogs.ShowStorageIssues(_window, composition.StorageHealth);
+            _updateChecks = new UpdateCheckScheduler(composition.Updates);
+            _updateChecks.Start();
+            viewModel.ApplyStartupAsync(StartupOptions.Parse(e.Args)).Forget();
+            _subscriptionRefresh = new SubscriptionRefreshScheduler(
+                composition.SubscriptionService,
+                composition.Subscriptions,
+                composition.Log);
+            _subscriptionRefresh.Start();
 
-            _singleInstance.StartServer(args => Dispatcher.Invoke(async () => { ShowMainWindow(); if(_viewModel is not null) await _viewModel.ApplyStartupAsync(StartupOptions.Parse(args)); }));
+            _singleInstance.StartServer(args => Dispatcher.Invoke(async () =>
+            {
+                ShowMainWindow();
+                await viewModel.ApplyStartupAsync(StartupOptions.Parse(args));
+            }));
         }
         catch (Exception ex)
         {
             if (smokeTest)
             {
                 Console.Error.WriteLine(ex);
-                try { System.IO.File.WriteAllText(smokeErrorPath, ex.ToString()); } catch { }
+                try { File.WriteAllText(smokeErrorPath, ex.ToString()); }
+                catch { }
                 Shutdown(1);
                 return;
             }
-            System.Windows.MessageBox.Show(
-                ex.Message,
-                "Nothing VPN",
-                System.Windows.MessageBoxButton.OK,
-                System.Windows.MessageBoxImage.Error);
+            AppDialogs.ShowStartupError(ex.Message);
             RequestExit();
         }
     }
 
     protected override void OnExit(System.Windows.ExitEventArgs e)
     {
-        _updateTimer?.Stop();
-        _themeTimer?.Stop();
-        Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+        _updateChecks?.Stop();
+        _theme?.Dispose();
         base.OnExit(e);
-    }
-
-    private void OnUserPreferenceChanged(object sender, Microsoft.Win32.UserPreferenceChangedEventArgs e)
-    {
-        if (e.Category is not (Microsoft.Win32.UserPreferenceCategory.General
-            or Microsoft.Win32.UserPreferenceCategory.Color
-            or Microsoft.Win32.UserPreferenceCategory.VisualStyle
-            or Microsoft.Win32.UserPreferenceCategory.Accessibility)) return;
-        Dispatcher.BeginInvoke(RefreshSystemTheme);
-    }
-
-    private void RefreshSystemTheme()
-    {
-        var dark = ThemeManager.IsDarkTheme();
-        if (dark == _isDarkTheme) return;
-        _isDarkTheme = dark;
-        ThemeManager.ApplySystemTheme();
-    }
-
-    private static SingleInstance? WaitForPrimaryTakeover()
-    {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(20);
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            var instance = SingleInstance.TryCreatePrimary(AppId, out var alreadyRunning);
-            if (!alreadyRunning && instance is not null)
-                return instance;
-            Thread.Sleep(200);
-        }
-        return null;
-    }
-
-    private void CreateTrayIcon()
-    {
-        var extractedIcon = Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath!);
-        _trayBaseIcon = extractedIcon is null
-            ? (Drawing.Icon)Drawing.SystemIcons.Application.Clone()
-            : (Drawing.Icon)extractedIcon.Clone();
-        extractedIcon?.Dispose();
-        _trayIcon = new Forms.NotifyIcon
-        {
-            Icon = _trayBaseIcon,
-            Visible = true,
-            Text = "Nothing VPN"
-        };
-        var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("Открыть", null, (_, _) => Dispatcher.Invoke(ShowMainWindow));
-        _trayConnect = new Forms.ToolStripMenuItem("Подключить", null, async (_, _) => { if(_viewModel is not null) await _viewModel.ConnectFromTrayAsync(); });
-        _trayDisconnect = new Forms.ToolStripMenuItem("Отключить", null, async (_, _) => { if(_viewModel is not null) await _viewModel.DisconnectFromTrayAsync(); });
-        menu.Items.Add(_trayConnect); menu.Items.Add(_trayDisconnect);
-        menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add("Выход", null, (_, _) => Dispatcher.Invoke(RequestExit));
-        _trayIcon.ContextMenuStrip = menu;
-        _trayIcon.DoubleClick += (_, _) => Dispatcher.Invoke(ShowMainWindow);
-        _trayIcon.BalloonTipClicked += (_, _) => Dispatcher.Invoke(ShowMainWindow);
-    }
-
-    private void ShowUpdateNotification(NothingVpn.Application.Models.AppReleaseModel release)
-    {
-        if (_trayIcon is null) return;
-        _trayIcon.BalloonTipTitle = "Доступно обновление Nothing VPN";
-        _trayIcon.BalloonTipText = $"Версия {release.Semver} готова к загрузке. Нажмите, чтобы открыть приложение.";
-        _trayIcon.BalloonTipIcon = Forms.ToolTipIcon.Info;
-        _trayIcon.ShowBalloonTip(8000);
-    }
-
-    private void ShowReleaseChangelog(ReleaseChangelog changelog)
-    {
-        var dialog = new ReleaseChangelogWindow(changelog);
-        if (_window is { IsVisible: true })
-            dialog.Owner = _window;
-        else
-            dialog.WindowStartupLocation = System.Windows.WindowStartupLocation.CenterScreen;
-        dialog.ShowDialog();
-    }
-
-    private void UpdateTrayState(bool connected)
-    {
-        if (_trayIcon is not null)
-        {
-            var nextIcon = TrayStatusIconBuilder.Create(_trayBaseIcon ?? Drawing.SystemIcons.Application, connected);
-            _trayIcon.Icon = nextIcon;
-            _trayStatusIcon?.Dispose();
-            _trayStatusIcon = nextIcon;
-            _trayIcon.Text = connected ? "Nothing VPN — подключено" : "Nothing VPN — отключено";
-        }
-        if(_trayConnect is not null)_trayConnect.Enabled=!connected;
-        if(_trayDisconnect is not null)_trayDisconnect.Enabled=connected;
     }
 
     private void ShowMainWindow() => _window?.BringToFront();
@@ -243,39 +121,10 @@ public partial class App : System.Windows.Application
     private void ExitSmokeTest()
     {
         IsExitRequested = true;
-        DisposeTrayIcon();
+        _tray?.Dispose();
         _singleInstance?.Dispose();
         _window?.Close();
         Shutdown(0);
-    }
-
-    private void ShowStorageIssues(IStorageHealthService health)
-    {
-        var issues=health.DrainIssues(); if(issues.Count==0)return;
-        var recovered=issues.All(x=>x.RecoveredFromBackup);
-        System.Windows.MessageBox.Show(_window,
-            recovered?"Повреждённый файл данных восстановлен из резервной копии.":"Некоторые данные не удалось прочитать. Резервные файлы сохранены для восстановления.",
-            "Nothing VPN",System.Windows.MessageBoxButton.OK,recovered?System.Windows.MessageBoxImage.Warning:System.Windows.MessageBoxImage.Error);
-    }
-
-    private async Task RefreshSubscriptionsAfterStartupAsync()
-    {
-        await Task.Delay(TimeSpan.FromSeconds(5));
-        await RefreshDueSubscriptionsAsync();
-    }
-
-    private async Task RefreshDueSubscriptionsAsync()
-    {
-        if (_subscriptionService is null || Interlocked.Exchange(ref _subscriptionRefreshRunning, 1) == 1)
-            return;
-        try
-        {
-            var results = await _subscriptionService.RefreshAllDueAsync();
-            if (results.Count > 0)
-                _subscriptionViewModel?.ReloadAfterExternalRefresh();
-        }
-        catch { }
-        finally { Interlocked.Exchange(ref _subscriptionRefreshRunning, 0); }
     }
 
     private async void RequestExit()
@@ -288,31 +137,18 @@ public partial class App : System.Windows.Application
             if (_viewModel is not null)
                 await _viewModel.StopForExitAsync();
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _exceptions?.Report(ex, "Не удалось остановить VPN при выходе");
+        }
         finally
         {
-            _updateTimer?.Stop();
-            _subscriptionTimer?.Stop();
-            DisposeTrayIcon();
+            _updateChecks?.Stop();
+            _subscriptionRefresh?.Stop();
+            _tray?.Dispose();
             _singleInstance?.Dispose();
             _window?.Close();
             Shutdown();
         }
-    }
-
-    private void DisposeTrayIcon()
-    {
-        if (_trayIcon is not null)
-        {
-            _trayIcon.Visible = false;
-            _trayIcon.Icon = null;
-            _trayIcon.ContextMenuStrip?.Dispose();
-            _trayIcon.Dispose();
-            _trayIcon = null;
-        }
-        _trayStatusIcon?.Dispose();
-        _trayStatusIcon = null;
-        _trayBaseIcon?.Dispose();
-        _trayBaseIcon = null;
     }
 }

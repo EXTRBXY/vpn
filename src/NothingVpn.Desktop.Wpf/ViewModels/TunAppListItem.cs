@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using NothingVpn.Infrastructure.TunApps;
+using NothingVpn.Application.Models;
 
 namespace NothingVpn.Desktop.Wpf;
 

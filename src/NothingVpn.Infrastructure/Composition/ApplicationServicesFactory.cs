@@ -3,6 +3,7 @@ using NothingVpn.Infrastructure.Ports;
 using NothingVpn.Infrastructure.Runtime;
 using NothingVpn.Infrastructure.Diagnostics;
 using NothingVpn.Infrastructure.RuleSets;
+using NothingVpn.Infrastructure.TunApps;
 using NothingVpn.Infrastructure.Updates;
 
 namespace NothingVpn.Infrastructure.Composition;
@@ -21,7 +22,7 @@ public static class ApplicationServicesFactory
         var parser = new ProfileParserPort();
         var subscriptionFetcher = new SubscriptionHttpFetcher();
         var diagnosticsPort = new DiagnosticsPort();
-        var logPort = new LogPort(runtime);
+        var logPort = new LogPort(logStore);
         var proxyPort = new ProxyPort();
         var elevationPort = new ElevationPort();
         var storageHealthPort = new StorageHealthPort();
@@ -69,7 +70,17 @@ public static class ApplicationServicesFactory
             InstallerUpdateService = installerUpdateService,
             InstallerLaunchService = installerLaunchService,
             PathPolicy = pathPolicy,
+            Log = logPort,
+            AppDiscovery = CreateAppDiscovery(),
             SharedLogStore = logStore
         };
     }
+
+    private static TunAppsSelectionService CreateAppDiscovery() =>
+        new(
+            new CompositeInstalledAppsProvider(
+                new RegistryUninstallAppsProvider(),
+                new AppPathsRegistryProvider(),
+                new StartMenuShortcutAppsProvider()),
+            new RunningProcessesProvider());
 }

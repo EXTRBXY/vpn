@@ -1,25 +1,26 @@
 using NothingVpn.Application.Ports;
 using NothingVpn.Domain.Models;
-using NothingVpn.Infrastructure.Runtime;
+using NothingVpn.Infrastructure.Diagnostics;
 
 namespace NothingVpn.Infrastructure.Ports;
 
 public sealed class LogPort : ILogPort
 {
-    private readonly LegacyRuntimeContext _context;
+    private readonly InMemoryLogStore _store;
 
-    internal LogPort(LegacyRuntimeContext context)
+    internal LogPort(InMemoryLogStore store)
     {
-        _context = context;
+        _store = store;
     }
 
-    public string SnapshotText(LogLevel minLevel)
-    {
-        var text = _context.LogStore.SnapshotText(minLevel, out _);
-        return text;
-    }
+    public int Version => _store.Version;
 
-    public string? TryGetLatestMessage(LogLevel minLevel) =>
-        _context.LogStore.TryGetLatestMessage(minLevel);
+    public string SnapshotText(LogLevel minLevel) => _store.SnapshotText(minLevel);
+
+    public string? TryGetLatestMessage(LogLevel minLevel) => _store.TryGetLatestMessage(minLevel);
+
+    public void Append(LogLevel level, string source, string message) =>
+        _store.AppendStructured(level, source, message);
+
+    public void Clear() => _store.Clear();
 }
-

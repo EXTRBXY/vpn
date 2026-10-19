@@ -8,7 +8,7 @@ using NothingVpn.Domain.Models;
 using NothingVpn.Domain.Policies;
 using NothingVpn.Desktop.Wpf;
 using NothingVpn.Application.Models;
-using NothingVpn.Infrastructure.Diagnostics;
+using NothingVpn.Application.Ports;
 using NothingVpn.Presentation;
 using Button = System.Windows.Controls.Button;
 using ButtonBase = System.Windows.Controls.Primitives.ButtonBase;
@@ -41,34 +41,34 @@ public sealed class WpfSettingsBindingTests
                 view.Arrange(new Rect(0, 0, 850, 700));
                 Pump(view);
 
-                var list = Descendants<ListBox>(view).Single(x => ReferenceEquals(x.ItemsSource, vm.TunApps));
+                var list = Descendants<ListBox>(view).Single(x => ReferenceEquals(x.ItemsSource, vm.Apps.TunApps));
                 list.SelectedIndex = 1;
                 Pump(view);
-                Assert.Same(vm.TunApps[1], vm.SelectedTunApp);
-                var remove = Descendants<Button>(view).Single(x => Equals(x.Content, "Удалить") && x.GetBindingExpression(UIElement.IsEnabledProperty)?.ParentBinding.Path.Path == nameof(SettingsViewModel.CanRemoveTunApp));
+                Assert.Same(vm.Apps.TunApps[1], vm.Apps.SelectedTunApp);
+                var remove = Descendants<Button>(view).Single(x => Equals(x.Content, "Удалить") && x.GetBindingExpression(UIElement.IsEnabledProperty)?.ParentBinding.Path.Path == nameof(TunAppsSettingsViewModel.CanRemoveTunApp));
                 remove.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
                 Pump(view);
                 Assert.Equal(2, list.Items.Count);
-                Assert.DoesNotContain(vm.TunApps, x => x.Path.EndsWith("two.exe"));
-                Assert.Same(vm.SelectedTunApp, list.SelectedItem);
+                Assert.DoesNotContain(vm.Apps.TunApps, x => x.Path.EndsWith("two.exe"));
+                Assert.Same(vm.Apps.SelectedTunApp, list.SelectedItem);
 
-                var mtu = Descendants<TextBox>(view).Single(x => x.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path.Path == nameof(SettingsViewModel.MtuText));
+                var mtu = Descendants<TextBox>(view).Single(x => x.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path.Path == nameof(TunSettingsViewModel.MtuText));
                 mtu.Text = "invalid";
                 Pump(view);
-                Assert.Equal("invalid", vm.MtuText);
+                Assert.Equal("invalid", vm.Tun.MtuText);
                 vm.SaveCommand.Execute(null);
                 Assert.Equal(0, h.Store.SaveCalls);
                 mtu.Text = "1400";
 
-                var grid = Descendants<DataGrid>(view).First(x => ReferenceEquals(x.ItemsSource, vm.BuiltinRuleSets));
+                var grid = Descendants<DataGrid>(view).First(x => ReferenceEquals(x.ItemsSource, vm.RuleSets.BuiltinRuleSets));
                 Assert.False(grid.CanUserDeleteRows);
                 grid.UpdateLayout();
                 var actions = Descendants<ComboBox>(grid).Where(x => x.GetBindingExpression(Selector.SelectedValueProperty)?.ParentBinding.Path.Path == "Action").ToArray();
                 Assert.Equal(2, actions.Length);
                 actions[0].SelectedValue = RuleSetAction.Block;
                 Pump(view);
-                Assert.Equal("block", vm.BuiltinRuleSets[0].Action.ToValue());
-                Assert.Equal("direct", vm.BuiltinRuleSets[1].Action.ToValue());
+                Assert.Equal("block", vm.RuleSets.BuiltinRuleSets[0].Action.ToValue());
+                Assert.Equal("direct", vm.RuleSets.BuiltinRuleSets[1].Action.ToValue());
 
                 var save = Descendants<Button>(view).Single(x => Equals(x.Content, "Сохранить все настройки"));
                 save.Command.Execute(null);
@@ -98,7 +98,7 @@ public sealed class WpfSettingsBindingTests
         view.Arrange(new Rect(0, 0, 850, 700));
         Pump(view);
         var page = (ScrollViewer)view.FindName("SettingsScroll");
-        var list = Descendants<ListBox>(view).Single(x => ReferenceEquals(x.ItemsSource, vm.TunApps));
+        var list = Descendants<ListBox>(view).Single(x => ReferenceEquals(x.ItemsSource, vm.Apps.TunApps));
         var inner = Descendants<ScrollViewer>(list).Single();
         list.SelectedIndex = 1;
         list.BringIntoView();
@@ -111,9 +111,9 @@ public sealed class WpfSettingsBindingTests
         before = page.VerticalOffset;
         Wheel(120);
         Assert.True(page.VerticalOffset < before, "The page must scroll up over a short app list.");
-        Assert.Same(vm.TunApps[1], vm.SelectedTunApp);
+        Assert.Same(vm.Apps.TunApps[1], vm.Apps.SelectedTunApp);
 
-        for (var i = 0; i < 30; i++) vm.TunApps.Add(TunAppListItem.FromPath($@"C:\Apps\scroll-{i}.exe"));
+        for (var i = 0; i < 30; i++) vm.Apps.TunApps.Add(TunAppListItem.FromPath($@"C:\Apps\scroll-{i}.exe"));
         Pump(view);
         Assert.True(inner.ScrollableHeight > 0);
         inner.ScrollToTop();
@@ -161,23 +161,23 @@ public sealed class WpfSettingsBindingTests
         view.Measure(new System.Windows.Size(850, 700));
         view.Arrange(new Rect(0, 0, 850, 700));
         Pump(view);
-        var grid = Descendants<DataGrid>(view).Single(x => ReferenceEquals(x.ItemsSource, vm.BuiltinRuleSets));
+        var grid = Descendants<DataGrid>(view).Single(x => ReferenceEquals(x.ItemsSource, vm.RuleSets.BuiltinRuleSets));
         var checkbox = Descendants<System.Windows.Controls.CheckBox>(grid).First();
         checkbox.SetCurrentValue(ToggleButton.IsCheckedProperty, true);
         checkbox.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         Pump(view);
         Assert.Single(h.Files.Downloads);
         Assert.False(h.Files.ConditionalRequest);
-        Assert.False(vm.BuiltinRuleSets[0].Enabled);
+        Assert.False(vm.RuleSets.BuiltinRuleSets[0].Enabled);
         Assert.False(vm.SaveCommand.CanExecute(null));
         h.Files.FileExists = true;
         h.Files.Download.SetResult(new RuleSetDownloadResult(true, false, "download-etag", null));
-        Assert.True(SpinWait.SpinUntil(() => { Pump(view); return vm.CanEditRuleSets; }, TimeSpan.FromSeconds(5)));
-        Assert.True(vm.BuiltinRuleSets[0].Enabled);
+        Assert.True(SpinWait.SpinUntil(() => { Pump(view); return vm.RuleSets.CanEditRuleSets; }, TimeSpan.FromSeconds(5)));
+        Assert.True(vm.RuleSets.BuiltinRuleSets[0].Enabled);
         Assert.True(Descendants<System.Windows.Controls.CheckBox>(grid).First().IsChecked);
-        Assert.Equal("download-etag", vm.BuiltinRuleSets[0].RemoteEtag);
+        Assert.Equal("download-etag", vm.RuleSets.BuiltinRuleSets[0].RemoteEtag);
         vm.SaveCommand.Execute(null);
-        Assert.True(h.Create().BuiltinRuleSets[0].Enabled);
+        Assert.True(h.Create().RuleSets.BuiltinRuleSets[0].Enabled);
 
         grid.SelectedIndex = 0;
         grid.CurrentCell = new DataGridCellInfo(grid.Items[0], grid.Columns[1]);
@@ -186,7 +186,7 @@ public sealed class WpfSettingsBindingTests
         var download = Descendants<Button>(view).Single(x => Equals(x.Content, "Скачать или обновить"));
         Assert.True(download.IsEnabled);
         download.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-        Assert.True(SpinWait.SpinUntil(() => { Pump(view); return vm.CanEditRuleSets; }, TimeSpan.FromSeconds(5)));
+        Assert.True(SpinWait.SpinUntil(() => { Pump(view); return vm.RuleSets.CanEditRuleSets; }, TimeSpan.FromSeconds(5)));
         Assert.Equal(2, h.Files.Downloads.Count);
         Assert.True(h.Files.ConditionalRequest);
         Assert.Contains("обновлён", vm.Message);
@@ -198,14 +198,14 @@ public sealed class WpfSettingsBindingTests
         var failedVm = failed.Create();
         view.DataContext = failedVm;
         Pump(view);
-        grid = Descendants<DataGrid>(view).Single(x => ReferenceEquals(x.ItemsSource, failedVm.BuiltinRuleSets));
+        grid = Descendants<DataGrid>(view).Single(x => ReferenceEquals(x.ItemsSource, failedVm.RuleSets.BuiltinRuleSets));
         checkbox = Descendants<System.Windows.Controls.CheckBox>(grid).First();
         checkbox.SetCurrentValue(ToggleButton.IsCheckedProperty, true);
         checkbox.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         Pump(view);
         Assert.Single(failed.Files.Downloads);
         Assert.False(checkbox.IsChecked);
-        Assert.False(failedVm.BuiltinRuleSets[0].Enabled);
+        Assert.False(failedVm.RuleSets.BuiltinRuleSets[0].Enabled);
         Assert.Contains("HTTP 503", failedVm.Message);
     }
 
@@ -215,7 +215,7 @@ public sealed class WpfSettingsBindingTests
         var connection = new FakeConnection();
         var settings = h.Create();
         var profiles = new ProfileViewModel(new FakeProfiles(screen), new SubscriptionViewModel(new EmptySubscriptions()));
-        var main = new MainViewModel(screen, connection, profiles, settings, null!, new InMemoryLogStore(), () => { });
+        var main = new MainViewModel(screen, connection, profiles, settings, null!, new EmptyLog(), () => { });
         var combo = new ComboBox { DataContext = main };
         combo.SetBinding(ItemsControl.ItemsSourceProperty, new System.Windows.Data.Binding(nameof(MainViewModel.Profiles)));
         combo.SetBinding(Selector.SelectedItemProperty, new System.Windows.Data.Binding(nameof(MainViewModel.SelectedProfile)) { Mode = System.Windows.Data.BindingMode.TwoWay });
@@ -228,10 +228,10 @@ public sealed class WpfSettingsBindingTests
         Assert.Same(main.SelectedProfile, combo.SelectedItem);
 
         main.ShowSettingsCommand.Execute(null);
-        settings.InterfaceName = "Keep draft";
+        settings.Tun.InterfaceName = "Keep draft";
         main.ShowHomeCommand.Execute(null);
         main.ShowSettingsCommand.Execute(null);
-        Assert.Equal("Keep draft", settings.InterfaceName);
+        Assert.Equal("Keep draft", settings.Tun.InterfaceName);
 
         var start = main.ConnectFromTrayAsync();
         Assert.False(main.CanEdit);
@@ -284,6 +284,15 @@ public sealed class WpfSettingsBindingTests
         public VpnProfile Add(string link, string? nameOverride) => throw new NotSupportedException();
         public VpnProfile Edit(string existingProfileId, string link, string? nameOverride) => throw new NotSupportedException();
         public ProfileManagementSnapshot Delete(string profileId) => throw new NotSupportedException();
+    }
+
+    private sealed class EmptyLog : ILogPort
+    {
+        public int Version => 0;
+        public string SnapshotText(LogLevel minLevel) => string.Empty;
+        public string? TryGetLatestMessage(LogLevel minLevel) => null;
+        public void Append(LogLevel level, string source, string message) { }
+        public void Clear() { }
     }
 
     private sealed class EmptySubscriptions : ISubscriptionManagementController

@@ -1,4 +1,6 @@
-﻿namespace NothingVpn.Infrastructure.TunApps;
+﻿using NothingVpn.Application.Models;
+
+namespace NothingVpn.Infrastructure.TunApps;
 
 public interface IInstalledAppsProvider
 {
