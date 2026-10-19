@@ -1,3 +1,4 @@
+using NothingVpn.Application.Engine;
 using NothingVpn.Application.Mappers;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
@@ -6,20 +7,21 @@ using NothingVpn.Domain.Policies;
 
 namespace NothingVpn.Application.Services;
 
+/// <summary>
+/// Клиентская оркестрация подключения: профиль и настройки из хранилищ, запрос к ядру (<see cref="IVpnEngine"/>),
+/// UAC-перезапуск для TUN, системный прокси WinINET и его runtime-флаги в state.json, восстановление после
+/// остановки ядра и откат. Всё это остаётся на стороне интерфейса и после перехода на службу: прокси хранится
+/// в HKCU пользователя (ADR-0001).
+/// </summary>
 public sealed class VpnConnectionService : IVpnConnectionService
 {
-    private static readonly TimeSpan SingBoxStartupTimeout = TimeSpan.FromSeconds(3);
-    private static readonly TimeSpan LocalMixedListenTimeout = TimeSpan.FromSeconds(2);
-
     private readonly IProfileStorePort _profileStore;
     private readonly AppStateStore _stateStore;
-    private readonly ISingBoxPort _singBoxPort;
+    private readonly IVpnEngine _engine;
     private readonly IProxyPort _proxyPort;
-    private readonly IDiagnosticsPort _diagnosticsPort;
     private readonly IElevationPort _elevationPort;
     private readonly IRuleSetFileService _ruleSetFiles;
     private readonly IPathPolicyPort _pathPolicy;
-    private readonly ILogPort _logPort;
     private readonly SemaphoreSlim _sessionLock = new(1, 1);
     private int _sessionGeneration;
     private ConnectedSession? _session;
@@ -27,25 +29,25 @@ public sealed class VpnConnectionService : IVpnConnectionService
     public VpnConnectionService(
         IProfileStorePort profileStore,
         AppStateStore stateStore,
-        ISingBoxPort singBoxPort,
+        IVpnEngine engine,
         IProxyPort proxyPort,
-        IDiagnosticsPort diagnosticsPort,
         IElevationPort elevationPort,
         IRuleSetFileService ruleSetFiles,
-        IPathPolicyPort pathPolicy,
-        ILogPort logPort)
+        IPathPolicyPort pathPolicy)
     {
         _profileStore = profileStore;
         _stateStore = stateStore;
-        _singBoxPort = singBoxPort;
+        _engine = engine;
         _proxyPort = proxyPort;
-        _diagnosticsPort = diagnosticsPort;
         _elevationPort = elevationPort;
         _ruleSetFiles = ruleSetFiles;
         _pathPolicy = pathPolicy;
-        _logPort = logPort;
-        _singBoxPort.ProcessExited += (_, _) =>
+        // Во время собственных Connect/Disconnect лок занят, и RecoverStaleRuntimeState ничего не делает;
+        // здесь срабатывает только неожиданная остановка ядра (например, выход sing-box).
+        _engine.StatusChanged += (_, status) =>
         {
+            if (status.IsRunning)
+                return;
             try { RecoverStaleRuntimeState(); }
             catch { }
         };
@@ -63,7 +65,7 @@ public sealed class VpnConnectionService : IVpnConnectionService
             var profile = profiles.FirstOrDefault(p => string.Equals(p.Id, request.ProfileId, StringComparison.OrdinalIgnoreCase))
                 ?? throw new InvalidOperationException("Профиль не найден.");
 
-            // Снимок нужен только для генерации конфига и обратно целиком не сохраняется:
+            // Снимок нужен только для запроса к ядру и обратно целиком не сохраняется:
             // настройки, изменённые за время подключения, не теряются.
             var state = _stateStore.Load();
             AppStateNormalizer.Normalize(state, _pathPolicy);
@@ -81,32 +83,17 @@ public sealed class VpnConnectionService : IVpnConnectionService
                 };
             }
 
-            if (_singBoxPort.IsRunning)
+            if (_engine.GetStatus().IsRunning)
                 await DisconnectCoreAsync(cancellationToken).ConfigureAwait(false);
 
-            var configPath = _singBoxPort.WriteConfig(profile, state);
+            await _engine.ConnectAsync(EngineRequestMapper.CreateRequest(profile, state), cancellationToken).ConfigureAwait(false);
+
             ProxySettingsSnapshotModel? previousProxy = null;
             var proxyEnabled = false;
-
             try
             {
-                _singBoxPort.ValidateConfig(configPath);
-                _singBoxPort.Start(configPath);
-                await WaitForSingBoxRunningAsync(SingBoxStartupTimeout, cancellationToken).ConfigureAwait(false);
-
-                if (!_singBoxPort.IsRunning)
-                    throw new InvalidOperationException(DescribeSingBoxStartupFailure());
-
                 if (!ConnectionPolicy.IsTunMode(state.Mode))
                 {
-                    var listen = await _diagnosticsPort.CanReachTcpAsync(
-                        "127.0.0.1",
-                        state.LocalMixedPort,
-                        LocalMixedListenTimeout,
-                        cancellationToken).ConfigureAwait(false);
-                    if (!listen.Success)
-                        throw new InvalidOperationException($"Локальный прокси не слушает порт {state.LocalMixedPort}: {listen.Error}");
-
                     previousProxy = _proxyPort.ReadCurrent();
                     _proxyPort.Enable($"127.0.0.1:{state.LocalMixedPort}", state.ProxyOverride);
                     proxyEnabled = true;
@@ -115,13 +102,13 @@ public sealed class VpnConnectionService : IVpnConnectionService
             }
             catch
             {
-                RollbackFailedConnect(proxyEnabled, previousProxy);
+                await RollbackFailedConnectAsync(proxyEnabled, previousProxy).ConfigureAwait(false);
                 throw;
             }
 
             if (Volatile.Read(ref _sessionGeneration) != generation)
             {
-                RollbackFailedConnect(proxyEnabled, previousProxy);
+                await RollbackFailedConnectAsync(proxyEnabled, previousProxy).ConfigureAwait(false);
                 throw new OperationCanceledException("Сессия подключения устарела.");
             }
 
@@ -157,7 +144,7 @@ public sealed class VpnConnectionService : IVpnConnectionService
 
     public VpnConnectionStatus GetStatus()
     {
-        var isRunning = _singBoxPort.IsRunning;
+        var isRunning = _engine.GetStatus().IsRunning;
         var session = Volatile.Read(ref _session);
         return session is null
             ? new VpnConnectionStatus { IsRunning = isRunning }
@@ -176,11 +163,10 @@ public sealed class VpnConnectionService : IVpnConnectionService
 
         try
         {
-            if (_singBoxPort.IsRunning)
+            if (_engine.GetStatus().IsRunning)
                 return;
 
             Volatile.Write(ref _session, null);
-            _singBoxPort.TryDeleteLastConfig();
             var state = _stateStore.Load();
             var proxyWasEnabled = state.ProxyWasEnabledByUs;
             if (!proxyWasEnabled && string.IsNullOrWhiteSpace(state.ActiveProfileId))
@@ -206,47 +192,29 @@ public sealed class VpnConnectionService : IVpnConnectionService
         }
     }
 
-    private Task DisconnectCoreAsync(CancellationToken cancellationToken)
+    private async Task DisconnectCoreAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var runtime = ConnectionRuntimeState.From(_stateStore.Load());
         try
         {
-            _singBoxPort.Stop();
+            await _engine.DisconnectAsync(CancellationToken.None).ConfigureAwait(false);
         }
         finally
         {
             Volatile.Write(ref _session, null);
-            try
+            if (runtime.ProxyWasEnabledByUs)
+                _proxyPort.Restore(runtime.PreviousProxySettings);
+
+            _stateStore.Update(current =>
             {
                 if (runtime.ProxyWasEnabledByUs)
-                    _proxyPort.Restore(runtime.PreviousProxySettings);
-
-                _stateStore.Update(current =>
-                {
-                    if (runtime.ProxyWasEnabledByUs)
-                        ClearProxyFlags(current);
-                    current.ActiveProfileId = null;
-                });
-            }
-            finally { _singBoxPort.TryDeleteLastConfig(); }
+                    ClearProxyFlags(current);
+                current.ActiveProfileId = null;
+            });
         }
 
         ConnectionStateChanged?.Invoke(this, false);
-        return Task.CompletedTask;
-    }
-
-    private async Task WaitForSingBoxRunningAsync(TimeSpan timeout, CancellationToken cancellationToken)
-    {
-        var deadline = Environment.TickCount64 + (long)timeout.TotalMilliseconds;
-        while (Environment.TickCount64 < deadline)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (_singBoxPort.IsRunning)
-                return;
-
-            await Task.Delay(50, cancellationToken).ConfigureAwait(false);
-        }
     }
 
     private void ValidateRuleSets(AppStateModel state)
@@ -256,19 +224,9 @@ public sealed class VpnConnectionService : IVpnConnectionService
             throw new InvalidOperationException("Не найдены файлы включённых rule-set (.srs).");
     }
 
-    private string DescribeSingBoxStartupFailure()
+    private async Task RollbackFailedConnectAsync(bool proxyEnabled, ProxySettingsSnapshotModel? previousProxy)
     {
-        var detail = _logPort.TryGetLatestMessage(LogLevel.Fatal) ?? _logPort.TryGetLatestMessage(LogLevel.Error);
-        return detail is null
-            ? "sing-box завершился сразу после запуска. Откройте логи в приложении."
-            : $"sing-box завершился сразу после запуска: {detail}";
-    }
-
-    private void RollbackFailedConnect(bool proxyEnabled, ProxySettingsSnapshotModel? previousProxy)
-    {
-        try { _singBoxPort.Stop(); }
-        catch { }
-        try { _singBoxPort.TryDeleteLastConfig(); }
+        try { await _engine.DisconnectAsync(CancellationToken.None).ConfigureAwait(false); }
         catch { }
 
         if (!proxyEnabled)

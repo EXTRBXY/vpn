@@ -1,4 +1,5 @@
-﻿using NothingVpn.Application.Services;
+﻿using NothingVpn.Application.Engine;
+using NothingVpn.Application.Services;
 using NothingVpn.Infrastructure.Ports;
 using NothingVpn.Infrastructure.Runtime;
 using NothingVpn.Infrastructure.Diagnostics;
@@ -43,16 +44,15 @@ public static class ApplicationServicesFactory
         var appUpdateService = new GitHubAppUpdateService();
         var installerUpdateService = new InstallerUpdateService();
         var installerLaunchService = new InstallerLaunchService();
+        var engine = new SingBoxVpnEngine(singBoxPort, diagnosticsPort, pathPolicy, logPort);
         var vpnService = new VpnConnectionService(
             profileStore,
             stateStore,
-            singBoxPort,
+            engine,
             proxyPort,
-            diagnosticsPort,
             elevationPort,
             ruleSetFileService,
-            pathPolicy,
-            logPort);
+            pathPolicy);
         stateStore.SaveMissingBuiltinRuleSets();
         vpnService.RecoverStaleRuntimeState();
 

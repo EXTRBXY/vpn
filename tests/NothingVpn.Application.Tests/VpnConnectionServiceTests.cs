@@ -1,6 +1,7 @@
 using System.Text.Json;
 using NothingVpn.Domain.Models;
 using NothingVpn.Domain.Policies;
+using NothingVpn.Application.Engine;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
 using NothingVpn.Application.Services;
@@ -179,6 +180,25 @@ public sealed class VpnConnectionServiceTests
     }
 
     [Fact]
+    public async Task ConnectAsync_StopsEngine_WhenSystemProxyCannotBeEnabled()
+    {
+        var stateStore = new FakeStateStorePort { State = new AppStateModel { Mode = ConnectionMode.Proxy, LocalMixedPort = 1080 } };
+        var singBox = new FakeSingBoxPort();
+        var proxy = new FakeProxyPort { FailOnEnable = true };
+        var service = CreateService(new FakeProfileStorePort(), stateStore, isAdmin: true, singBoxPort: singBox, proxyPort: proxy);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ConnectAsync(new ConnectRequest { ProfileId = "p1" }));
+
+        Assert.Equal("WinINET недоступен.", error.Message);
+        Assert.True(singBox.StopCalled);
+        Assert.True(singBox.DeleteConfigCalled);
+        Assert.False(service.GetStatus().IsRunning);
+        Assert.Null(stateStore.State.ActiveProfileId);
+        Assert.False(stateStore.State.ProxyWasEnabledByUs);
+    }
+
+    [Fact]
     public async Task ConnectAsync_IgnoresProcessExitedRecoverWhileInProgress()
     {
         var stateStore = new FakeStateStorePort
@@ -348,16 +368,20 @@ public sealed class VpnConnectionServiceTests
         AppStateStore? appStateStore = null,
         FakeRuleSetFileService? ruleSetFiles = null)
     {
+        // Настоящее ядро поверх поддельного sing-box: тесты проверяют оркестрацию и ядро вместе, как в приложении.
+        var engine = new SingBoxVpnEngine(
+            singBoxPort ?? new FakeSingBoxPort(),
+            diagnosticsPort ?? new FakeDiagnosticsPort(),
+            new FakePathPolicyPort(),
+            new FakeLogPort());
         return new VpnConnectionService(
             profileStore,
             appStateStore ?? new AppStateStore(stateStore),
-            singBoxPort ?? new FakeSingBoxPort(),
+            engine,
             proxyPort ?? new FakeProxyPort(),
-            diagnosticsPort ?? new FakeDiagnosticsPort(),
             new FakeElevationPort(isAdmin),
             ruleSetFiles ?? new FakeRuleSetFileService(),
-            new FakePathPolicyPort(),
-            new FakeLogPort());
+            new FakePathPolicyPort());
     }
 
     private sealed class FakeProfileStorePort : IProfileStorePort
@@ -465,8 +489,16 @@ public sealed class VpnConnectionServiceTests
         public ProxySettingsSnapshotModel Current { get; init; } = new();
         public ProxySettingsSnapshotModel? RestoredWith { get; private set; }
 
+        public bool FailOnEnable { get; init; }
+
         public ProxySettingsSnapshotModel ReadCurrent() => Current;
-        public void Enable(string proxyServer, string proxyOverride) => EnableCalled = true;
+
+        public void Enable(string proxyServer, string proxyOverride)
+        {
+            if (FailOnEnable)
+                throw new InvalidOperationException("WinINET недоступен.");
+            EnableCalled = true;
+        }
 
         public void Restore(ProxySettingsSnapshotModel? previous)
         {
