@@ -19,6 +19,12 @@ public sealed class InMemoryLogStore
 
     public int MaxBytes { get; }
 
+    /// <summary>Запись добавлена (уже замаскированная). Служба пересылает её подписчикам канала.</summary>
+    public event EventHandler<LogLine>? Appended;
+
+    /// <summary>Буфер очищен (sing-box очищает его при каждом старте).</summary>
+    public event EventHandler? Cleared;
+
     public void Clear()
     {
         lock (_gate)
@@ -27,6 +33,8 @@ public sealed class InMemoryLogStore
             _bytes = 0;
             _version++;
         }
+
+        Cleared?.Invoke(this, EventArgs.Empty);
     }
 
     public void AppendStructured(
@@ -61,6 +69,8 @@ public sealed class InMemoryLogStore
                 _bytes -= removed.ByteSize;
             }
         }
+
+        Appended?.Invoke(this, new LogLine(ts, level, src, safeMessage));
     }
 
     public int Version
@@ -106,6 +116,12 @@ public sealed class InMemoryLogStore
 
     public string SnapshotAll() => SnapshotText(LogLevel.Trace);
 
+    public IReadOnlyList<LogLine> SnapshotLines()
+    {
+        lock (_gate)
+            return _entries.Select(e => new LogLine(e.TimestampUtc, e.Level, e.Source, e.Message)).ToList();
+    }
+
     public string? TryGetLatestMessage(LogLevel minLevel)
     {
         lock (_gate)
@@ -144,3 +160,5 @@ public sealed class InMemoryLogStore
         string Line,
         int ByteSize);
 }
+
+public readonly record struct LogLine(DateTimeOffset TimestampUtc, LogLevel Level, string Source, string Message);

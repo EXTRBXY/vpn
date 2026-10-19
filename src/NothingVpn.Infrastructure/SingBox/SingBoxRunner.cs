@@ -13,6 +13,7 @@ internal sealed class SingBoxRunner : IDisposable
     private static readonly TimeSpan ProcessStopTimeout = TimeSpan.FromSeconds(2);
 
     private readonly string _singBoxExePathHint;
+    private readonly string? _installDirectory;
     private readonly InMemoryLogStore _logStore;
     private Process? _process;
     private string? _lastConfigPath;
@@ -40,16 +41,29 @@ internal sealed class SingBoxRunner : IDisposable
         _logStore = logStore;
     }
 
+    /// <summary>
+    /// Режим службы (ADR-0001): sing-box.exe и wintun.dll берутся только из каталога установки службы —
+    /// без поиска по bin\, родительским каталогам и пользовательской установке.
+    /// </summary>
+    public static SingBoxRunner ForInstallDirectory(string installDirectory, InMemoryLogStore logStore)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(installDirectory);
+        var directory = Path.GetFullPath(installDirectory);
+        return new SingBoxRunner(Path.Combine(directory, "sing-box.exe"), logStore, directory);
+    }
+
+    private SingBoxRunner(string singBoxExePath, InMemoryLogStore logStore, string installDirectory)
+        : this(singBoxExePath, logStore)
+    {
+        _installDirectory = installDirectory;
+    }
+
     public void ValidateConfig(string configPath)
     {
         if (string.IsNullOrWhiteSpace(configPath) || !File.Exists(configPath))
             throw new FileNotFoundException("sing-box config not found.", configPath);
 
-        var exePath = ResolveSingBoxExePath(_singBoxExePathHint);
-        if (exePath is null)
-            throw new FileNotFoundException(
-                "sing-box.exe not found. Put it next to the app or into a ./bin folder near it.",
-                _singBoxExePathHint);
+        var exePath = ResolveExePathOrThrow();
 
         var psi = new ProcessStartInfo
         {
@@ -150,11 +164,7 @@ internal sealed class SingBoxRunner : IDisposable
             if (_process is { HasExited: false })
                 throw new InvalidOperationException("sing-box is already running.");
 
-            var exePath = ResolveSingBoxExePath(_singBoxExePathHint);
-            if (exePath is null)
-                throw new FileNotFoundException(
-                    "sing-box.exe not found. Put it next to the app or into a ./bin folder near it.",
-                    _singBoxExePathHint);
+            var exePath = ResolveExePathOrThrow();
 
             _logStore.Clear();
             _lastConfigPath = configPath;
@@ -522,6 +532,28 @@ internal sealed class SingBoxRunner : IDisposable
             ?? Pick(all, "ERROR")
             ?? all.LastOrDefault()?.Trim()
             ?? "";
+    }
+
+    private string ResolveExePathOrThrow()
+    {
+        if (_installDirectory is not null)
+        {
+            return ResolveInInstallDirectory(_installDirectory)
+                ?? throw new FileNotFoundException(
+                    $"sing-box.exe не найден в каталоге службы: {_installDirectory}",
+                    _singBoxExePathHint);
+        }
+
+        return ResolveSingBoxExePath(_singBoxExePathHint)
+            ?? throw new FileNotFoundException(
+                "sing-box.exe not found. Put it next to the app or into a ./bin folder near it.",
+                _singBoxExePathHint);
+    }
+
+    internal static string? ResolveInInstallDirectory(string installDirectory)
+    {
+        var path = Path.Combine(Path.GetFullPath(installDirectory), "sing-box.exe");
+        return File.Exists(path) ? path : null;
     }
 
     private static string? ResolveSingBoxExePath(string hint)

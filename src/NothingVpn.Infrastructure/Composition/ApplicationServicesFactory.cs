@@ -4,6 +4,7 @@ using NothingVpn.Infrastructure.Ports;
 using NothingVpn.Infrastructure.Runtime;
 using NothingVpn.Infrastructure.Diagnostics;
 using NothingVpn.Infrastructure.RuleSets;
+using NothingVpn.Infrastructure.ServiceChannel;
 using NothingVpn.Infrastructure.TunApps;
 using NothingVpn.Infrastructure.Updates;
 
@@ -11,6 +12,15 @@ namespace NothingVpn.Infrastructure.Composition;
 
 public static class ApplicationServicesFactory
 {
+    /// <summary>
+    /// Переменная окружения выбора ядра для разработки (шаг 7а): <c>service</c> — ядро в службе через канал
+    /// (<see cref="PipeVpnEngine"/>). По умолчанию и при любом другом значении — ядро внутри процесса, как в релизе.
+    /// </summary>
+    public const string EngineVariable = "NOTHINGVPN_ENGINE";
+
+    internal static bool UseServiceEngine(string? value) =>
+        string.Equals(value?.Trim(), "service", StringComparison.OrdinalIgnoreCase);
+
     public static ApplicationServiceBundle CreateDefault()
     {
         var appPaths = new AppPathsPort();
@@ -44,7 +54,7 @@ public static class ApplicationServicesFactory
         var appUpdateService = new GitHubAppUpdateService();
         var installerUpdateService = new InstallerUpdateService();
         var installerLaunchService = new InstallerLaunchService();
-        var engine = new SingBoxVpnEngine(singBoxPort, diagnosticsPort, pathPolicy, logPort);
+        var engine = CreateEngine(singBoxPort, diagnosticsPort, pathPolicy, logPort, runtime);
         var vpnService = new VpnConnectionService(
             profileStore,
             stateStore,
@@ -74,6 +84,31 @@ public static class ApplicationServicesFactory
             AppDiscovery = CreateAppDiscovery(),
             SharedLogStore = logStore
         };
+    }
+
+    private static IVpnEngine CreateEngine(
+        SingBoxPort singBoxPort,
+        DiagnosticsPort diagnosticsPort,
+        PathPolicyPort pathPolicy,
+        LogPort logPort,
+        LegacyRuntimeContext runtime)
+    {
+        if (!UseServiceEngine(Environment.GetEnvironmentVariable(EngineVariable)))
+            return new SingBoxVpnEngine(singBoxPort, diagnosticsPort, pathPolicy, logPort);
+
+        var engine = new PipeVpnEngine(logPort, runtime.Paths.RuleSetsDir);
+        // Состояние службы нужно до RecoverStaleRuntimeState; недоступная служба — не ошибка запуска клиента.
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            Task.Run(() => engine.RefreshStatusAsync(timeout.Token)).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            logPort.Append(Domain.Models.LogLevel.Warn, "app", $"Служба Nothing VPN недоступна: {ex.Message}");
+        }
+
+        return engine;
     }
 
     private static TunAppsSelectionService CreateAppDiscovery() =>

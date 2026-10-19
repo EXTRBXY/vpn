@@ -139,9 +139,11 @@ public sealed class EngineTunSettings
 }
 
 /// <summary>
-/// Rule-set по ссылке: простое имя .srs-файла в каталоге rule-set ядра, без пути (проверяет
-/// <see cref="RuleSetPolicyValidator"/>). Внутри процесса это общий каталог rulesets пользователя.
-/// TODO(шаг 7): служба принимает содержимое файла с ограничением размера (ADR-0001), версия контракта растёт.
+/// Rule-set запроса. <see cref="FileName"/> — простое имя .srs без пути (проверяет <see cref="RuleSetPolicyValidator"/>).
+/// Внутри процесса ядро берёт файл с этим именем из общего каталога rulesets пользователя, а <see cref="Content"/>
+/// не заполняется. Служба (контракт v2, ADR-0001) путей пользователя не читает: клиент канала передаёт
+/// содержимое файла (не больше <see cref="RuleSetPolicyValidator.MaxContentBytes"/>), служба кладёт его в свой
+/// каталог под своим именем (<see cref="IEngineRuleSetStore"/>).
 /// </summary>
 public sealed class EngineRuleSet
 {
@@ -154,4 +156,9 @@ public sealed class EngineRuleSet
     [JsonPropertyName("action")]
     [JsonConverter(typeof(RuleSetActionJsonConverter))]
     public RuleSetAction Action { get; set; } = RuleSetPolicyValidator.DefaultAction;
+
+    /// <summary>Содержимое .srs (в JSON — base64). Обязательно для службы, внутри процесса не используется.</summary>
+    [JsonPropertyName("content")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public byte[]? Content { get; set; }
 }
