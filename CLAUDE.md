@@ -22,7 +22,7 @@ dotnet test NothingVpn.sln -c Release --no-build --filter "FullyQualifiedName~Si
 .\build\Test-UpdateHandoff.ps1           # desktop-тесты обновления; повторить с -RequireElevated из админ-терминала
 ```
 
-Базовая линия (19.10.2026): сборка без предупреждений, 342 теста проходят, 3 desktop-теста пропущены намеренно.
+Базовая линия (19.10.2026): сборка без предупреждений, 391 тест проходит, 3 desktop-теста пропущены намеренно.
 Только Windows. `Publish` берёт `sing-box.exe`/`wintun.dll` из `-RuntimeAssetsDirectory` или из установленного
 клиента в `%LOCALAPPDATA%\Programs\NothingVpn`.
 
@@ -43,7 +43,10 @@ build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/Noth
 
 Ключевые файлы:
 
-- `Application/Services/VpnConnectionService.cs` — подключение/отключение, откат, восстановление после падения.
+- `Application/Engine/` — граница «интерфейс ↔ ядро»: порт `IVpnEngine`, контракт `EngineConnectRequest`/`EngineStatus`
+  (версия `EngineContract.Version`), in-process ядро `SingBoxVpnEngine` (валидация запроса, конфиг, запуск sing-box).
+- `Application/Services/VpnConnectionService.cs` — клиентская оркестрация подключения: state.json, WinINET, UAC,
+  откат, восстановление после остановки ядра.
 - `Infrastructure/SingBox/SingBoxConfigGenerator.cs` — вся генерация конфига; `SingBoxRunner.cs` — процесс sing-box.
 - `Domain/Policies/*` — правила маршрутизации, DNS, TUN, значения по умолчанию; меняйте поведение здесь, а не в
   генераторе или UI. `Application/Services/AppStateNormalizer.cs` — единственная точка нормализации состояния.
@@ -88,7 +91,11 @@ build/                         Build.ps1, Test-UpdateHandoff.ps1, installer/Noth
   Записи целого устаревшего объекта (`SaveState`) больше нет — не возвращайте её.
 - Runtime-флаги `ProxyWasEnabledByUs`/`PreviousProxySettings` пишет только `VpnConnectionService`;
   `SettingsService.UpdateState` их не меняет (`ConnectionRuntimeState`), даже если колбэк их присвоил.
-- `GetStatus`/`IsRunning` не читают диск: процесс — из `ISingBoxPort`, режим/профиль — из сессии в памяти.
+- `GetStatus`/`IsRunning` не читают диск: процесс — из `IVpnEngine.GetStatus`, режим/профиль — из сессии в памяти.
+- sing-box запускается только через `IVpnEngine` — это будущий контракт канала службы. Запрос к ядру типизированный:
+  никакого готового JSON sing-box и путей, куда ядро пишет. Новое поле, нужное ядру, — в `EngineConnectRequest`
+  (с `[JsonPropertyName]`) и `EngineRequestMapper`; несовместимое изменение — с ростом `EngineContract.Version`.
+  WinINET, state.json и UAC остаются в `VpnConnectionService`, а не в ядре.
 - Секреты в журнал — только через `ILogPort.Append` / `InMemoryLogStore.AppendStructured` (маскирует `LogRedactor`).
   Никогда не логировать UUID, ключи, URL подписок.
 - Необработанные исключения WPF ловит `Platform/GlobalExceptionHandler` (журнал + сообщение; фатальные — попытка

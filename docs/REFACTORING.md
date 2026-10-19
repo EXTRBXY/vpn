@@ -93,7 +93,7 @@ rule-set. Побочный эффект в операции чтения, к т�
 
 ### 2.5. Прочее
 
-- `VpnConnectionService.DisconnectCoreAsync` синхронный под `Task`; `SingBoxRunner.ValidateConfig` блокирует поток
+- `SingBoxVpnEngine.DisconnectAsync` (бывший `VpnConnectionService.DisconnectCoreAsync`) по сути синхронный под `Task`; `SingBoxRunner.ValidateConfig` блокирует поток
   `GetAwaiter().GetResult()`; тайм-аут `sing-box check` — 2 с (та же константа, что для остановки), на холодном
   старте может не хватить.
 - `SingBoxRunner.Stop` убивает процесс без штатной остановки — проверить очистку маршрутов TUN.
@@ -262,9 +262,12 @@ WinForms-клиент ещё в решении как эталон (`docs/WPF-MI
 5. **Границы WPF.** ✅ Готово: порты для журнала и поиска приложений, composition root вынесен из `App`,
    `SettingsViewModel` разделён по разделам, глобальная обработка исключений (2.4, 3.5), WPF-файлы «в строку»
    переписаны (3.8, часть).
-6. **Граница «интерфейс ↔ ядро».** Порт с командами `Connect`/`Disconnect`/`GetStatus` и потоком журнала;
-   запрос `Connect` — типизированный (не готовый JSON). Первая реализация — внутри процесса, поверх текущих
-   `VpnConnectionService`/`SingBoxRunner`. См. [ADR-0001](adr/0001-privileged-service.md).
+6. **Граница «интерфейс ↔ ядро».** ✅ Готово: порт `IVpnEngine` (`Connect`/`Disconnect`/`GetStatus`, событие
+   статуса; журнал — через `ILogPort`), типизированный версионированный запрос `EngineConnectRequest` (не готовый
+   JSON), реализация внутри процесса `SingBoxVpnEngine` поверх `ISingBoxPort`/`SingBoxRunner`; `VpnConnectionService`
+   стал клиентской оркестрацией (state.json, WinINET, UAC, откат). Rule-set пока передаются ссылкой на файл
+   каталога rule-set — передача содержимого перенесена на шаг 7. См. [ADR-0001](adr/0001-privileged-service.md),
+   ARCHITECTURE.md («Граница "интерфейс ↔ ядро"»).
 7. **Служба Windows.** `NothingVpn.Service` — вторая реализация порта, канал с ACL, per-machine установщик,
    удаление старой per-user установки. Перед релизом — ручная проверка обновления с 0.6.8 (раздел «Переход» в ADR);
    по её итогам при необходимости промежуточный релиз.

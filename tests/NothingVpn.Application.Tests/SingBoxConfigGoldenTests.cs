@@ -1,4 +1,4 @@
-using NothingVpn.Domain.Policies;
+﻿using NothingVpn.Domain.Policies;
 using System.Runtime.CompilerServices;
 using NothingVpn.Domain.Models;
 using NothingVpn.Application.Models;
@@ -100,7 +100,7 @@ public sealed class SingBoxConfigGoldenTests : IDisposable
             StateJsonPath: @"C:\NothingVpnGolden\state.json");
     }
 
-    private static AppStateModel CreateState(string mode, string dnsMode, string detour, bool ruleSets) => new()
+    internal static AppStateModel CreateState(string mode, string dnsMode, string detour, bool ruleSets) => new()
     {
         ActiveProfileId = "0123456789abcdef",
         Mode = ConnectionPolicy.Modes.Parse(mode),
@@ -162,7 +162,7 @@ public sealed class SingBoxConfigGoldenTests : IDisposable
         SingBoxLogLevel = LogLevel.Warn
     };
 
-    private static VpnProfile RealityProfile() => new()
+    internal static VpnProfile RealityProfile() => new()
     {
         Id = "0123456789abcdef",
         Name = "Golden reality",
@@ -179,7 +179,7 @@ public sealed class SingBoxConfigGoldenTests : IDisposable
         RealityShortId = "a1b2c3d4"
     };
 
-    private static VpnProfile TlsWebSocketProfile() => new()
+    internal static VpnProfile TlsWebSocketProfile() => new()
     {
         Id = "fedcba9876543210",
         Name = "Golden ws",
@@ -196,7 +196,7 @@ public sealed class SingBoxConfigGoldenTests : IDisposable
         WsHost = "cdn.example.net"
     };
 
-    private static VpnProfile GrpcWithoutTlsProfile() => new()
+    internal static VpnProfile GrpcWithoutTlsProfile() => new()
     {
         Id = "00ff00ff00ff00ff",
         Name = "Golden grpc",

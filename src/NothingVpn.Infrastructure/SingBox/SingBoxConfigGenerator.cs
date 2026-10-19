@@ -9,7 +9,7 @@ namespace NothingVpn.Infrastructure.SingBox;
 
 /// <summary>
 /// Переводит профиль и состояние в конфиг sing-box. Состояние должно быть нормализовано
-/// AppStateNormalizer (так делает VpnConnectionService); значения здесь не нормализуются повторно,
+/// AppStateNormalizer (так делает ядро, SingBoxVpnEngine); значения здесь не нормализуются повторно,
 /// а только проверяются там, где ошибка дала бы некорректный конфиг.
 /// </summary>
 internal static class SingBoxConfigGenerator

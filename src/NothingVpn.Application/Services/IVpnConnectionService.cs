@@ -9,7 +9,7 @@ public interface IVpnConnectionService
     Task DisconnectAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Дешёвый статус без обращения к диску: процесс — из <see cref="Ports.ISingBoxPort.IsRunning"/>,
+    /// Дешёвый статус без обращения к диску: процесс — из <see cref="Engine.IVpnEngine.GetStatus"/>,
     /// режим и профиль — текущей сессии этого процесса (без сессии — значения по умолчанию).
     /// </summary>
     VpnConnectionStatus GetStatus();
