@@ -280,10 +280,14 @@ DPAPI (`ProtectedData` в `DpapiJsonFile`); теперь это пакет `Syst
 
 ## 5. Устаревшие артефакты в репозитории
 
-- `.cursor/rules/nothing-vpn-singbox-architecture.mdc` описывает UI как WinForms.
-- `build-app.cmd` выводит путь к `NothingVpn.Tray.exe`, хотя публикуется `NothingVpn.Desktop.Wpf.exe`.
-- Версия `0.6.8` захардкожена в пяти местах: два csproj (WPF, Service; Tray удалён на шаге 9), `Build.ps1` (значение по умолчанию для установщика),
-  `.iss`, `release.yml` (значение по умолчанию для ручного запуска). Кандидат на `Directory.Build.props`.
+✅ **Закрыт (шаг 10).**
+
+- ~~`.cursor/rules/nothing-vpn-singbox-architecture.mdc` описывает UI как WinForms.~~ Описывает WPF, службу и порт
+  ядра, ссылается на CLAUDE.md и `docs/`; из `.gitignore`/`.cursorignore` убраны пути `NothingVpn.Tray` и `installer/Output`.
+- ~~`build-app.cmd` выводит путь к `NothingVpn.Tray.exe`.~~ Выводит `NothingVpn.Desktop.Wpf.exe` и `NothingVpn.Service.exe`.
+- ~~Версия `0.6.8` захардкожена в пяти местах.~~ Единственный источник — `Directory.Build.props` (все сборки);
+  `Build.ps1` передаёт её в publish и Inno Setup, у `.iss` своей копии нет (без версии — `#error`), `release.yml`
+  сверяет тег с props, ручной запуск берёт версию из props ([DEVELOPMENT.md](../DEVELOPMENT.md#версия-и-релиз)).
 - ~~`docs/WPF-MIGRATION.md` описывает план миграции, который в основном выполнен.~~ Помечен как исторический (шаг 9).
 
 ## 6. Предлагаемый порядок
@@ -341,10 +345,35 @@ DPAPI (`ProtectedData` в `DpapiJsonFile`); теперь это пакет `Syst
    WinForms (3.8), зависимость Infrastructure от WinForms/WindowsDesktop (3.6; служба ~35 МБ), пересмотр установщика
    (3.7). Иконка приложения перенесена в `Desktop.Wpf/Assets/app.ico`. Характеризационные тесты и эталоны не менялись;
    формат state.json не менялся.
-10. **Сборка.** Единая версия, исправление `build-app.cmd`, актуализация `.cursor`-правил (раздел 5).
+10. **Сборка.** ✅ Готово (20.10.2026): единая версия в `Directory.Build.props` с проверкой тега в `release.yml`,
+   исправлен `build-app.cmd`, актуализированы `.cursor`-правила, `.gitignore`, `.cursorignore` (раздел 5). Значение
+   версии не менялось (0.6.8); поведение приложения и эталоны тестов — тоже.
 
 Шаги 2–5 нужны в любом случае и делают шаг 6 проще: порт ядра опирается на единую модель данных и типизированные
 режимы. Шаги 6–8 меняют модель установки и разделены так, чтобы каждый можно было выпустить и проверить отдельно.
 
 Каждый шаг проверяется `.\build\Build.ps1 -Target Test` и ручным чек-листом [UI-REGRESSION-CHECKLIST.md](UI-REGRESSION-CHECKLIST.md)
 для затронутых сценариев.
+
+## 7. Итог
+
+Все десять шагов раздела 6 выполнены (октябрь 2026). Состояние пишется атомарно через один `AppStateStore`, модель
+данных одна и типизирована, нормализация — в Domain-политиках; единственный клиент — WPF с портами вместо
+Infrastructure; sing-box запускает служба `NothingVpn` по типизированному контракту канала, интерфейс себя не
+повышает; установка per-machine; версия — в `Directory.Build.props`. Формат `state.json`/`profiles.json`, каталог
+данных и итоговый JSON sing-box не менялись (характеризационные тесты с прежними эталонами); итог — 462 теста.
+
+Сознательно отложено:
+
+- **Настоящее обновление 0.6.8 → релиз со службой** через GitHub — после публикации релиза
+  ([чек-лист, 7в-Б](SERVICE-INSTALL-CHECKLIST.md#б-настоящее-обновление)). Эмуляция пройдена, промежуточный релиз
+  не нужен (шаг 7в).
+- **Подпись обновлений** (раздел 4а): клиент не проверяет ни подпись, ни опубликованный `NothingVpnSetup.exe.sha256`;
+  целостность держится на HTTPS и allowlist хостов ([SECURITY.md](SECURITY.md)).
+- **Пункты 2.5**, в первую очередь штатная остановка sing-box: `SingBoxRunner.Stop` убивает процесс — очистку
+  маршрутов TUN проверить; блокирующий `ValidateConfig` с тайм-аутом 2 с; скачивание установщика через системный
+  прокси; мелочи `ClearActiveProfileIfMissing` и `ResolveDefaultDomainResolver`.
+- **Ограничения маскирования журнала**: `LogRedactor` не узнаёт адрес сервера и URL подписки без `/sub/` — их не
+  передают в журнал вовсе (CLAUDE.md, «Подводные камни»; [SECURITY.md](SECURITY.md)).
+- Открытые мелочи 3.8: статический `StorageIssueRegistry`, стор без кэша, нет общего набора тестовых двойников,
+  неиспользуемые API, не связанные с WinForms.

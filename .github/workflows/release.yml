@@ -1,4 +1,5 @@
 # Сборка NothingVpnSetup.exe и публикация в GitHub Releases при push тега v* (например v0.6.8).
+# Версия продукта — Directory.Build.props; тег обязан ей совпадать (см. DEVELOPMENT.md, «Версия и релиз»).
 name: Release
 
 on:
@@ -8,9 +9,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Версия установщика без префикса v (например 0.6.8)'
-        required: true
-        default: '0.6.8'
+        description: 'Версия без префикса v; пусто — из Directory.Build.props'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -35,18 +36,27 @@ jobs:
       - name: Версия для Inno Setup
         id: ver
         shell: pwsh
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
+          $props = [xml](Get-Content -LiteralPath 'Directory.Build.props' -Raw)
+          $propsVersion = $props.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+          if (-not $propsVersion) { throw "Version не задана в Directory.Build.props" }
+          $propsVersion = $propsVersion.Trim()
           if ($env:GITHUB_REF_TYPE -eq 'tag') {
             $raw = $env:GITHUB_REF_NAME
             $v = $raw -replace '^v',''
-            "APP_VERSION=$v" >> $env:GITHUB_ENV
+            if ($v -ne $propsVersion) {
+              throw "Тег $raw не совпадает с версией в Directory.Build.props ($propsVersion). Поменяйте Version в Directory.Build.props, закоммитьте и поставьте тег v$propsVersion на этот коммит."
+            }
             "tag_name=$raw" >> $env:GITHUB_OUTPUT
           } else {
-            $v = "${{ github.event.inputs.version }}".Trim()
-            if (-not $v) { throw "version is required" }
-            "APP_VERSION=$v" >> $env:GITHUB_ENV
+            $v = "$env:INPUT_VERSION".Trim()
+            if (-not $v) { $v = $propsVersion }
             "tag_name=v$v" >> $env:GITHUB_OUTPUT
           }
+          "APP_VERSION=$v" >> $env:GITHUB_ENV
+          Write-Host "Версия сборки: $v (Directory.Build.props: $propsVersion)"
 
       - name: Setup .NET
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4

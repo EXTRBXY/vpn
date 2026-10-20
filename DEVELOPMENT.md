@@ -131,18 +131,17 @@ TUN требует прав администратора у самого кли�
 Сначала соберите и проверьте опубликованную сборку приложения, затем установите Inno Setup 6 и выполните:
 
 ```powershell
-.\build\Build.ps1 -Target Installer -Version 0.6.8
+.\build\Build.ps1 -Target Installer
 ```
 
 При нестандартном расположении компилятора:
 
 ```powershell
-.\build\Build.ps1 -Target Installer `
-  -Version 0.6.8 `
-  -InnoCompilerPath C:\Tools\InnoSetup\ISCC.exe
+.\build\Build.ps1 -Target Installer -InnoCompilerPath C:\Tools\InnoSetup\ISCC.exe
 ```
 
-Конфигурация находится в `build/installer/NothingVpn.iss`. Пути publish/output передаются ей build-скриптом и не привязаны к `bin` проекта.
+Конфигурация находится в `build/installer/NothingVpn.iss`. Пути publish/output и версию передаёт ей build-скрипт;
+пути не привязаны к `bin` проекта, а без переданной версии `.iss` не компилируется (своей копии версии в нём нет).
 
 ## GitHub Actions и релизы
 
@@ -155,9 +154,32 @@ TUN требует прав администратора у самого кли�
 - Push тега `v*` создаёт GitHub Release с `NothingVpnSetup.exe`.
 - Ручной запуск workflow сохраняет установщик как artifact.
 
-Версия тега передаётся одновременно в `dotnet publish` и Inno Setup:
+## Версия и релиз
+
+Версия продукта задана в одном месте — `Version` в [Directory.Build.props](Directory.Build.props) в корне. Её
+получают все сборки решения (клиент и служба ставятся одним установщиком и обязаны совпадать; у библиотек своего
+цикла выпуска нет); `InformationalVersion` равна ей, без суффикса коммита. Версия в разделе «Обновления» и
+User-Agent клиента берутся из версии входной сборки, то есть отсюда же.
+
+`Build.ps1` без `-Version` читает версию из `Directory.Build.props` и передаёт её и в `dotnet publish`, и в Inno
+Setup. `-Version` переопределяет её для одной сборки (например, тестовой), файл при этом не меняется:
 
 ```powershell
-git tag v0.6.8
-git push origin v0.6.8
+.\build\Build.ps1 -Target Publish -Version 9.9.9
+.\build\Build.ps1 -Target Installer -Version 9.9.9
 ```
+
+Выпуск релиза:
+
+1. Поменять `Version` в `Directory.Build.props`, закоммитить и влить в `main` (через PR с зелёным CI).
+2. Поставить на этот коммит тег с той же версией и запушить его:
+
+   ```powershell
+   git tag v0.7.0
+   git push origin v0.7.0
+   ```
+
+`Release` сверяет тег с `Directory.Build.props` и падает с понятной ошибкой, если они расходятся (тогда удалите тег,
+исправьте версию и поставьте тег заново). После сборки он проверяет, что `ProductVersion` у
+`NothingVpn.Desktop.Wpf.exe` и `NothingVpn.Service.exe` равна версии релиза. Ручной запуск workflow с пустым
+параметром берёт версию из `Directory.Build.props`.

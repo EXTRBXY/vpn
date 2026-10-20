@@ -11,12 +11,14 @@
 ; держит её файлы, которые убирает миграция (MigrateUserInstall). Отсутствующий мьютекс установщику не мешает.
 #define MyAppMutex "Global\NothingVpn.Desktop.Wpf,Global\NothingVpn.Tray"
 #define MyAppPublisher "NothingVpn"
-; URL и версию при CI переопределяют: ISCC /DMyAppURL=... /DMyAppVersion=...
+; URL передаёт CI: ISCC /DMyAppURL=...
 #ifndef MyAppURL
   #define MyAppURL "https://github.com/"
 #endif
+; Версию передаёт build\Build.ps1 (/DMyAppVersion=...) из Directory.Build.props или из -Version; своей копии нет,
+; чтобы установщик не разошёлся по версии с exe.
 #ifndef MyAppVersion
-  #define MyAppVersion "0.6.8"
+  #error MyAppVersion не задан: собирайте установщик через build\Build.ps1 -Target Installer.
 #endif
 #ifndef PublishDir
   #define PublishDir "..\..\artifacts\publish\win-x64"

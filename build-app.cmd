@@ -6,7 +6,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0build\Build.ps1" -Targ
 if errorlevel 1 goto error
 echo.
 echo Published application is ready:
-echo %~dp0artifacts\publish\win-x64\NothingVpn.Tray.exe
+echo %~dp0artifacts\publish\win-x64\NothingVpn.Desktop.Wpf.exe
+echo %~dp0artifacts\publish\win-x64\NothingVpn.Service.exe (Windows service, registered by the installer)
 echo.
 explorer "%~dp0artifacts\publish\win-x64"
 pause
