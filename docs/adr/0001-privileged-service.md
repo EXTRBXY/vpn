@@ -256,7 +256,7 @@ UAC-перезапуска и механизма UPDATE-HANDOFF.
 
 
 Известное ограничение: Infrastructure по-прежнему зависит от WinForms (REFACTORING.md 3.6), и exe службы несёт
-WindowsDesktop runtime (~72 МБ со сжатием single-file). Уйдёт с шагом 9.
+WindowsDesktop runtime (~72 МБ со сжатием single-file). Снято на шаге 9: Infrastructure без WinForms, exe службы ~35 МБ.
 
 ### Шаг 7б — установка и интерфейс через службу (сделано, 19.10.2026)
 

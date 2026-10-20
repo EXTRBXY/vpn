@@ -1,5 +1,7 @@
 using System.IO;
+using NothingVpn.Application.Ports;
 using NothingVpn.Desktop.Wpf.Composition;
+using NothingVpn.Domain.Models;
 
 namespace NothingVpn.Desktop.Wpf;
 
@@ -15,6 +17,7 @@ public partial class App : System.Windows.Application
     private TrayIcon? _tray;
     private UpdateCheckScheduler? _updateChecks;
     private SubscriptionRefreshScheduler? _subscriptionRefresh;
+    private ILogPort? _log;
     private bool _exitInProgress;
 
     public static bool IsExitRequested { get; private set; }
@@ -55,6 +58,8 @@ public partial class App : System.Windows.Application
                 () => composition.Connection.StopAsync());
             exceptions.Attach(this);
             _exceptions = exceptions;
+            _log = composition.Log;
+            composition.Log.Append(LogLevel.Info, AppLogSources.App, $"Nothing VPN {composition.Updates.CurrentVersion} запущен.");
 
             var viewModel = composition.Main;
             _viewModel = viewModel;
@@ -137,6 +142,7 @@ public partial class App : System.Windows.Application
         if (_exitInProgress) return;
         _exitInProgress = true;
         IsExitRequested = true;
+        _log?.Append(LogLevel.Info, AppLogSources.App, "Выход из приложения.");
         try
         {
             if (_viewModel is not null)

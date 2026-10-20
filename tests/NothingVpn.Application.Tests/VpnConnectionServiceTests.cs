@@ -5,6 +5,8 @@ using NothingVpn.Application.Engine;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
 using NothingVpn.Application.Services;
+using NothingVpn.Infrastructure.Diagnostics;
+using NothingVpn.Infrastructure.Ports;
 
 namespace NothingVpn.Application.Tests;
 
@@ -296,8 +298,6 @@ public sealed class VpnConnectionServiceTests
         var stateStore = new FakeStateStorePort { State = new AppStateModel { Mode = ConnectionMode.Proxy, LocalMixedPort = 1080 } };
         var appState = new AppStateStore(stateStore);
         var settings = new SettingsService(appState, new FakePathPolicyPort());
-        var screen = new NothingVpn.Presentation.ConnectionScreenController(new FakeProfileService(), settings);
-        var staleSnapshot = settings.GetState();
         var userProxy = new ProxySettingsSnapshotModel { ProxyEnable = true, ProxyServer = "corp:3128", ProxyOverride = "<local>" };
         var proxy = new FakeProxyPort { Current = userProxy };
         var singBox = new FakeSingBoxPort();
@@ -307,9 +307,8 @@ public sealed class VpnConnectionServiceTests
 
         await service.ConnectAsync(new ConnectRequest { ProfileId = "p1" });
 
-        // Устаревший снимок окна (до подключения) и прямая попытка сбросить флаги через настройки.
-        staleSnapshot.ProxyOverride = "localhost";
-        screen.Save(staleSnapshot);
+        // Сохранение настроек из окна и прямая попытка сбросить флаги через настройки.
+        settings.UpdateState(s => s.ProxyOverride = "localhost");
         settings.UpdateState(s =>
         {
             s.ProxyWasEnabledByUs = false;
@@ -454,6 +453,81 @@ public sealed class VpnConnectionServiceTests
         Assert.Null(stateStore.State.ActiveProfileId);
     }
 
+    private const string SecretUuid = "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0";
+    private const string SecretHost = "secret-server.example";
+
+    [Fact]
+    public async Task ConnectAndDisconnect_WriteEvents_WithModeAndProfileName_ButNoServerOrUuid()
+    {
+        var log = new LogPort(new InMemoryLogStore());
+        var profiles = new FakeProfileStorePort(
+            new VpnProfile { Id = "p1", Name = "Дом", Host = SecretHost, Port = 443, Uuid = SecretUuid, RealityPublicKey = "PBK-SECRET" });
+        var stateStore = new FakeStateStorePort { State = new AppStateModel { Mode = ConnectionMode.Proxy, LocalMixedPort = 2080 } };
+        var service = CreateService(profiles, stateStore, isAdmin: false, engine: new FakeServiceEngine(), log: log);
+
+        await service.ConnectAsync(new ConnectRequest { ProfileId = "p1" });
+        await service.DisconnectAsync();
+
+        var text = log.SnapshotText(LogLevel.Trace);
+        Assert.Contains("[INFO] [app/connection] Системный прокси включён: 127.0.0.1:2080.", text);
+        Assert.Contains("[INFO] [app/connection] Подключено: режим proxy, профиль «Дом».", text);
+        Assert.Contains("[INFO] [app/connection] Системный прокси восстановлен.", text);
+        Assert.Contains("[INFO] [app/connection] Отключено.", text);
+        Assert.DoesNotContain(SecretHost, text);
+        Assert.DoesNotContain(SecretUuid, text);
+        Assert.DoesNotContain("PBK-SECRET", text);
+    }
+
+    [Theory]
+    [InlineData("vless://" + SecretUuid + "@" + SecretHost + ":443?pbk=PBK-SECRET#name")]
+    [InlineData("Узел " + SecretUuid)]
+    public async Task Connect_ProfileNameWithSecrets_IsMaskedInLog(string name)
+    {
+        var log = new LogPort(new InMemoryLogStore());
+        var profiles = new FakeProfileStorePort(new VpnProfile { Id = "p1", Name = name, Host = "h.example", Port = 443, Uuid = SecretUuid });
+        var service = CreateService(profiles, new FakeStateStorePort(), isAdmin: false, engine: new FakeServiceEngine(), log: log);
+
+        await service.ConnectAsync(new ConnectRequest { ProfileId = "p1" });
+
+        var text = log.SnapshotText(LogLevel.Trace);
+        Assert.Contains("Подключено: режим proxy", text);
+        Assert.DoesNotContain(SecretUuid, text);
+        Assert.DoesNotContain(SecretHost, text);
+        Assert.DoesNotContain("PBK-SECRET", text);
+    }
+
+    [Fact]
+    public async Task ConnectFailure_WritesError()
+    {
+        var log = new LogPort(new InMemoryLogStore());
+        var service = CreateService(
+            new FakeProfileStorePort(),
+            new FakeStateStorePort(),
+            isAdmin: false,
+            proxyPort: new FakeProxyPort { FailOnEnable = true },
+            engine: new FakeServiceEngine(),
+            log: log);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.ConnectAsync(new ConnectRequest { ProfileId = "p1" }));
+
+        Assert.Contains("[ERROR] [app/connection] Не удалось подключиться: WinINET недоступен.", log.SnapshotText(LogLevel.Error));
+    }
+
+    [Fact]
+    public async Task EngineStoppedUnexpectedly_WritesWarningAndProxyRestore()
+    {
+        var log = new LogPort(new InMemoryLogStore());
+        var engine = new FakeServiceEngine();
+        var service = CreateService(new FakeProfileStorePort(), new FakeStateStorePort(), isAdmin: false, engine: engine, log: log);
+        await service.ConnectAsync(new ConnectRequest { ProfileId = "p1" });
+
+        engine.Raise(EngineStatus.Stopped);
+
+        var text = log.SnapshotText(LogLevel.Trace);
+        Assert.Contains("[WARN] [app/connection] Ядро остановилось: VPN отключён.", text);
+        Assert.Contains("Системный прокси восстановлен.", text);
+    }
+
     private static VpnConnectionService CreateService(
         FakeProfileStorePort profileStore,
         FakeStateStorePort stateStore,
@@ -463,7 +537,8 @@ public sealed class VpnConnectionServiceTests
         FakeDiagnosticsPort? diagnosticsPort = null,
         AppStateStore? appStateStore = null,
         FakeRuleSetFileService? ruleSetFiles = null,
-        IVpnEngine? engine = null)
+        IVpnEngine? engine = null,
+        ILogPort? log = null)
     {
         // Настоящее ядро поверх поддельного sing-box: тесты проверяют оркестрацию и ядро вместе, как в приложении.
         engine ??= new SingBoxVpnEngine(
@@ -478,7 +553,8 @@ public sealed class VpnConnectionServiceTests
             proxyPort ?? new FakeProxyPort(),
             new FakeElevationPort(isAdmin),
             ruleSetFiles ?? new FakeRuleSetFileService(),
-            new FakePathPolicyPort());
+            new FakePathPolicyPort(),
+            log ?? new FakeLogPort());
     }
 
     /// <summary>Ядро в службе: TUN без повышения интерфейса, статус задаётся тестом.</summary>
@@ -513,11 +589,11 @@ public sealed class VpnConnectionServiceTests
         }
     }
 
-    private sealed class FakeProfileStorePort : IProfileStorePort
+    private sealed class FakeProfileStorePort(VpnProfile? profile = null) : IProfileStorePort
     {
         private readonly List<VpnProfile> _profiles =
         [
-            new() { Id = "p1", Name = "Main", Host = "example.org", Port = 443, Uuid = Guid.NewGuid().ToString() }
+            profile ?? new() { Id = "p1", Name = "Main", Host = "example.org", Port = 443, Uuid = Guid.NewGuid().ToString() }
         ];
 
         public IReadOnlyList<VpnProfile> Load() => _profiles;
@@ -655,17 +731,6 @@ public sealed class VpnConnectionServiceTests
 
         public Task<(bool Success, string? Error)> TunSmokeTestAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
             => Task.FromResult((true, (string?)null));
-    }
-
-    private sealed class FakeProfileService : IProfileService
-    {
-        private readonly IReadOnlyList<VpnProfile> _profiles = [new() { Id = "p1", Name = "Main" }];
-
-        public IReadOnlyList<VpnProfile> GetProfiles() => _profiles;
-        public IReadOnlyList<VpnProfile> ImportFromVlessLink(string link) => throw new NotSupportedException();
-        public IReadOnlyList<VpnProfile> DeleteProfile(string profileId) => throw new NotSupportedException();
-        public bool TryParseVlessLink(string link, out VpnProfile profile) => throw new NotSupportedException();
-        public VpnProfile UpsertFromVlessLink(string link, string? nameOverride) => throw new NotSupportedException();
     }
 
     private sealed class FakeElevationPort(bool isAdmin) : IElevationPort

@@ -132,7 +132,7 @@ public sealed class GlobalExceptionHandlerTests
 
         handler.HandleUiException(new InvalidOperationException($"bad link vless://{uuid}@example.com:443?pbk=secret-key"));
 
-        var text = store.SnapshotAll();
+        var text = store.SnapshotText(LogLevel.Trace);
         Assert.Contains("InvalidOperationException", text);
         Assert.DoesNotContain(uuid, text);
         Assert.DoesNotContain("secret-key", text);

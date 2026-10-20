@@ -5,7 +5,8 @@ Nothing VPN — Windows-клиент VLESS. Приложение не реали
 окружением (WinINET-прокси, трей). Всё остальное — хранение профилей и подписок, политики маршрутизации,
 обновления — живёт в .NET-коде.
 
-Платформа: .NET 8, Windows x64, WPF (основной клиент) + WinForms (`NothingVpn.Tray`, оставлен как эталон до удаления).
+Платформа: .NET 8, Windows x64, WPF. WinForms-клиент `NothingVpn.Tray` удалён на шаге 9 рефакторинга; от него
+осталось только имя каталога данных `%LOCALAPPDATA%\NothingVpn.Tray`.
 
 ## Проекты и слои
 
@@ -17,7 +18,6 @@ Nothing VPN — Windows-клиент VLESS. Приложение не реали
 | `NothingVpn.Infrastructure` | `net8.0-windows` | Реализации портов: sing-box (генератор + раннер), DPAPI-хранилище, WinINET, GitHub-обновления, поиск приложений. Содержит composition root `ApplicationServicesFactory`. |
 | `NothingVpn.Desktop.Wpf` | `net8.0-windows` | Упаковываемый клиент: окна, view model'и, трей, single-instance, тема, обработка исключений. UI-композиция — `Composition/DesktopCompositionRoot`. |
 | `NothingVpn.Service` | `net8.0-windows` | Служба Windows (шаг 7а): хостит ядро и канал `NothingVpn.Service`. Тонкий exe над `Infrastructure/ServiceHost`. Публикуется рядом с клиентом, установщик её пока не ставит. |
-| `NothingVpn.Tray` | `net8.0-windows` | Legacy WinForms-клиент. Не публикуется и не входит в установщик. |
 | `tests/NothingVpn.Application.Tests` | `net8.0-windows` | Единственный тестовый проект; покрывает все слои, включая WPF. |
 
 ### Направление зависимостей
@@ -31,10 +31,12 @@ Domain  ←  Application  ←  Presentation  ←  Desktop.Wpf
 UI зависит от Presentation/Application через интерфейсы; Infrastructure WPF-клиент видит только в composition root
 (шаг 5 рефакторинга, REFACTORING.md 3.5). Журнал view model'и читают через порт `ILogPort`, поиск приложений для
 TUN — через `IAppDiscoveryPort` (`AppCandidate` — модель Application). Иконка трея — UI-код и живёт в WPF
-(`Platform/TrayStatusIconBuilder`; у WinForms-клиента своя копия). Правило проверяет `WpfLayerBoundaryTests`: анализ
+(`Platform/TrayStatusIconBuilder`). Правило проверяет `WpfLayerBoundaryTests`: анализ
 сигнатур и IL всех типов сборки WPF (включая лямбды и async-методы) и текстов XAML.
 
-WinForms-клиент (`NothingVpn.Tray`) по-прежнему обращается к Infrastructure напрямую; он уходит на шаге 9.
+Infrastructure не зависит от WinForms и WindowsDesktop (шаг 9): DPAPI берётся из пакета
+`System.Security.Cryptography.ProtectedData`, поэтому служба не несёт WindowsDesktop runtime. `System.Windows.Forms`
+(иконка трея `NotifyIcon`) и `System.Drawing` использует только WPF-клиент.
 
 ## Граница «интерфейс ↔ ядро»
 
@@ -222,8 +224,8 @@ Domain содержит отдельное представление групп
 значений. Эти же строки попадают в state.json, аргумент `--mode` и конфиг sing-box.
 Никогда не пишите enum в строку через `ToString()` или интерполяцию — только `ToValue()`.
 
-Domain не содержит UI: подписи значений — `Presentation/SettingLabels`, порядок пунктов комбобоксов WinForms —
-`Tray/Internal/UI/ComboIndexes`; WPF привязывает `ComboBox` к enum-значениям через `Tag="{x:Static …}"`.
+Domain не содержит UI: подписи значений — `Presentation/SettingLabels`; WPF привязывает `ComboBox` к enum-значениям
+через `Tag="{x:Static …}"`.
 
 ### Нормализация и значения по умолчанию
 
@@ -309,7 +311,8 @@ TUN требует администратора. Если интерфейс з�
   `StartupOptions`.
 - Аргументы: `--start`, `--mode <proxy|tun|tun_apps>`, `--profile <id>` (также `--key=value`),
   `--smoke-test` (поднять UI и выйти с кодом 0; ошибка пишется в `wpf-smoke-error.txt` рядом с exe).
-- WinForms-клиент использует свой мьютекс `Global\NothingVpn.Tray`; установщик закрывает оба (`AppMutex` в `.iss`).
+- Установщик (`AppMutex` в `.iss`) проверяет также мьютекс `Global\NothingVpn.Tray` удалённого WinForms-клиента:
+  запущенный старый клиент из per-user установки держит файлы, которые убирает миграция.
 
 ### Подписки
 
@@ -358,8 +361,6 @@ TUN требует администратора. Если интерфейс з�
   журнала, пути TUN-приложений, DNS/TUN/proxy-настройки к допустимым значениям.
 - `ActiveProfileId` — общее поле: его выбирает UI (`SelectProfile`), выставляет/сбрасывает подключение и сбрасывает
   синхронизация подписок; каждый пишет только его.
-- `ConnectionScreenController.Save(snapshot)` (нужен WinForms-клиенту) переносит из снимка только редактируемые
-  настройки; выбранный профиль, порт, метаданные обновлений и runtime-флаги берутся из актуального состояния.
 
 `SettingsViewModel` редактирует черновик и сохраняет всё одной операцией через `ConnectionSettingsController.Save`
 (валидация → `UpdateState` с merge только редактируемых полей). Файлы rule-set, помеченные на удаление, удаляются
@@ -393,10 +394,28 @@ rule-set. Сообщения разделы показывают через `Set
 
 Порт `ILogPort` (Application) — то, чем журнал видят сервисы и WPF: `Version` (меняется при записи и очистке; по ней
 диагностика понимает, что снимок устарел), `SnapshotText(minLevel)`, `TryGetLatestMessage`, `Append` (маскирование —
-внутри реализации) и `Clear`. Фильтр по уровню порт поддерживает; WPF-диагностика показывает весь буфер.
+внутри реализации) и `Clear`.
 
-Сам WPF-клиент пишет в журнал только необработанные исключения и сбои фонового обновления подписок (источник `app`);
-журнала событий приложения, как `AppLogger` в WinForms, нет (REFACTORING.md, раздел 4).
+Диагностика показывает журнал с фильтром минимального уровня (`DiagnosticsViewModel.MinLevel`: «Ошибки»,
+«Предупреждения», «Информация» — по умолчанию, «Отладка (всё)» = `Trace`). Фильтр — только вид: в буфере остаются все
+записи, выбор живёт до закрытия клиента и в `state.json` не пишется (так было и в WinForms-клиенте; это не настройка,
+а способ смотреть журнал, и формат состояния не меняется). «Копировать» берёт видимый текст с фильтром, «Сохранить» —
+весь журнал (`FullLogText`). Уровень записей самого sing-box задаётся отдельно, в настройках («Журнал»).
+
+События самого клиента (источники — `Application/Ports/AppLogSources`):
+
+| Источник | Кто пишет | События |
+| --- | --- | --- |
+| `app` | `App.xaml.cs`, `GlobalExceptionHandler`, `ApplicationServicesFactory` | запуск с версией, выход, необработанные исключения, недоступная служба, ядро в процессе |
+| `app/connection` | `VpnConnectionService` | подключено (режим и имя профиля), отключено, ошибки подключения и отключения, включение и восстановление системного прокси, неожиданная остановка ядра, сброс прерванного сеанса, подхват сессии службы |
+| `app/subscriptions` | `SubscriptionService`, `SubscriptionRefreshScheduler` | обновление подписки (число добавленных, обновлённых, удалённых профилей), ошибки, итог автообновления |
+| `app/update` | `UpdateViewModel` | результат проверки, переход на новую версию, загрузка, запуск установщика, ошибки |
+| `app/storage` | `StorageHealthService.DrainIssues` | повреждённые файлы данных (только имя файла) |
+| `app/ui` | `DiagnosticsViewModel` | сохранение журнала в файл (только имя файла) |
+
+Адрес сервера, UUID и ключи профиля не пишутся вовсе; всё, что пишется, ещё раз проходит `LogRedactor`. В ошибках
+подписки адрес и хост подписки заменяются на `***` до записи (сообщения .NET содержат хост). Таймеры (журнал раз в
+секунду, тема) ничего не пишут. Буфер очищается при старте sing-box, поэтому «Подключено» пишется после запуска ядра.
 
 ## Обработка исключений
 

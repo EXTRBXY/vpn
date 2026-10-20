@@ -1,4 +1,5 @@
 using NothingVpn.Application.Models;
+using NothingVpn.Application.Ports;
 using NothingVpn.Application.Services;
 using NothingVpn.Desktop.Wpf;
 using NothingVpn.Domain.Models;
@@ -127,7 +128,63 @@ public sealed class UpdateViewModelTests
         Assert.Equal("elevated", viewModel.Status);
     }
 
-    private static async Task<UpdateViewModel> CreateWithReleaseAsync(FakeInstallerLauncher launcher, Action<Action> exitThenLaunch)
+    [Fact]
+    public async Task CheckAndInstall_WriteUpdateEventsToLog()
+    {
+        var log = new FakeLogPort();
+        var viewModel = await CreateWithReleaseAsync(new FakeInstallerLauncher(), _ => { }, log);
+
+        await ((AsyncRelayCommand)viewModel.InstallCommand).ExecuteAsync(null);
+
+        Assert.All(log.Entries, e => Assert.Equal(AppLogSources.Update, e.Source));
+        Assert.Equal(
+            new[]
+            {
+                "Проверка обновлений: Доступна версия 2.0.0.",
+                "Загрузка обновления 2.0.0.",
+                "Обновление загружено: приложение закроется и запустит установщик."
+            },
+            log.Entries.Select(e => e.Message));
+    }
+
+    [Fact]
+    public async Task Install_Failure_WritesError()
+    {
+        var log = new FakeLogPort();
+        var launcher = new FakeInstallerLauncher { PrepareError = new InvalidOperationException("elevated") };
+        var viewModel = await CreateWithReleaseAsync(launcher, _ => { }, log);
+
+        await ((AsyncRelayCommand)viewModel.InstallCommand).ExecuteAsync(null);
+
+        var last = log.Entries[^1];
+        Assert.Equal(LogLevel.Error, last.Level);
+        Assert.Equal("Не удалось установить обновление: elevated", last.Message);
+    }
+
+    [Fact]
+    public async Task CheckAtStartupAsync_Upgraded_WritesNewVersionToLog()
+    {
+        var log = new FakeLogPort();
+        var settings = new FakeSettingsService();
+        var viewModel = new UpdateViewModel(
+            new FakeUpdateController { Transition = InstalledVersionTransition.Upgraded },
+            new FakeInstallerUpdateService(),
+            null!,
+            settings,
+            settings.GetState(),
+            log,
+            _ => { },
+            showChangelog: _ => { });
+
+        await viewModel.CheckAtStartupAsync();
+
+        Assert.Contains(log.Entries, e => e.Message == $"Приложение обновлено до версии {viewModel.CurrentVersion}.");
+    }
+
+    private static async Task<UpdateViewModel> CreateWithReleaseAsync(
+        FakeInstallerLauncher launcher,
+        Action<Action> exitThenLaunch,
+        FakeLogPort? log = null)
     {
         var settings = new FakeSettingsService();
         var controller = new FakeUpdateController
@@ -140,6 +197,7 @@ public sealed class UpdateViewModelTests
             launcher,
             settings,
             settings.GetState(),
+            log ?? new FakeLogPort(),
             exitThenLaunch);
         await viewModel.CheckAsync();
         return viewModel;
@@ -154,8 +212,19 @@ public sealed class UpdateViewModelTests
             null!,
             settings,
             settings.GetState(),
+            new FakeLogPort(),
             _ => { },
             showChangelog: showChangelog);
+    }
+
+    private sealed class FakeLogPort : ILogPort
+    {
+        public List<(LogLevel Level, string Source, string Message)> Entries { get; } = [];
+        public int Version => Entries.Count;
+        public string SnapshotText(LogLevel minLevel) => string.Join(Environment.NewLine, Entries.Select(e => e.Message));
+        public string? TryGetLatestMessage(LogLevel minLevel) => null;
+        public void Append(LogLevel level, string source, string message) => Entries.Add((level, source, message));
+        public void Clear() => Entries.Clear();
     }
 
     private sealed class FakeInstallerLauncher : IInstallerLaunchService
@@ -200,11 +269,6 @@ public sealed class UpdateViewModelTests
             return Task.FromResult(new AppUpdateCheckResult(true, AvailableRelease));
         }
 
-        public Task<AppReleaseModel?> GetCurrentReleaseAsync(
-            string currentVersion,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
         public Task<ReleaseChangelog> GetChangelogAsync(
             string currentVersion,
             CancellationToken cancellationToken = default)
@@ -226,8 +290,6 @@ public sealed class UpdateViewModelTests
     private sealed class FakeInstallerUpdateService : IInstallerUpdateService
     {
         public string? DownloadedPath { get; init; }
-        public string GetCachedInstallerPath(string version) => throw new NotSupportedException();
-        public bool IsCached(string version) => false;
 
         public void CleanupOldInstallers()
         {

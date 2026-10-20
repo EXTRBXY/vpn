@@ -56,7 +56,7 @@ internal sealed class SubscriptionRefreshScheduler
         catch (Exception ex)
         {
             // Фоновое обновление не мешает работе: ошибка только записывается, следующая попытка — по таймеру.
-            _log.Append(LogLevel.Warn, "app", "Не удалось обновить подписки по расписанию: " + ex.Message);
+            _log.Append(LogLevel.Warn, AppLogSources.Subscriptions, "Не удалось обновить подписки по расписанию: " + ex.Message);
         }
         finally
         {

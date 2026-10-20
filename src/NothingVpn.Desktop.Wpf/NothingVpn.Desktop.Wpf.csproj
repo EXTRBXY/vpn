@@ -14,11 +14,11 @@
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <PublishTrimmed>false</PublishTrimmed>
-    <ApplicationIcon>..\NothingVpn.Tray\Assets\app.ico</ApplicationIcon>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
-    <Resource Include="..\NothingVpn.Tray\Assets\app.ico" Link="Assets\app.ico" />
+    <Resource Include="Assets\app.ico" />
     <ProjectReference Include="..\NothingVpn.Application\NothingVpn.Application.csproj" />
     <ProjectReference Include="..\NothingVpn.Infrastructure\NothingVpn.Infrastructure.csproj" />
     <ProjectReference Include="..\NothingVpn.Presentation\NothingVpn.Presentation.csproj" />

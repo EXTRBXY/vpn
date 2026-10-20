@@ -9,6 +9,8 @@ using NothingVpn.Domain.Policies;
 using NothingVpn.Desktop.Wpf;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
+using NothingVpn.Infrastructure.Diagnostics;
+using NothingVpn.Infrastructure.Ports;
 using NothingVpn.Presentation;
 using Button = System.Windows.Controls.Button;
 using ButtonBase = System.Windows.Controls.Primitives.ButtonBase;
@@ -81,6 +83,7 @@ public sealed class WpfSettingsBindingTests
                 CheckBuiltinRuleSetDownloads();
                 CheckSettingsWheelScrolling();
                 CheckViewsLoad();
+                CheckDiagnosticsLevelFilter();
                 app.Shutdown();
             }
             catch (Exception ex) { failure = ex; }
@@ -264,6 +267,66 @@ public sealed class WpfSettingsBindingTests
         Assert.NotNull(new SubscriptionsWindow(new SubscriptionViewModel(new EmptySubscriptions())).Content);
         Assert.NotNull(new SubscriptionEditorWindow(new SubscriptionViewModel(new EmptySubscriptions()), null).Content);
         Assert.NotNull(new ReleaseChangelogWindow(ReleaseChangelog.Failed("1.0.0")).Content);
+    }
+
+    /// <summary>Фильтр уровня в «Диагностике»: по умолчанию «Информация», меняется комбобоксом, «Сохранить» — весь журнал.</summary>
+    private static void CheckDiagnosticsLevelFilter()
+    {
+        var log = new LogPort(new InMemoryLogStore());
+        log.Append(LogLevel.Debug, "sing-box", "debug line");
+        log.Append(LogLevel.Info, AppLogSources.App, "info line");
+        log.Append(LogLevel.Error, AppLogSources.App, "error line");
+        var vm = new DiagnosticsViewModel(new NoDiagnostics(), log, () => ConnectionMode.Proxy, () => false);
+
+        Assert.Equal(LogLevel.Info, vm.MinLevel);
+        Assert.DoesNotContain("debug line", vm.LogText);
+        Assert.Contains("info line", vm.LogText);
+
+        var view = new DiagnosticsView { DataContext = vm };
+        view.Measure(new System.Windows.Size(850, 700));
+        view.Arrange(new Rect(0, 0, 850, 700));
+        Pump(view);
+        var filter = Descendants<ComboBox>(view).Single(x =>
+            x.GetBindingExpression(Selector.SelectedValueProperty)?.ParentBinding.Path.Path == nameof(DiagnosticsViewModel.MinLevel));
+        Assert.Equal(4, filter.Items.Count);
+        Assert.Equal(LogLevel.Info, filter.SelectedValue);
+
+        filter.SelectedValue = LogLevel.Error;
+        Pump(view);
+        Assert.Equal(LogLevel.Error, vm.MinLevel);
+        Assert.DoesNotContain("info line", vm.LogText);
+        Assert.Contains("error line", vm.LogText);
+        var text = Descendants<TextBox>(view).Single(x => x.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path.Path == nameof(DiagnosticsViewModel.LogText));
+        Assert.Equal(vm.LogText, text.Text);
+
+        filter.SelectedValue = LogLevel.Trace;
+        Pump(view);
+        Assert.Contains("debug line", vm.LogText);
+
+        filter.SelectedValue = LogLevel.Error;
+        Pump(view);
+        var full = vm.FullLogText();
+        Assert.Contains("debug line", full);
+        var path = Path.Combine(Path.GetTempPath(), $"nothingvpn-log-{Guid.NewGuid():N}.txt");
+        try
+        {
+            vm.SaveFullLog(path, full);
+            Assert.Equal(full, File.ReadAllText(path));
+            Assert.Contains($"[app/ui] Журнал сохранён в файл {Path.GetFileName(path)}.", vm.FullLogText());
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    private sealed class NoDiagnostics : IConnectionDiagnosticController
+    {
+        public Task<ConnectionDiagnosticResult> RunAsync(
+            ConnectionMode connectionMode,
+            bool isRunning,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     private sealed class FakeScreen(SettingsViewModelTests.Harness h) : IConnectionScreenController

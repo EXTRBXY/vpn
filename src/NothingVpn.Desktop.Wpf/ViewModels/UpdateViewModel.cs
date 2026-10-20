@@ -3,7 +3,9 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using NothingVpn.Application.Models;
+using NothingVpn.Application.Ports;
 using NothingVpn.Application.Services;
+using NothingVpn.Domain.Models;
 using NothingVpn.Presentation;
 
 namespace NothingVpn.Desktop.Wpf;
@@ -14,6 +16,7 @@ public sealed class UpdateViewModel : INotifyPropertyChanged
     private readonly IInstallerUpdateService _installer;
     private readonly IInstallerLaunchService _launcher;
     private readonly ISettingsService _settings;
+    private readonly ILogPort _log;
     private readonly Action<Action> _exitThenLaunch;
     private readonly Action<AppReleaseModel>? _notifyAvailable;
     private readonly Action<ReleaseChangelog>? _showChangelog;
@@ -31,6 +34,7 @@ public sealed class UpdateViewModel : INotifyPropertyChanged
         IInstallerLaunchService launcher,
         ISettingsService settings,
         AppStateModel state,
+        ILogPort log,
         Action<Action> exitThenLaunch,
         Action<AppReleaseModel>? notifyAvailable = null,
         Action<ReleaseChangelog>? showChangelog = null)
@@ -40,6 +44,7 @@ public sealed class UpdateViewModel : INotifyPropertyChanged
         _launcher = launcher;
         _settings = settings;
         _state = state;
+        _log = log;
         _exitThenLaunch = exitThenLaunch;
         _notifyAvailable = notifyAvailable;
         _showChangelog = showChangelog;
@@ -88,6 +93,10 @@ public sealed class UpdateViewModel : INotifyPropertyChanged
                 : _release is null
                     ? "Установлена актуальная версия."
                     : $"Доступна версия {_release.Semver}.";
+            if (!result.Succeeded)
+                Log(LogLevel.Warn, "Не удалось проверить обновления" + (string.IsNullOrWhiteSpace(result.Error) ? "." : ": " + result.Error));
+            else
+                Log(LogLevel.Info, "Проверка обновлений: " + Status);
             _installCommand.RaiseCanExecuteChanged();
             if (_release is not null && _notifyAvailable is not null && _controller.ShouldOffer(_state, _release))
             {
@@ -98,6 +107,7 @@ public sealed class UpdateViewModel : INotifyPropertyChanged
         catch (Exception ex)
         {
             Status = ex.Message;
+            Log(LogLevel.Warn, "Не удалось проверить обновления: " + ex.Message);
         }
         finally
         {
@@ -117,6 +127,7 @@ public sealed class UpdateViewModel : INotifyPropertyChanged
         catch (Exception ex)
         {
             Status = ex.Message;
+            Log(LogLevel.Warn, "Не удалось проверить обновления: " + ex.Message);
         }
     }
 
@@ -129,12 +140,16 @@ public sealed class UpdateViewModel : INotifyPropertyChanged
             var version = GetVersion();
             var transition = _controller.RecordInstalledVersion(_state, version);
             if (transition == InstalledVersionTransition.Upgraded)
+            {
+                Log(LogLevel.Info, $"Приложение обновлено до версии {version}.");
                 await ShowChangelogAsync(version);
+            }
             await CheckIfDueAsync();
         }
         catch (Exception ex)
         {
             Status = ex.Message;
+            Log(LogLevel.Warn, "Проверка обновлений при запуске не удалась: " + ex.Message);
         }
     }
 
@@ -147,10 +162,13 @@ public sealed class UpdateViewModel : INotifyPropertyChanged
         try
         {
             var changelog = await _controller.GetChangelogAsync(version);
+            if (changelog.LoadFailed)
+                Log(LogLevel.Warn, "Не удалось загрузить описание релиза.");
             _showChangelog(changelog);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Log(LogLevel.Warn, "Не удалось показать описание релиза: " + ex.Message);
         }
     }
 
@@ -161,6 +179,7 @@ public sealed class UpdateViewModel : INotifyPropertyChanged
         RaiseCommands();
         Progress = 0;
         Status = "Загрузка обновления…";
+        Log(LogLevel.Info, $"Загрузка обновления {release.Semver}.");
         try
         {
             _launcher.EnsureLaunchAllowed();
@@ -170,22 +189,31 @@ public sealed class UpdateViewModel : INotifyPropertyChanged
             if (!download.Success || string.IsNullOrWhiteSpace(download.InstallerPath))
             {
                 Status = download.Error ?? "Не удалось загрузить обновление.";
+                Log(LogLevel.Warn, "Не удалось загрузить обновление: " + Status);
                 return;
             }
             // Проверки — до выхода: их ошибка не отключает VPN. Запуск — после выхода, см. IInstallerLaunchService.
             var installerPath = _launcher.Prepare(download.InstallerPath);
             Status = "Закрытие приложения и запуск установщика…";
+            Log(LogLevel.Info, "Обновление загружено: приложение закроется и запустит установщик.");
             _exitThenLaunch(() => _launcher.Launch(installerPath));
         }
         catch (Exception ex)
         {
             Status = ex.Message;
+            Log(LogLevel.Error, "Не удалось установить обновление: " + ex.Message);
         }
         finally
         {
             Interlocked.Exchange(ref _operationRunning, 0);
             RaiseCommands();
         }
+    }
+
+    private void Log(LogLevel level, string message)
+    {
+        try { _log.Append(level, AppLogSources.Update, message); }
+        catch { }
     }
 
     private void RaiseCommands()

@@ -9,35 +9,18 @@ namespace NothingVpn.Application.Tests;
 public sealed class TunAppsControllerTests
 {
     [Fact]
-    public void AddAndSave_NormalizesAndRemovesDuplicates()
+    public void Save_NormalizesAndRemovesDuplicates()
     {
         var settings = new FakeSettingsService();
         var controller = new TunAppsController(new FakePathPolicy(), settings);
         var state = new AppStateModel();
 
-        var result = controller.AddAndSave(
+        var result = controller.Save(
             state,
-            new[] { @"C:\Apps\One.exe" },
-            new[] { @"c:\apps\one.exe", @"C:\Apps\Two.exe", "invalid.txt" });
+            new[] { @"C:\Apps\One.exe", @"c:\apps\one.exe", @"C:\Apps\Two.exe", "invalid.txt" });
 
         Assert.Equal(new[] { @"C:\Apps\One.exe", @"C:\Apps\Two.exe" }, result);
         Assert.Equal(result, state.TunAppProcessPaths);
-        Assert.Equal(1, settings.SaveCalls);
-    }
-
-    [Fact]
-    public void RemoveAndSave_RemovesPathCaseInsensitively()
-    {
-        var settings = new FakeSettingsService();
-        var controller = new TunAppsController(new FakePathPolicy(), settings);
-        var state = new AppStateModel();
-
-        var result = controller.RemoveAndSave(
-            state,
-            new[] { @"C:\Apps\One.exe", @"C:\Apps\Two.exe" },
-            @"c:\apps\ONE.exe");
-
-        Assert.Equal(new[] { @"C:\Apps\Two.exe" }, result);
         Assert.Equal(1, settings.SaveCalls);
     }
 

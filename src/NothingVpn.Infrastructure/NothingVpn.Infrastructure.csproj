@@ -4,9 +4,13 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <UseWindowsForms>true</UseWindowsForms>
     <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- DPAPI для DpapiJsonFile; раньше приходил с WindowsDesktop вместе с WinForms. -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\NothingVpn.Application\NothingVpn.Application.csproj" />
@@ -15,7 +19,6 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="NothingVpn.Application.Tests" />
-    <InternalsVisibleTo Include="NothingVpn.Tray" />
   </ItemGroup>
 
 </Project>

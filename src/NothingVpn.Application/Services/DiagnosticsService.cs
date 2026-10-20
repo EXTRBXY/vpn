@@ -4,7 +4,7 @@ using NothingVpn.Application.Ports;
 
 namespace NothingVpn.Application.Services;
 
-public sealed class DiagnosticsService(IDiagnosticsPort diagnosticsPort, ILogPort logPort, AppStateStore stateStore) : IDiagnosticsService
+public sealed class DiagnosticsService(IDiagnosticsPort diagnosticsPort, AppStateStore stateStore) : IDiagnosticsService
 {
     public async Task<(bool Success, string? Error)> RunProxySmokeTestAsync(string targetHost, int targetPort, TimeSpan timeout, CancellationToken cancellationToken = default)
     {
@@ -20,13 +20,5 @@ public sealed class DiagnosticsService(IDiagnosticsPort diagnosticsPort, ILogPor
 
     public Task<(bool Success, string? Error)> RunTunSmokeTestAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
         => diagnosticsPort.TunSmokeTestAsync(timeout, cancellationToken);
-
-    public string GetLogsText(LogLevel minLevel) => logPort.SnapshotText(minLevel);
-
-    public void ExportLogs(string path, LogLevel minLevel)
-    {
-        var text = logPort.SnapshotText(minLevel);
-        File.WriteAllText(path, text);
-    }
 }
 

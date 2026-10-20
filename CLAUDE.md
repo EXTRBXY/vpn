@@ -22,7 +22,7 @@ dotnet test NothingVpn.sln -c Release --no-build --filter "FullyQualifiedName~Si
 .\build\Build.ps1 -Target Installer      # Inno Setup 6 поверх существующего publish
 ```
 
-Базовая линия (19.10.2026, после шага 8): сборка без предупреждений, 453 теста проходят, пропущенных нет.
+Базовая линия (20.10.2026, после шага 9): сборка без предупреждений, 462 теста проходят, пропущенных нет.
 Только Windows. `Publish` берёт `sing-box.exe`/`wintun.dll` из `-RuntimeAssetsDirectory` или из установленного
 клиента (`%ProgramFiles%\NothingVpn`, затем старый `%LOCALAPPDATA%\Programs\NothingVpn`). Ничего не устанавливайте и
 не регистрируйте службу на машине пользователя; установку проверяет он сам по `docs/SERVICE-INSTALL-CHECKLIST.md`.
@@ -40,7 +40,6 @@ src/NothingVpn.Desktop.Wpf     упаковываемый клиент: Composit
 src/NothingVpn.Service         служба Windows NothingVpn (LocalSystem): ядро sing-box и канал NothingVpn.Service;
                                ставится установщиком рядом с клиентом; --migrate-user-install — миграция старой
                                per-user установки от имени пользователя
-src/NothingVpn.Tray            legacy WinForms, эталон до удаления; не публикуется
 tests/NothingVpn.Application.Tests  единственный тестовый проект, покрывает все слои включая WPF
 build/                         Build.ps1, installer/NothingVpn.iss (per-machine, служба)
 ```
@@ -112,7 +111,11 @@ build/                         Build.ps1, installer/NothingVpn.iss (per-machine,
   обходите проверку; в тестах её подменяет внутренний `IPipeServerVerifier`.
   WinINET и state.json остаются в `VpnConnectionService`, а не в ядре.
 - Секреты в журнал — только через `ILogPort.Append` / `InMemoryLogStore.AppendStructured` (маскирует `LogRedactor`).
-  Никогда не логировать UUID, ключи, URL подписок.
+  Никогда не логировать UUID, ключи, URL подписок. События клиента пишутся с источником из `AppLogSources`
+  (`app/connection`, `app/subscriptions`, …) и не в горячих путях (таймеры раз в секунду ничего не пишут). Адрес
+  сервера и URL подписки без `/sub/` редактор не узнаёт — не передавайте их в журнал вовсе (см. `SubscriptionService`).
+- Infrastructure не зависит от WinForms/WindowsDesktop (служба без WindowsDesktop runtime); DPAPI — пакет
+  `System.Security.Cryptography.ProtectedData`. UI-код с `System.Drawing`/`System.Windows.Forms` — только в WPF.
 - Необработанные исключения WPF ловит `Platform/GlobalExceptionHandler` (журнал + сообщение; фатальные — попытка
   остановить VPN). Запуск задачи без ожидания с UI-потока — `task.Forget()`, не `_ = task`: так ошибка не теряется.
 - Страница настроек разделена на разделы (`ViewModels/Settings/*`), но сохраняется одной операцией в
@@ -139,5 +142,5 @@ build/                         Build.ps1, installer/NothingVpn.iss (per-machine,
 - Нормализуйте и валидируйте входные значения через Domain-политики, а не локально.
 - Сетевые HTTP-клиенты ставят явный `UseProxy = false`, если запрос не должен идти через собственный VPN.
 - Тестовые фейки объявляются внутри тестового класса. Для WPF-тестов нужен STA-поток (см. `WpfSettingsBindingTests`).
-- Версия (`0.6.8`) захардкожена в трёх csproj (WPF, Tray, Service), `Build.ps1`, `.iss`, `release.yml` — при смене версии менять везде.
+- Версия (`0.6.8`) захардкожена в двух csproj (WPF, Service), `Build.ps1`, `.iss`, `release.yml` — при смене версии менять везде.
 - Релиз: push тега `vX.Y.Z` → GitHub Actions собирает и публикует установщик.

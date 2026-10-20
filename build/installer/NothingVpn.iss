@@ -7,6 +7,8 @@
 #define MyServiceExeName "NothingVpn.Service.exe"
 ; Имя службы задано в коде (NothingVpnWindowsService.Name), канал — NothingVpn.Service.
 #define MyServiceName "NothingVpn"
+; Мьютекс WinForms-клиента (проект удалён на шаге 9) оставлен: запущенный старый клиент из per-user установки
+; держит её файлы, которые убирает миграция (MigrateUserInstall). Отсутствующий мьютекс установщику не мешает.
 #define MyAppMutex "Global\NothingVpn.Desktop.Wpf,Global\NothingVpn.Tray"
 #define MyAppPublisher "NothingVpn"
 ; URL и версию при CI переопределяют: ISCC /DMyAppURL=... /DMyAppVersion=...
@@ -71,10 +73,6 @@ Source: "{#PublishDir}\{#MyServiceExeName}"; DestDir: "{app}"; Flags: ignorevers
 Source: "{#PublishDir}\sing-box.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PublishDir}\wintun.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#PublishDir}\*.pdb"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-
-[InstallDelete]
-Type: files; Name: "{app}\NothingVpn.Tray.exe"
-Type: files; Name: "{app}\NothingVpn.Tray.pdb"
 
 [Icons]
 ; Ярлыки — для всех пользователей: программа и служба ставятся на машину, а при UAC от другого администратора

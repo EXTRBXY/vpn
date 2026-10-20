@@ -2,6 +2,7 @@ using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
 using NothingVpn.Application.Services;
 using NothingVpn.Domain.Models;
+using NothingVpn.Infrastructure.Diagnostics;
 using NothingVpn.Infrastructure.Ports;
 
 namespace NothingVpn.Application.Tests;
@@ -19,7 +20,7 @@ public sealed class SubscriptionServiceSyncTests
         var settings = new InMemorySettingsService();
         settings.GetState().ActiveProfileId = "saved";
         var fetcher = new SubscriptionHttpFetcher(() => new SubscriptionResponseHandler(), TimeSpan.FromSeconds(5));
-        var service = new SubscriptionService(subscriptions, fetcher, profiles, new FakeProfileParserPort(), settings);
+        var service = new SubscriptionService(subscriptions, fetcher, profiles, new FakeProfileParserPort(), settings, NewLog());
 
         var results = await service.RefreshAllDueAsync();
 
@@ -95,7 +96,8 @@ public sealed class SubscriptionServiceSyncTests
             fetcher,
             profileStore,
             parser,
-            settings);
+            settings,
+            NewLog());
 
         var result = await service.RefreshAsync(subscription.Id);
 
@@ -194,6 +196,94 @@ public sealed class SubscriptionServiceSyncTests
             _items.RemoveAll(s => string.Equals(s.Id, subscriptionId, StringComparison.OrdinalIgnoreCase));
             return Load();
         }
+    }
+
+    [Fact]
+    public async Task Refresh_Success_WritesCountsToLog_WithoutUrlOrUuid()
+    {
+        var (service, log, subscription) = CreateForLog(new FakeSubscriptionFetcher(
+            "vless://11111111-1111-1111-1111-111111111111@host1.example:443?security=reality&pbk=PUBLICKEY&sid=abcd#node1"));
+
+        var result = await service.RefreshAsync(subscription.Id);
+
+        Assert.True(result.Success);
+        var text = log.SnapshotText(LogLevel.Trace);
+        Assert.Contains("[app/subscriptions] Подписка «Моя подписка» обновлена: добавлено 1, обновлено 0, удалено 0.", text);
+        AssertNoSecrets(text);
+    }
+
+    [Fact]
+    public async Task Refresh_Failure_WritesErrorToLog_WithoutUrlOrHost()
+    {
+        var (service, log, subscription) = CreateForLog(
+            new FailingFetcher("No such host is known. (secret-host.example:443) https://secret-host.example/sub/TOKEN123"));
+
+        var result = await service.RefreshAsync(subscription.Id);
+
+        Assert.False(result.Success);
+        var text = log.SnapshotText(LogLevel.Warn);
+        Assert.Contains("[WARN] [app/subscriptions] Подписка «Моя подписка» не обновлена: No such host is known. (***:443)", text);
+        AssertNoSecrets(text);
+    }
+
+    [Fact]
+    public async Task RefreshAllDue_WritesSummary()
+    {
+        var (service, log, _) = CreateForLog(new FailingFetcher("HTTP 500"));
+
+        await service.RefreshAllDueAsync();
+
+        Assert.Contains("Автообновление подписок: успешно 0, с ошибкой 1.", log.SnapshotText(LogLevel.Trace));
+    }
+
+    [Fact]
+    public async Task Refresh_SubscriptionNamedWithItsUrl_DoesNotLeakUrl()
+    {
+        var (service, log, subscription) = CreateForLog(new FailingFetcher("HTTP 404"), name: "https://secret-host.example/s/TOKEN123");
+
+        await service.RefreshAsync(subscription.Id);
+
+        AssertNoSecrets(log.SnapshotText(LogLevel.Trace));
+    }
+
+    private static void AssertNoSecrets(string text)
+    {
+        Assert.DoesNotContain("secret-host", text);
+        Assert.DoesNotContain("TOKEN123", text);
+        Assert.DoesNotContain("11111111-1111", text);
+        Assert.DoesNotContain("PUBLICKEY", text);
+        Assert.DoesNotContain("host1.example", text);
+    }
+
+    private static (SubscriptionService Service, LogPort Log, SubscriptionModel Subscription) CreateForLog(
+        ISubscriptionFetcherPort fetcher,
+        string name = "Моя подписка")
+    {
+        var subscriptions = new InMemorySubscriptionStorePort();
+        var subscription = subscriptions.Upsert(new SubscriptionModel
+        {
+            Id = "sub1",
+            Name = name,
+            Url = "https://secret-host.example/s/TOKEN123",
+            Enabled = true
+        });
+        var log = NewLog();
+        var service = new SubscriptionService(
+            subscriptions,
+            fetcher,
+            new InMemoryProfileStorePort(),
+            new FakeProfileParserPort(),
+            new InMemorySettingsService(),
+            log);
+        return (service, log, subscription);
+    }
+
+    private static LogPort NewLog() => new(new InMemoryLogStore());
+
+    private sealed class FailingFetcher(string error) : ISubscriptionFetcherPort
+    {
+        public Task<SubscriptionFetchResult> FetchAsync(string url, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new SubscriptionFetchResult { Success = false, Error = error });
     }
 
     private sealed class FakeSubscriptionFetcher(string body) : ISubscriptionFetcherPort

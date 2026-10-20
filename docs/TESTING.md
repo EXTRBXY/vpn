@@ -7,20 +7,23 @@
 `InternalsVisibleTo` открывает тестам internal-типы Infrastructure (`SingBoxConfigGenerator`, `VlessLinkParser`,
 `DpapiJsonFile`, `AppPaths`, …).
 
-Состояние на 19.10.2026 (после шага 8): 453 теста, все проходят, пропущенных нет (desktop-тесты обновления удалены
-вместе с помощником PowerShell). Сборка Release — без предупреждений.
+Состояние на 20.10.2026 (после шага 9): 462 теста, все проходят, пропущенных нет. На шаге 9 добавлены тесты событий
+журнала и маскирования (`VpnConnectionServiceTests`, `SubscriptionServiceSyncTests`, `UpdateViewModelTests`,
+`StorageHealthServiceTests`) и фильтра уровня в «Диагностике» (`WpfSettingsBindingTests`); удалены тесты методов,
+которые вызывал только WinForms-клиент (`ConnectionScreenController.Save`, `MarkDownloaded`,
+`MarkBuiltinFilesRemoved`, `AddAndSave`/`RemoveAndSave`). Сборка Release — без предупреждений.
 
 | Область | Файлы |
 | --- | --- |
 | Domain-политики | `DomainPoliciesTests`, `SemanticVersionPolicyTests`, `InstallerFilePolicyTests`, `SubscriptionBodyDecoderTests`, `SubscriptionUserinfoParserTests`, `AppCloseBehaviorTests` |
 | Генерация sing-box | `SingBoxConfigGeneratorTests`, `SecurityRegressionTests` |
-| Use-case сервисы | `VpnConnectionServiceTests` (оркестрация вместе с настоящим `SingBoxVpnEngine` поверх поддельного sing-box; TUN без прав с ядром в процессе — ошибка без запуска; с поддельным ядром службы — TUN без UAC, перезапуск интерфейса при работающей в службе сессии, остановка службы), `SubscriptionServiceSyncTests` |
+| Use-case сервисы | `VpnConnectionServiceTests` (оркестрация вместе с настоящим `SingBoxVpnEngine` поверх поддельного sing-box; TUN без прав с ядром в процессе — ошибка без запуска; с поддельным ядром службы — TUN без UAC, перезапуск интерфейса при работающей в службе сессии, остановка службы), `SubscriptionServiceSyncTests`, `StorageHealthServiceTests` (события журнала клиента: подключение, подписки, хранилище — без адреса сервера, UUID, ключей и адреса подписки) |
 | Ядро и его контракт | `SingBoxVpnEngineTests` (версия контракта, валидация и нормализация запроса, откат при сбое запуска и порта, выход процесса), `EngineContractTests` (JSON-roundtrip запроса и статуса, контракт v2 — rule-set содержимым в base64, конфиг из запроса = конфиг из состояния на матрице эталонов) |
 | Служба и канал | `ServiceProtocolTests` (кадр с длиной и JSON, версия, пределы кадра и rule-set, обрезанные и некорректные кадры, тайм-аут тела), `ServiceChannelTests` (сервер и клиент канала в одном процессе с поддельным sing-box: connect/disconnect/статус/журнал, ошибки ядра, старая версия клиента, обрыв и переподключение, rule-set содержимым в каталог службы, конфиг службы ≠ in-process только путями rule-set, отказ проверки сервера без отправки данных, ACL канала и каталога данных, `FILE_FLAG_FIRST_PIPE_INSTANCE`, поиск sing-box службой, выбор реализации ядра) |
 | Установка | `LegacyUserInstallMigrationTests` (удаление старой per-user копии без каталога данных и посторонних файлов, перенос автозапуска; каталог данных службы, созданный заранее пользователем, заменяется) — реестр подменён, файлы во временном каталоге |
 | Presentation-контроллеры | `Connection*ControllerTests`, `ConnectionViewStateFactoryTests`, `ProfileManagementControllerTests`, `SubscriptionManagementControllerTests`, `RuleSetManagementControllerTests`, `TunAppsControllerTests`, `AppUpdateControllerTests` |
 | Infrastructure | `DpapiJsonFileTests`, `ProfileParserPortTests`, `RuleSetFileServiceTests`, `SubscriptionHttpFetcherTests`, `SingBoxRunnerTests`, `ProcessJobScopeTests`, `InstallerUpdateServiceTests`, `InstallerLaunchServiceTests` (отказ в повышенном процессе без запуска, прямой запуск без ShellExecute с тихими аргументами, имя файла установщика, пути с метасимволами — данные, без переменных `NOTHINGVPN_*`) |
-| WPF | `SettingsViewModelTests` (реальные контроллеры, изолированное хранилище; разделы настроек и одно сохранение), `UpdateViewModelTests` (в том числе порядок обновления: проверки до выхода, запуск установщика — только после выхода), `WpfSettingsBindingTests` (настоящие контролы на STA-потоке), `AsyncRelayCommandTests`, `GlobalExceptionHandlerTests` (журнал с маскированием, сообщение, аварийная остановка VPN — без настоящего падения процесса) |
+| WPF | `SettingsViewModelTests` (реальные контроллеры, изолированное хранилище; разделы настроек и одно сохранение), `UpdateViewModelTests` (в том числе порядок обновления: проверки до выхода, запуск установщика — только после выхода), `WpfSettingsBindingTests` (настоящие контролы на STA-потоке, в том числе фильтр уровня журнала в «Диагностике»), `AsyncRelayCommandTests`, `GlobalExceptionHandlerTests` (журнал с маскированием, сообщение, аварийная остановка VPN — без настоящего падения процесса) |
 | Архитектура | `WpfLayerBoundaryTests` — сборка WPF не ссылается на Infrastructure вне `Composition/` (сигнатуры, IL методов, XAML) |
 | Характеризационные | `SingBoxConfigGoldenTests` (эталоны в `Golden/SingBox`), `StorageRoundtripTests`, `StorageFormatCompatibilityTests`, `VlessStableIdTests` |
 

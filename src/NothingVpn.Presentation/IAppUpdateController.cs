@@ -10,7 +10,6 @@ public interface IAppUpdateController
         AppStateModel state,
         string currentVersion,
         CancellationToken cancellationToken = default);
-    Task<AppReleaseModel?> GetCurrentReleaseAsync(string currentVersion, CancellationToken cancellationToken = default);
     Task<ReleaseChangelog> GetChangelogAsync(string currentVersion, CancellationToken cancellationToken = default);
     bool ShouldOffer(AppStateModel state, AppReleaseModel release);
     void DismissOffer(AppStateModel state, AppReleaseModel release);

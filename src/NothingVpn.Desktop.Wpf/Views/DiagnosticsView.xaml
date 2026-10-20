@@ -1,6 +1,7 @@
 <UserControl x:Class="NothingVpn.Desktop.Wpf.DiagnosticsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:m="clr-namespace:NothingVpn.Domain.Models;assembly=NothingVpn.Domain">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -28,6 +29,14 @@
                 <Grid Margin="16">
                     <TextBlock Text="Журнал" FontWeight="SemiBold" VerticalAlignment="Center" />
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <TextBlock Text="Показывать" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <ComboBox SelectedValue="{Binding MinLevel}" SelectedValuePath="Tag" MinWidth="150" Margin="0,0,16,0"
+                                  VerticalAlignment="Center" ToolTip="Минимальный уровень записей в окне. «Сохранить» записывает весь журнал.">
+                            <ComboBoxItem Content="Ошибки" Tag="{x:Static m:LogLevel.Error}" />
+                            <ComboBoxItem Content="Предупреждения" Tag="{x:Static m:LogLevel.Warn}" />
+                            <ComboBoxItem Content="Информация" Tag="{x:Static m:LogLevel.Info}" />
+                            <ComboBoxItem Content="Отладка (всё)" Tag="{x:Static m:LogLevel.Trace}" />
+                        </ComboBox>
                         <Button Content="Копировать" Click="OnCopy" Style="{StaticResource SecondaryButtonStyle}" MinHeight="32" />
                         <Button Content="Сохранить" Click="OnExport" Style="{StaticResource SecondaryButtonStyle}" MinHeight="32"
                                 Margin="8,0,0,0" />

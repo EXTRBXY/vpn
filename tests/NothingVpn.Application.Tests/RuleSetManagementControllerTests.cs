@@ -58,25 +58,6 @@ public sealed class RuleSetManagementControllerTests
         Assert.Equal("direct", first.Action.ToValue());
     }
 
-    [Fact]
-    public void MarkBuiltinFilesRemoved_DisablesAndClearsDownloadMetadata()
-    {
-        var settings = new FakeSettingsService();
-        var state = new AppStateModel();
-        var builtin = Rule("builtin", "catalog");
-        builtin.Enabled = true;
-        builtin.RemoteEtag = "etag";
-        builtin.LastDownloadedUtc = DateTimeOffset.UtcNow;
-        var controller = new RuleSetManagementController(settings);
-
-        controller.MarkBuiltinFilesRemoved(state, new[] { builtin }, Array.Empty<UserRuleSetModel>(), new[] { builtin });
-
-        Assert.False(builtin.Enabled);
-        Assert.Null(builtin.RemoteEtag);
-        Assert.Null(builtin.LastDownloadedUtc);
-        Assert.Equal(1, settings.SaveCalls);
-    }
-
     private static UserRuleSetModel Rule(string tag, string? builtinId = null) => new()
     {
         Tag = tag,

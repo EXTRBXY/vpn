@@ -329,7 +329,7 @@ public sealed class SettingsViewModelTests
         public SettingsViewModel Create() => new(
             new ConnectionSettingsController(Settings), new TunAppsController(new PathPolicyPort(), Settings),
             new RuleSetManagementController(Settings), Files, Discovery,
-            Settings, new UpdateViewModel(null!, null!, null!, Settings, Settings.GetState(), _ => { }));
+            Settings, new UpdateViewModel(null!, null!, null!, Settings, Settings.GetState(), null!, _ => { }));
     }
 
     internal sealed class MemoryStore : IStateStorePort

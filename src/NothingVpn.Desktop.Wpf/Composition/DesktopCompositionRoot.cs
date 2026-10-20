@@ -51,6 +51,7 @@ internal static class DesktopCompositionRoot
             launcher: services.InstallerLaunchService,
             settings: services.SettingsService,
             state: services.SettingsService.GetState(),
+            log: services.Log,
             exitThenLaunch: shell.ExitThenLaunch,
             notifyAvailable: shell.NotifyUpdateAvailable,
             showChangelog: shell.ShowChangelog);

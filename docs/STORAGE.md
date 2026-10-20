@@ -75,7 +75,7 @@
 | `dnsMode` | `doh` | `doh` / `system` |
 | `dohServer`, `dohPath`, `dohSni` | `8.8.8.8`, `/dns-query`, `dns.google` | |
 | `dnsDetour` | `direct` | `direct` / `proxy`; в `tun_apps` всегда `direct` |
-| `debugLogs` | false | использовал только WinForms |
+| `debugLogs` | false | использовал только удалённый WinForms-клиент; поле сохраняется ради формата |
 | `singBoxLogLevel` | `warn` | |
 | `closeBehavior` | `tray` | `tray` / `exit` |
 | `updateDismissedModalForTag` | null | тег, о котором уже уведомили |

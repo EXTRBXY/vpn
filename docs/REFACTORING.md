@@ -194,6 +194,12 @@ Application.Models); реализации — `LogPort` и `TunAppsSelectionServ
 С шага 7а зависимость стоит дороже: служба ссылается на Infrastructure и несёт WindowsDesktop runtime (exe ~72 МБ
 даже со сжатием).
 
+✅ **Исправлено (шаг 9).** `TunAppIconCache` удалён, `UseWindowsForms` из Infrastructure убран (`Elevation` уже не
+использует WinForms — UAC-перезапуск удалён на шаге 8). Единственное, что Infrastructure брала из WindowsDesktop, —
+DPAPI (`ProtectedData` в `DpapiJsonFile`); теперь это пакет `System.Security.Cryptography.ProtectedData` 8.0.0, та же
+сборка Microsoft. Служба больше не несёт WindowsDesktop runtime: exe ~35 МБ вместо ~72 МБ. WinForms (`NotifyIcon`) и
+`System.Drawing` остались только в WPF-клиенте (иконка трея).
+
 ### 3.7. Дублирование между WinForms и WPF
 
 `SingleInstance` и разбор аргументов (`StartupOptions` / `StartupArgs`) существуют в двух копиях. После удаления
@@ -201,13 +207,32 @@ Application.Models); реализации — `LogPort` и `TunAppsSelectionServ
 и `[InstallDelete]` для `NothingVpn.Tray.exe` нужно пересмотреть осознанно (последние два защищают обновление со
 старых версий). С шага 5 в двух копиях ещё и `TrayStatusIconBuilder` (`Desktop.Wpf/Platform`, `Tray/Internal/UI`).
 
+✅ **Исправлено (шаг 9).** Копии ушли вместе с `NothingVpn.Tray`; `InternalsVisibleTo("NothingVpn.Tray")` удалён.
+Установщик:
+
+- `[InstallDelete]` для `{app}\NothingVpn.Tray.exe`/`.pdb` **удалён**: с шага 7б `{app}` — `%ProgramFiles%\NothingVpn`,
+  а per-machine установки с WinForms-клиентом никогда не было. Старую per-user копию (`NothingVpn.Tray.exe` в том
+  числе) убирает миграция `LegacyUserInstallMigration`, её список файлов не менялся.
+- `AppMutex` `Global\NothingVpn.Tray` **оставлен**: запущенный WinForms-клиент из старой per-user установки держит
+  файлы, которые удаляет миграция; установщик предложит его закрыть. Несуществующий мьютекс ничему не мешает.
+- Каталог данных `%LOCALAPPDATA%\NothingVpn.Tray` не переименовывается (раздел 4а).
+
 ### 3.8. Мелочи
 
-- `Application/Class1.cs` — пустой шаблонный класс.
+- ~~`Application/Class1.cs` — пустой шаблонный класс.~~ Удалён (шаг 9).
 - ~~`AppLifecycleService.BuildTakeoverArgs` дублирует формирование аргументов в `VpnConnectionService.ConnectAsync`.~~
   Удалено вместе с UAC-перезапуском (шаг 8).
 - `DiagnosticsService.ExportLogs`, `IAppUpdateController.GetCurrentReleaseAsync`, `AppPathsModel.LogsDir`,
-  `AppStateModel.DebugLogs` в WPF не используются.
+  `AppStateModel.DebugLogs` в WPF не используются. Шаг 9: удалено то, что вызывал только WinForms-клиент, —
+  `IDiagnosticsService.ExportLogs`/`GetLogsText` (и зависимость `DiagnosticsService` от `ILogPort`),
+  `GetCurrentReleaseAsync` из интерфейса (стал private, его использует `GetChangelogAsync`),
+  `IConnectionScreenController.Save`, `IRuleSetManagementController.MarkDownloaded`/`MarkBuiltinFilesRemoved`,
+  `ITunAppsController.AddAndSave`/`RemoveAndSave`, `IInstallerUpdateService.IsCached`/`GetCachedInstallerPath`
+  (метод остался у реализации), `ApplicationServiceBundle.SharedLogStore`, `InMemoryLogStore.SnapshotAll`/
+  `TryGetVersion`. Оставлены сознательно: `AppStateModel.DebugLogs` — поле state.json (формат не меняется);
+  `LogsDir` — каталог `logs` создаёт служба, а поле задаётся в характеризационных тестах. Не связанные с WinForms
+  неиспользуемые API (`ISettingsService.UpdateMode/UpdateDns/…`, `IProfileService.ImportFromVlessLink`,
+  `DeleteSelected` в view model'ях) не трогались.
 - ~~Часть WPF-файлов записана «в строку» (`StartupOptions`, `ThemeManager`, `DiagnosticsViewModel`, `UpdateViewModel`,
   `DiagnosticsView`, `SettingsView.xaml`, `Theme.xaml`): плохо читаются и дают огромные диффы.~~ Исправлено на шаге 5
   для WPF-проекта (также `TunAppPickerWindow`, окна подписок, длинные строки `MainWindow`); разметка до и после
@@ -218,7 +243,7 @@ Application.Models); реализации — `LogPort` и `TunAppsSelectionServ
 
 ## 4. Разрывы функциональности WPF относительно WinForms
 
-WinForms-клиент ещё в решении как эталон (`docs/WPF-MIGRATION.md`). В WPF отсутствуют:
+До шага 9 WinForms-клиент был в решении как эталон (`docs/WPF-MIGRATION.md`), и в WPF отсутствовали:
 
 - переключатель отладочного журнала и фильтр уровня в диагностике (WPF показывает весь буфер; порт `ILogPort`
   фильтр по уровню уже поддерживает);
@@ -226,11 +251,21 @@ WinForms-клиент ещё в решении как эталон (`docs/WPF-MI
   необработанных исключений и фоновое обновление подписок (через `ILogPort.Append`);
 - отдельное окно прогресса загрузки обновления (в WPF — прогресс-бар в настройках).
 
-Решение (18.10.2026): окно «Что нового» переносится в WPF обязательно (уже сделано, см. ниже). Остальные пункты не решены — вернуться к
-ним до удаления `NothingVpn.Tray`.
+Решение (18.10.2026): окно «Что нового» переносится в WPF обязательно (уже сделано, см. ниже). Решение (19.10.2026):
+фильтр уровня и журнал событий приложения переносятся, отдельное окно прогресса загрузки — нет (прогресс-бара в
+настройках достаточно).
 
-Уже перенесено:
+✅ **Закрыто (шаг 9).**
 
+Перенесено:
+
+- фильтр уровня в «Диагностике» (`DiagnosticsViewModel.MinLevel`, по умолчанию «Информация»): только вид, в `state.json`
+  не пишется, как и в WinForms; «Копировать» — видимое с фильтром, «Сохранить» — весь журнал. Флажок «Debug» WinForms
+  (уровень журнала sing-box, `debugLogs`) в WPF заменён выбором уровня в настройках; поле `debugLogs` остаётся в
+  `state.json` ради формата, интерфейс его не использует;
+- журнал событий приложения: источники `app`, `app/connection`, `app/subscriptions`, `app/update`, `app/storage`,
+  `app/ui` (ARCHITECTURE.md, «Логирование»); покрыто всё, что писал `AppLogger`, кроме событий WinForms-экранов
+  rule-set и IPC второго экземпляра;
 - окно «Что нового» после обновления: `UpdateViewModel.CheckAtStartupAsync` при `InstalledVersionTransition.Upgraded`
   берёт `IAppUpdateController.GetChangelogAsync` (ошибка загрузки → `ReleaseChangelog.LoadFailed`, не исключение)
   и показывает `Views/ReleaseChangelogWindow`. Тело релиза выводится как есть, без рендера markdown; при
@@ -247,9 +282,9 @@ WinForms-клиент ещё в решении как эталон (`docs/WPF-MI
 
 - `.cursor/rules/nothing-vpn-singbox-architecture.mdc` описывает UI как WinForms.
 - `build-app.cmd` выводит путь к `NothingVpn.Tray.exe`, хотя публикуется `NothingVpn.Desktop.Wpf.exe`.
-- Версия `0.6.8` захардкожена в шести местах: три csproj (WPF, Tray, Service — с шага 7а), `Build.ps1` (значение по умолчанию для установщика),
+- Версия `0.6.8` захардкожена в пяти местах: два csproj (WPF, Service; Tray удалён на шаге 9), `Build.ps1` (значение по умолчанию для установщика),
   `.iss`, `release.yml` (значение по умолчанию для ручного запуска). Кандидат на `Directory.Build.props`.
-- `docs/WPF-MIGRATION.md` описывает план миграции, который в основном выполнен.
+- ~~`docs/WPF-MIGRATION.md` описывает план миграции, который в основном выполнен.~~ Помечен как исторический (шаг 9).
 
 ## 6. Предлагаемый порядок
 
@@ -300,8 +335,12 @@ WinForms-клиент ещё в решении как эталон (`docs/WPF-MI
    процессе без прав отклоняет TUN ошибкой. Установщик запускается напрямую после штатного выхода клиента, с отказом
    в повышенном процессе ([UPDATE-HANDOFF.md](UPDATE-HANDOFF.md)). `NothingVpn.Tray` адаптирован минимально. Ручная
    проверка обновления из интерфейса — [чек-лист, раздел 7](SERVICE-INSTALL-CHECKLIST.md#7-обновление-из-интерфейса).
-9. **Удаление WinForms.** После закрытия разрывов (раздел 4): удалить `NothingVpn.Tray`, `TunAppIconCache`,
-   зависимость Infrastructure от WinForms (3.6, 3.7).
+9. **Удаление WinForms.** ✅ Готово (20.10.2026), два коммита. Сначала перенос (раздел 4): фильтр уровня в
+   «Диагностике» и журнал событий приложения (подключение, подписки, обновления, хранилище, запуск и выход) с
+   тестами маскирования. Затем удаление: проект `NothingVpn.Tray`, `TunAppIconCache`, `Class1.cs`, API, нужные только
+   WinForms (3.8), зависимость Infrastructure от WinForms/WindowsDesktop (3.6; служба ~35 МБ), пересмотр установщика
+   (3.7). Иконка приложения перенесена в `Desktop.Wpf/Assets/app.ico`. Характеризационные тесты и эталоны не менялись;
+   формат state.json не менялся.
 10. **Сборка.** Единая версия, исправление `build-app.cmd`, актуализация `.cursor`-правил (раздел 5).
 
 Шаги 2–5 нужны в любом случае и делают шаг 6 проще: порт ядра опирается на единую модель данных и типизированные
