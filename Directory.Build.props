@@ -6,7 +6,7 @@
     Новый релиз: поменять Version здесь, затем push тега vX.Y.Z (см. DEVELOPMENT.md, «Версия и релиз»).
   -->
   <PropertyGroup>
-    <Version>0.6.8</Version>
+    <Version>0.7.0</Version>
     <InformationalVersion>$(Version)</InformationalVersion>
     <!-- Без «+<commit>»: ProductVersion exe равен версии релиза, её проверяет release.yml. -->
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
