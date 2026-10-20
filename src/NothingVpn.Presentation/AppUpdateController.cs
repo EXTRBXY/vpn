@@ -62,7 +62,7 @@ public sealed class AppUpdateController : IAppUpdateController
         }
     }
 
-    public Task<AppReleaseModel?> GetCurrentReleaseAsync(
+    private Task<AppReleaseModel?> GetCurrentReleaseAsync(
         string currentVersion,
         CancellationToken cancellationToken = default) =>
         _updateService.GetByVersionAsync(currentVersion, cancellationToken);

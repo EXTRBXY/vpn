@@ -53,38 +53,6 @@ public sealed class RuleSetManagementController : IRuleSetManagementController
         state.UserRuleSets = ruleSets;
     }
 
-    public void MarkBuiltinFilesRemoved(
-        AppStateModel state,
-        IEnumerable<UserRuleSetModel> builtin,
-        IEnumerable<UserRuleSetModel> user,
-        IEnumerable<UserRuleSetModel> removed)
-    {
-        foreach (var ruleSet in removed.Distinct())
-        {
-            ruleSet.RemoteEtag = null;
-            ruleSet.LastDownloadedUtc = null;
-            ruleSet.Enabled = false;
-        }
-        Save(state, builtin, user);
-    }
-
-    public void MarkDownloaded(AppStateModel state, UserRuleSetModel ruleSet, string? remoteEtag)
-    {
-        if (!string.IsNullOrWhiteSpace(remoteEtag))
-            ruleSet.RemoteEtag = remoteEtag.Trim();
-        ruleSet.LastDownloadedUtc = DateTimeOffset.UtcNow;
-        _settingsService.UpdateState(current =>
-        {
-            var stored = current.UserRuleSets.FirstOrDefault(x =>
-                string.Equals(x.Tag, ruleSet.Tag, StringComparison.Ordinal));
-            if (stored is null)
-                return;
-
-            stored.RemoteEtag = ruleSet.RemoteEtag;
-            stored.LastDownloadedUtc = ruleSet.LastDownloadedUtc;
-        });
-    }
-
     private static bool IsBuiltin(UserRuleSetModel ruleSet) =>
         !string.IsNullOrWhiteSpace(ruleSet.BuiltinId);
 }

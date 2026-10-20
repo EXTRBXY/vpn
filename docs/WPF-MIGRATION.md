@@ -1,6 +1,14 @@
 # WPF migration readiness
 
-## Current migration status
+> **Исторический документ.** Миграция завершена: WinForms-клиент `NothingVpn.Tray` удалён на шаге 9 рефакторинга
+> (октябрь 2026, [REFACTORING.md](REFACTORING.md)). Последние разрывы закрыты переносом в WPF фильтра уровня журнала и
+> журнала событий приложения; отдельное окно прогресса загрузки обновления сознательно не перенесено (в WPF —
+> прогресс-бар в настройках). Актуальная архитектура — [ARCHITECTURE.md](ARCHITECTURE.md). Ниже — план в том виде,
+> в каком он был до удаления; упоминания `NothingVpn.Tray` относятся к прошлому. Из API-таблицы удалены методы,
+> которые вызывал только WinForms (`ConnectionScreenController.Save`, `RuleSetManagementController.MarkDownloaded` и
+> др., см. REFACTORING.md 3.8).
+
+## Migration status before removal
 
 `NothingVpn.Desktop.Wpf` is the packaged desktop client. It includes connection control, profiles,
 subscriptions, DNS/proxy/TUN settings, application routing, rule sets, diagnostics, logs, updates,

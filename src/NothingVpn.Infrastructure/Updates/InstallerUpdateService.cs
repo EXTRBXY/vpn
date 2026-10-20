@@ -16,8 +16,6 @@ public sealed class InstallerUpdateService : IInstallerUpdateService
         return Path.Combine(directory, $"{InstallerFilePolicy.CachedFilePrefix}{normalized}.exe");
     }
 
-    public bool IsCached(string version) => File.Exists(GetCachedInstallerPath(version));
-
     public void CleanupOldInstallers()
     {
         try

@@ -298,8 +298,6 @@ public sealed class VpnConnectionServiceTests
         var stateStore = new FakeStateStorePort { State = new AppStateModel { Mode = ConnectionMode.Proxy, LocalMixedPort = 1080 } };
         var appState = new AppStateStore(stateStore);
         var settings = new SettingsService(appState, new FakePathPolicyPort());
-        var screen = new NothingVpn.Presentation.ConnectionScreenController(new FakeProfileService(), settings);
-        var staleSnapshot = settings.GetState();
         var userProxy = new ProxySettingsSnapshotModel { ProxyEnable = true, ProxyServer = "corp:3128", ProxyOverride = "<local>" };
         var proxy = new FakeProxyPort { Current = userProxy };
         var singBox = new FakeSingBoxPort();
@@ -309,9 +307,8 @@ public sealed class VpnConnectionServiceTests
 
         await service.ConnectAsync(new ConnectRequest { ProfileId = "p1" });
 
-        // Устаревший снимок окна (до подключения) и прямая попытка сбросить флаги через настройки.
-        staleSnapshot.ProxyOverride = "localhost";
-        screen.Save(staleSnapshot);
+        // Сохранение настроек из окна и прямая попытка сбросить флаги через настройки.
+        settings.UpdateState(s => s.ProxyOverride = "localhost");
         settings.UpdateState(s =>
         {
             s.ProxyWasEnabledByUs = false;
@@ -734,17 +731,6 @@ public sealed class VpnConnectionServiceTests
 
         public Task<(bool Success, string? Error)> TunSmokeTestAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
             => Task.FromResult((true, (string?)null));
-    }
-
-    private sealed class FakeProfileService : IProfileService
-    {
-        private readonly IReadOnlyList<VpnProfile> _profiles = [new() { Id = "p1", Name = "Main" }];
-
-        public IReadOnlyList<VpnProfile> GetProfiles() => _profiles;
-        public IReadOnlyList<VpnProfile> ImportFromVlessLink(string link) => throw new NotSupportedException();
-        public IReadOnlyList<VpnProfile> DeleteProfile(string profileId) => throw new NotSupportedException();
-        public bool TryParseVlessLink(string link, out VpnProfile profile) => throw new NotSupportedException();
-        public VpnProfile UpsertFromVlessLink(string link, string? nameOverride) => throw new NotSupportedException();
     }
 
     private sealed class FakeElevationPort(bool isAdmin) : IElevationPort

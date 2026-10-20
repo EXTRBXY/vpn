@@ -269,11 +269,6 @@ public sealed class UpdateViewModelTests
             return Task.FromResult(new AppUpdateCheckResult(true, AvailableRelease));
         }
 
-        public Task<AppReleaseModel?> GetCurrentReleaseAsync(
-            string currentVersion,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
         public Task<ReleaseChangelog> GetChangelogAsync(
             string currentVersion,
             CancellationToken cancellationToken = default)
@@ -295,8 +290,6 @@ public sealed class UpdateViewModelTests
     private sealed class FakeInstallerUpdateService : IInstallerUpdateService
     {
         public string? DownloadedPath { get; init; }
-        public string GetCachedInstallerPath(string version) => throw new NotSupportedException();
-        public bool IsCached(string version) => false;
 
         public void CleanupOldInstallers()
         {

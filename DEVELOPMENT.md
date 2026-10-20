@@ -11,7 +11,9 @@ artifacts/    результаты сборки (не добавляются в 
 
 Проекты также сгруппированы в одноимённые папки внутри `NothingVpn.sln`.
 
-Границы слоёв и последовательность перехода с WinForms на WPF описаны в [docs/WPF-MIGRATION.md](docs/WPF-MIGRATION.md).
+Границы слоёв описаны в [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Единственный клиент — WPF
+(`NothingVpn.Desktop.Wpf`); WinForms-клиент удалён на шаге 9 рефакторинга (история перехода —
+[docs/WPF-MIGRATION.md](docs/WPF-MIGRATION.md)).
 Полный указатель технической документации — [docs/README.md](docs/README.md).
 
 ## Единая сборка

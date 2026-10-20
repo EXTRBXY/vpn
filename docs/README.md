@@ -12,5 +12,5 @@
 | [UPDATE-HANDOFF.md](UPDATE-HANDOFF.md) | Запуск установщика обновления из интерфейса: порядок, защита от наследования прав, история помощника |
 | [SERVICE-INSTALL-CHECKLIST.md](SERVICE-INSTALL-CHECKLIST.md) | Ручная проверка установки службы, подключения без UAC, обновления, удаления и перехода с 0.6.8 |
 | [UI-REGRESSION-CHECKLIST.md](UI-REGRESSION-CHECKLIST.md) | Исправления WPF UI и ручная проверка перед релизом |
-| [WPF-MIGRATION.md](WPF-MIGRATION.md) | План перехода с WinForms на WPF и критерии удаления `NothingVpn.Tray` |
+| [WPF-MIGRATION.md](WPF-MIGRATION.md) | Исторический: план перехода с WinForms на WPF (завершён, `NothingVpn.Tray` удалён на шаге 9) |
 | [../DEVELOPMENT.md](../DEVELOPMENT.md) | Сборка, публикация, установщик, CI и релизы |

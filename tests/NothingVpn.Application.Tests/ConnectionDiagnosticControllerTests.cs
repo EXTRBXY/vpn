@@ -93,7 +93,5 @@ public sealed class ConnectionDiagnosticControllerTests
             return Task.FromResult(TunResult);
         }
 
-        public string GetLogsText(LogLevel minLevel) => throw new NotSupportedException();
-        public void ExportLogs(string path, LogLevel minLevel) => throw new NotSupportedException();
     }
 }

@@ -47,55 +47,6 @@ public sealed class SettingsServiceTests
         Assert.Equal("corp:3128", saved.PreviousProxySettings?.ProxyServer);
     }
 
-    [Fact]
-    public void ScreenSave_WithStaleSnapshot_KeepsSelectionUpdateMetadataAndRuntimeFlags()
-    {
-        var port = new MemoryStatePort();
-        var settings = new SettingsService(new AppStateStore(port), new FakePathPolicyPort());
-        var stale = settings.GetState();
-        port.Save(new AppStateModel
-        {
-            ActiveProfileId = "p2",
-            ProxyWasEnabledByUs = true,
-            PreviousProxySettings = new ProxySettingsSnapshotModel(),
-            UpdateDismissedModalForTag = "v9.9.9",
-            LastRecordedAppSemver = "9.9.9"
-        });
-        var controller = new ConnectionScreenController(new NoProfiles(), settings);
-
-        stale.DohServer = "1.1.1.1";
-        controller.Save(stale);
-
-        var saved = port.Snapshot();
-        Assert.Equal("1.1.1.1", saved.DohServer);
-        Assert.Equal("p2", saved.ActiveProfileId);
-        Assert.True(saved.ProxyWasEnabledByUs);
-        Assert.NotNull(saved.PreviousProxySettings);
-        Assert.Equal("v9.9.9", saved.UpdateDismissedModalForTag);
-        Assert.Equal("9.9.9", saved.LastRecordedAppSemver);
-    }
-
-    [Fact]
-    public void RuleSetMarkDownloaded_UpdatesOnlyThatRuleSetInLatestState()
-    {
-        var port = new MemoryStatePort();
-        port.Save(new AppStateModel
-        {
-            UserRuleSets = [new() { Tag = "builtin", BuiltinId = "catalog", FileName = "b.srs", Name = "B" }]
-        });
-        var settings = new SettingsService(new AppStateStore(port), new FakePathPolicyPort());
-        var stale = settings.GetState();
-        settings.UpdateState(s => s.CloseBehavior = AppCloseBehavior.Exit);
-        var controller = new RuleSetManagementController(settings);
-
-        controller.MarkDownloaded(stale, stale.UserRuleSets[0], " \"etag\" ");
-
-        var saved = port.Snapshot();
-        Assert.Equal("exit", saved.CloseBehavior.ToValue());
-        Assert.Equal("\"etag\"", saved.UserRuleSets[0].RemoteEtag);
-        Assert.NotNull(saved.UserRuleSets[0].LastDownloadedUtc);
-    }
-
     private sealed class MemoryStatePort : IStateStorePort
     {
         private string _json = JsonSerializer.Serialize(new AppStateModel());
@@ -116,14 +67,5 @@ public sealed class SettingsServiceTests
             normalizedPath = rawPath ?? string.Empty;
             return !string.IsNullOrWhiteSpace(normalizedPath);
         }
-    }
-
-    private sealed class NoProfiles : IProfileService
-    {
-        public IReadOnlyList<VpnProfile> GetProfiles() => [];
-        public IReadOnlyList<VpnProfile> ImportFromVlessLink(string link) => throw new NotSupportedException();
-        public IReadOnlyList<VpnProfile> DeleteProfile(string profileId) => throw new NotSupportedException();
-        public bool TryParseVlessLink(string link, out VpnProfile profile) => throw new NotSupportedException();
-        public VpnProfile UpsertFromVlessLink(string link, string? nameOverride) => throw new NotSupportedException();
     }
 }

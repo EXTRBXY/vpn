@@ -82,15 +82,6 @@ public sealed class InMemoryLogStore
         }
     }
 
-    public bool TryGetVersion(out int version)
-    {
-        lock (_gate)
-        {
-            version = _version;
-            return _entries.Count != 0;
-        }
-    }
-
     public string SnapshotText(LogLevel minLevel) => SnapshotText(minLevel, out _);
 
     public string SnapshotText(LogLevel minLevel, out int version)
@@ -113,8 +104,6 @@ public sealed class InMemoryLogStore
         }
         return sb.ToString();
     }
-
-    public string SnapshotAll() => SnapshotText(LogLevel.Trace);
 
     public IReadOnlyList<LogLine> SnapshotLines()
     {

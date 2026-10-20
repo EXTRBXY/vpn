@@ -16,7 +16,7 @@
     <PublishTrimmed>false</PublishTrimmed>
     <!-- PDB внутри exe: служба — один файл в каталоге установки. -->
     <DebugType>embedded</DebugType>
-    <!-- Infrastructure пока тянет WinForms (REFACTORING.md 3.6): без сжатия exe службы ~160 МБ. -->
+    <!-- С шага 9 Infrastructure не тянет WindowsDesktop: exe ~35 МБ со сжатием. -->
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
 

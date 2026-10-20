@@ -48,39 +48,6 @@ public sealed class ConnectionScreenController : IConnectionScreenController
         return new ConnectionScreenSnapshot(state, profiles, selected);
     }
 
-    public void Save(AppStateModel state)
-    {
-        NormalizeCollections(state);
-        _settingsService.UpdateState(current => CopyEditableSettings(state, current));
-    }
-
-    /// <summary>
-    /// Переносит из снимка экрана только то, что пользователь редактирует в окне настроек. Выбранный профиль
-    /// (меняется через <see cref="SelectProfile"/>), порт mixed-inbound, метаданные обновлений и runtime-флаги
-    /// подключения берутся из актуального состояния, чтобы устаревший снимок их не затёр.
-    /// </summary>
-    private static void CopyEditableSettings(AppStateModel source, AppStateModel target)
-    {
-        target.Mode = source.Mode;
-        target.TunAppProcessPaths = source.TunAppProcessPaths.ToList();
-        target.UserRuleSets = source.UserRuleSets.ToList();
-        target.ProxyOverride = source.ProxyOverride;
-        target.TunInterfaceName = source.TunInterfaceName;
-        target.TunAddressCidr = source.TunAddressCidr;
-        target.TunMtu = source.TunMtu;
-        target.TunStack = source.TunStack;
-        target.TunAutoRoute = source.TunAutoRoute;
-        target.TunStrictRoute = source.TunStrictRoute;
-        target.DnsMode = source.DnsMode;
-        target.DohServer = source.DohServer;
-        target.DohPath = source.DohPath;
-        target.DohSni = source.DohSni;
-        target.DnsDetour = source.DnsDetour;
-        target.DebugLogs = source.DebugLogs;
-        target.SingBoxLogLevel = source.SingBoxLogLevel;
-        target.CloseBehavior = source.CloseBehavior;
-    }
-
     public void SelectMode(AppStateModel state, ConnectionMode mode)
     {
         var normalized = ConnectionPolicy.Modes.Normalize(mode);

@@ -51,7 +51,7 @@ public static class ApplicationServicesFactory
             parser,
             settingsService,
             logPort);
-        var diagnosticsService = new DiagnosticsService(diagnosticsPort, logPort, stateStore);
+        var diagnosticsService = new DiagnosticsService(diagnosticsPort, stateStore);
         var storageHealthService = new StorageHealthService(storageHealthPort, logPort);
         var ruleSetFileService = new RuleSetFileService(appPaths);
         var appUpdateService = new GitHubAppUpdateService();
@@ -85,8 +85,7 @@ public static class ApplicationServicesFactory
             InstallerLaunchService = installerLaunchService,
             PathPolicy = pathPolicy,
             Log = logPort,
-            AppDiscovery = CreateAppDiscovery(),
-            SharedLogStore = logStore
+            AppDiscovery = CreateAppDiscovery()
         };
     }
 

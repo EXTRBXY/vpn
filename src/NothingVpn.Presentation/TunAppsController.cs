@@ -28,20 +28,4 @@ public sealed class TunAppsController : ITunAppsController
         state.TunAppProcessPaths = normalized.ToList();
         return normalized;
     }
-
-    public IReadOnlyList<string> AddAndSave(
-        AppStateModel state,
-        IEnumerable<string>? currentPaths,
-        IEnumerable<string>? addedPaths) =>
-        Save(state, (currentPaths ?? Array.Empty<string>()).Concat(addedPaths ?? Array.Empty<string>()));
-
-    public IReadOnlyList<string> RemoveAndSave(
-        AppStateModel state,
-        IEnumerable<string>? currentPaths,
-        string? removedPath)
-    {
-        var normalizedRemoved = TryNormalize(removedPath, out var value) ? value : removedPath?.Trim();
-        return Save(state, (currentPaths ?? Array.Empty<string>()).Where(path =>
-            !string.Equals(path, normalizedRemoved, StringComparison.OrdinalIgnoreCase)));
-    }
 }
