@@ -25,9 +25,9 @@ Desktop.ini
 ## Logs / local app data artifacts
 *.log
 
-## Optional: if you keep external binaries in repo, remove these lines.
-NothingVpn.Tray/bin/**/sing-box.exe
+## Runtime binaries (publish takes them from -RuntimeAssetsDirectory or an installed client)
+sing-box.exe
+wintun.dll
 
-## Inno Setup output (default OutputBaseFilename)
-installer/Output/
+## Installer compiled outside artifacts/ (e.g. ISCC run by hand)
 NothingVpnSetup.exe

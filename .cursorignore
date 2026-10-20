@@ -6,8 +6,8 @@
 ## Publish outputs
 **/publish/**
 
-## Installer outputs
-installer/Output/**
+## Build outputs and installer
+artifacts/**
 NothingVpnSetup.exe
 
 ## Large binaries (avoid indexing)

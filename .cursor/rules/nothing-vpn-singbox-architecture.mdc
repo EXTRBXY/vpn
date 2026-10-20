@@ -10,9 +10,14 @@ alwaysApply: true
 - Приоритеты по убыванию: безопасность, корректность, соответствие документации `sing-box`, производительность, UX.
 
 ## Технологический контекст проекта
-- UI/оркестрация: `C#`, `.NET 8`, `WinForms`.
-- Ядро туннелирования: внешний процесс `sing-box.exe`.
-- Упаковка: `Inno Setup`.
+- Подробные правила, инварианты и команды — [CLAUDE.md](../../CLAUDE.md); документация — [docs/README.md](../../docs/README.md);
+  перед рефакторингом — [docs/REFACTORING.md](../../docs/REFACTORING.md). Это правило их не дублирует.
+- Интерфейс: `C#`, `.NET 8`, `WPF` (`NothingVpn.Desktop.Wpf`): системный прокси WinINET, трей, state.json.
+- Ядро: служба Windows `NothingVpn` (`NothingVpn.Service`, LocalSystem) строит конфиг и запускает `sing-box.exe`;
+  интерфейс передаёт ей типизированный запрос `EngineConnectRequest` через порт `IVpnEngine` по каналу
+  `NothingVpn.Service` ([ADR-0001](../../docs/adr/0001-privileged-service.md)). Интерфейс себя не повышает.
+- Упаковка: `Inno Setup`, per-machine установка в `%ProgramFiles%\NothingVpn` вместе со службой.
+- Версия продукта задаётся только в `Directory.Build.props`.
 
 ## Непереговорные принципы
 - Не добавляй костыли и обходы, которые дублируют или ломают нативную модель `sing-box` (inbounds/outbounds/route/dns/rule_set).
@@ -22,11 +27,13 @@ alwaysApply: true
 
 ## Архитектурный стандарт
 - Строгое разделение слоёв:
-  - `Domain`: профили, политика маршрутизации, валидация.
-  - `Application`: use-cases (connect/disconnect/apply config/test).
-  - `Infrastructure`: генерация JSON `sing-box`, запуск процесса, DPAPI, WinInet/Windows API.
-  - `UI`: только отображение состояния и команды пользователя.
-- Зависимости направлены внутрь: UI -> Application -> Domain; Infrastructure подключается через интерфейсы.
+  - `Domain`: политики маршрутизации, DNS, TUN, значения по умолчанию и нормализация.
+  - `Application`: use-case сервисы, модели, порты `I*Port`, граница ядра `IVpnEngine`.
+  - `Presentation`: UI-независимые контроллеры экранов.
+  - `Infrastructure`: генерация JSON `sing-box`, запуск процесса, DPAPI, WinINET, канал службы, обновления.
+  - `Desktop.Wpf`: только отображение и команды; Infrastructure — лишь в `Composition/DesktopCompositionRoot`.
+  - `Service`: служба Windows; composition root ядра — `ServiceEngineHost`.
+- Зависимости направлены внутрь: WPF -> Presentation -> Application -> Domain; Infrastructure реализует порты.
 - Каждая новая фича обязана иметь точку расширения, а не правку «в лоб» существующей ветки if/else.
 
 ## Правила интеграции с sing-box
@@ -42,7 +49,7 @@ alwaysApply: true
 - Секреты и чувствительные данные хранить только защищённо (DPAPI/эквивалент).
 - Никогда не логировать ключи, UUID, токены, приватные endpoint-данные в открытом виде.
 - Любая диагностическая информация должна проходить редактирование/маскирование.
-- Минимизировать привилегии и время работы в повышенных правах.
+- Права администратора — только у службы; интерфейс работает без повышения и проверяет, что сервер канала — служба LocalSystem.
 
 ## Производительность и надёжность
 - Избегать лишних перезапусков `sing-box`: обновления конфигурации делать атомарно и предсказуемо.

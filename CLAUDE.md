@@ -22,7 +22,7 @@ dotnet test NothingVpn.sln -c Release --no-build --filter "FullyQualifiedName~Si
 .\build\Build.ps1 -Target Installer      # Inno Setup 6 поверх существующего publish
 ```
 
-Базовая линия (20.10.2026, после шага 9): сборка без предупреждений, 462 теста проходят, пропущенных нет.
+Базовая линия (20.10.2026, после шага 10 — рефакторинг завершён): сборка без предупреждений, 462 теста проходят, пропущенных нет.
 Только Windows. `Publish` берёт `sing-box.exe`/`wintun.dll` из `-RuntimeAssetsDirectory` или из установленного
 клиента (`%ProgramFiles%\NothingVpn`, затем старый `%LOCALAPPDATA%\Programs\NothingVpn`). Ничего не устанавливайте и
 не регистрируйте службу на машине пользователя; установку проверяет он сам по `docs/SERVICE-INSTALL-CHECKLIST.md`.
@@ -42,6 +42,7 @@ src/NothingVpn.Service         служба Windows NothingVpn (LocalSystem): я
                                per-user установки от имени пользователя
 tests/NothingVpn.Application.Tests  единственный тестовый проект, покрывает все слои включая WPF
 build/                         Build.ps1, installer/NothingVpn.iss (per-machine, служба)
+Directory.Build.props          единственный источник версии продукта
 ```
 
 Ключевые файлы:
@@ -142,5 +143,7 @@ build/                         Build.ps1, installer/NothingVpn.iss (per-machine,
 - Нормализуйте и валидируйте входные значения через Domain-политики, а не локально.
 - Сетевые HTTP-клиенты ставят явный `UseProxy = false`, если запрос не должен идти через собственный VPN.
 - Тестовые фейки объявляются внутри тестового класса. Для WPF-тестов нужен STA-поток (см. `WpfSettingsBindingTests`).
-- Версия (`0.6.8`) захардкожена в двух csproj (WPF, Service), `Build.ps1`, `.iss`, `release.yml` — при смене версии менять везде.
-- Релиз: push тега `vX.Y.Z` → GitHub Actions собирает и публикует установщик.
+- Версия продукта — только `Version` в `Directory.Build.props` (все сборки; `Build.ps1` передаёт её в publish и
+  Inno Setup, у `.iss` своей копии нет). Не задавайте версию в csproj.
+- Релиз: сменить версию в `Directory.Build.props`, влить в `main`, push тега `vX.Y.Z` с той же версией → GitHub
+  Actions сверяет тег с props, собирает и публикует установщик (DEVELOPMENT.md, «Версия и релиз»).

@@ -1,0 +1,14 @@
+<Project>
+  <!--
+    Единственный источник версии продукта. Её берут все сборки решения (клиент, служба, библиотеки и тесты):
+    клиент и служба ставятся одним установщиком и обязаны совпадать, а у библиотек нет собственного цикла выпуска.
+    build\Build.ps1 читает Version отсюда и передаёт её в dotnet publish и Inno Setup; release.yml сверяет её с тегом.
+    Новый релиз: поменять Version здесь, затем push тега vX.Y.Z (см. DEVELOPMENT.md, «Версия и релиз»).
+  -->
+  <PropertyGroup>
+    <Version>0.6.8</Version>
+    <InformationalVersion>$(Version)</InformationalVersion>
+    <!-- Без «+<commit>»: ProductVersion exe равен версии релиза, её проверяет release.yml. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+</Project>

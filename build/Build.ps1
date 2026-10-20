@@ -72,9 +72,22 @@ function Invoke-WpfSmokeTest {
     Write-Host 'WPF smoke test: passed'
 }
 
+function Get-ProductVersion {
+    # The single source of the product version is Directory.Build.props; -Version overrides it for one build.
+    if (-not [string]::IsNullOrWhiteSpace($Version)) { return $Version.Trim() }
+    $props = Join-Path $script:RepoRoot 'Directory.Build.props'
+    $value = ([xml](Get-Content -LiteralPath $props -Raw)).Project.PropertyGroup.Version |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+        Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        throw "Version is not set in $props"
+    }
+    return $value.Trim()
+}
+
 function Get-VersionArguments {
-    if ([string]::IsNullOrWhiteSpace($Version)) { return @() }
-    return @("-p:Version=$Version", "-p:InformationalVersion=$Version")
+    $productVersion = Get-ProductVersion
+    return @("-p:Version=$productVersion", "-p:InformationalVersion=$productVersion")
 }
 
 function Copy-RuntimeAssets {
@@ -134,7 +147,7 @@ function Invoke-Publish {
             throw "Publish output not found: $output"
         }
     }
-    Write-Host "Publish output: $script:PublishDirectory"
+    Write-Host "Publish output: $script:PublishDirectory (version $(Get-ProductVersion))"
 }
 
 function Resolve-InnoCompiler {
@@ -168,7 +181,7 @@ function Invoke-Installer {
 
     New-Item -ItemType Directory -Path $script:InstallerOutputDirectory -Force | Out-Null
     $compiler = Resolve-InnoCompiler
-    $effectiveVersion = if ([string]::IsNullOrWhiteSpace($Version)) { '0.6.8' } else { $Version }
+    $effectiveVersion = Get-ProductVersion
     & $compiler `
         "/DMyAppVersion=$effectiveVersion" `
         "/DMyAppURL=$RepositoryUrl" `
@@ -189,7 +202,7 @@ function Invoke-Installer {
         $checksumPath,
         "$checksum *$(Split-Path -Leaf $installer)`n",
         [System.Text.UTF8Encoding]::new($false))
-    Write-Host "Installer output: $installer"
+    Write-Host "Installer output: $installer (version $effectiveVersion)"
     Write-Host "Installer SHA-256: $checksum"
 }
 
