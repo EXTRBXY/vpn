@@ -72,11 +72,30 @@ public sealed class WpfSettingsBindingTests
                 Assert.Equal("block", vm.RuleSets.BuiltinRuleSets[0].Action.ToValue());
                 Assert.Equal("direct", vm.RuleSets.BuiltinRuleSets[1].Action.ToValue());
 
+                TextBox XmuxBox(string path) => Descendants<TextBox>(view).Single(x =>
+                    x.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path.Path == path
+                    && ReferenceEquals(x.DataContext, vm.Xray));
+                XmuxBox(nameof(XraySettingsViewModel.MaxConcurrency)).Text = "0";
+                XmuxBox(nameof(XraySettingsViewModel.MaxConnections)).Text = " 4 ";
+                Pump(view);
+
                 var save = Descendants<Button>(view).Single(x => Equals(x.Content, "Сохранить все настройки"));
                 save.Command.Execute(null);
                 Pump(view);
                 Assert.Equal(1, h.Store.SaveCalls);
                 Assert.Equal(1400, h.Store.State.TunMtu);
+                Assert.Equal("0", h.Store.State.XhttpXmuxMaxConcurrency);
+                Assert.Equal("4", h.Store.State.XhttpXmuxMaxConnections);
+
+                XmuxBox(nameof(XraySettingsViewModel.MaxConcurrency)).Text = "16";
+                Pump(view);
+                save.Command.Execute(null);
+                Pump(view);
+                Assert.Equal(1, h.Store.SaveCalls);
+                Descendants<Button>(view).Single(x => ReferenceEquals(x.Command, vm.Xray.ResetCommand)).Command.Execute(null);
+                Pump(view);
+                Assert.Equal(XhttpPolicy.DefaultXmuxMaxConcurrency, XmuxBox(nameof(XraySettingsViewModel.MaxConcurrency)).Text);
+                Assert.Equal(XhttpPolicy.DefaultXmuxMaxConnections, XmuxBox(nameof(XraySettingsViewModel.MaxConnections)).Text);
                 Assert.Equal(2, list.Items.Count);
                 Assert.Equal("block", h.Store.State.UserRuleSets[0].Action.ToValue());
                 CheckHomeScreenBindings(h);
@@ -357,8 +376,8 @@ public sealed class WpfSettingsBindingTests
     {
         public ProfileManagementSnapshot Load() => new([screen.Profile], "p1", null);
         public bool TryParse(string link, out VpnProfile profile) => throw new NotSupportedException();
-        public VpnProfile Add(string link, string? nameOverride) => throw new NotSupportedException();
-        public VpnProfile Edit(string existingProfileId, string link, string? nameOverride) => throw new NotSupportedException();
+        public VpnProfile Add(string link, string? nameOverride, OutboundEngine engine) => throw new NotSupportedException();
+        public VpnProfile Edit(string existingProfileId, string link, string? nameOverride, OutboundEngine engine) => throw new NotSupportedException();
         public ProfileManagementSnapshot Delete(string profileId) => throw new NotSupportedException();
     }
 

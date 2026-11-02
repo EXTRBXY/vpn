@@ -58,8 +58,8 @@ UI / Presentation ──► VpnConnectionService (оркестрация, про
   DNS (`EngineDnsSettings`), TUN (`EngineTunSettings`), пути `.exe` для `tun_apps`, включённые rule-set
   (`EngineRuleSet`: tag, простое имя `.srs`, действие, для службы — содержимое). Ни готового JSON sing-box, ни путей, куда ядро пишет.
   `ProxyOverride` не передаётся: это настройка WinINET, её применяет интерфейс.
-- **Версия контракта** — `EngineContract.Version` (сейчас 2) в каждом запросе и статусе; ядро отклоняет чужую версию
-  ошибкой «Обновите приложение».
+- **Версия контракта** — `EngineContract.Version` (сейчас 3) в каждом запросе и статусе; ядро отклоняет чужую версию
+  ошибкой «Обновите приложение». v3 — движок профиля, поля XHTTP и XMUX по умолчанию (ADR-0002).
 - **Rule-set**: внутри процесса — по ссылке, имя файла в общем `rulesets\` пользователя (`ReferencedRuleSetStore`).
   В службу — содержимым (контракт v2): его дописывает `PipeVpnEngine`, служба пишет файлы в свой каталог
   (`ServiceRuleSetStore`). Ядро получает имена файлов через порт `IEngineRuleSetStore`.
@@ -74,6 +74,25 @@ UI / Presentation ──► VpnConnectionService (оркестрация, про
 mixed-inbound. При ошибке сам останавливает sing-box и удаляет конфиг. О state.json, WinINET и правах интерфейса ядро не знает.
 Нормализация идемпотентна, поэтому конфиг из запроса совпадает с конфигом из состояния напрямую
 (`EngineContractTests` прогоняет матрицу эталонов генератора через JSON запроса).
+
+### Движок выхода: sing-box или Xray ([ADR-0002](adr/0002-xray-outbound-engine.md))
+
+```text
+приложения ─► sing-box (mixed / TUN, DNS, route, rule-set) ─► outbound "proxy":
+                ├─ vless → сервер                                   (движок sing-box)
+                └─ socks → 127.0.0.1:<порт> ─► Xray ─► vless → сервер (движок Xray: XHTTP, REALITY)
+```
+
+- sing-box всегда вход: режимы, DNS, rule-set и `tun_apps` одинаковы для обоих движков, отдельных наборов настроек
+  нет. Специфичное для Xray — только XMUX по умолчанию (раздел настроек «Xray (XHTTP)»).
+- Движок выбирает `OutboundEnginePolicy.Resolve` (Domain) по предпочтению профиля `engine` (`auto` | `sing-box` |
+  `xray`, выбирается в окне профиля), транспорту и безопасности. Ядро вызывает политику при валидации запроса, список
+  профилей показывает её результат (`Presentation/ProfileEngineLabel`).
+- Внешний движок — порт `IOutboundEnginePort` (`Infrastructure/Ports/XrayOutboundPort`): конфиг, `xray run -test`,
+  запуск в Job Object, событие выхода. `SingBoxVpnEngine` запускает его первым, ждёт порт SOCKS, затем sing-box;
+  выход любого из процессов останавливает оба. Новый движок — ещё одна реализация порта и значение `OutboundEngine`.
+- Общий код процессов — `Infrastructure/Windows/` (`ChildProcess`, `SupervisedProcess`, `ExecutableLocator`) и
+  `Infrastructure/Diagnostics/ProcessOutputPump` (журнал stdout/stderr с маскированием).
 
 ### Служба и транспорт по каналу (шаг 7а)
 

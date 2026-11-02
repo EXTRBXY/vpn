@@ -9,38 +9,54 @@ namespace NothingVpn.Application.Engine;
 /// <summary>
 /// Ядро поверх <see cref="ISingBoxPort"/>: валидация запроса, конфиг, check/run/stop, статус процесса, выход
 /// процесса. Работает внутри процесса интерфейса и в службе (с её портами и <see cref="IEngineRuleSetStore"/>).
+/// Если профилю нужен внешний движок (<see cref="OutboundEnginePolicy"/>, ADR-0002), запускает его первым и
+/// направляет в него выход sing-box; выход любого из процессов останавливает оба.
 /// Ничего не знает о state.json, системном прокси и UAC.
 /// </summary>
 public sealed class SingBoxVpnEngine : IVpnEngine
 {
     private static readonly TimeSpan SingBoxStartupTimeout = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan LocalMixedListenTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan OutboundStartupTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan OutboundProbeTimeout = TimeSpan.FromMilliseconds(300);
 
     private readonly ISingBoxPort _singBoxPort;
     private readonly IDiagnosticsPort _diagnosticsPort;
     private readonly IPathPolicyPort _pathPolicy;
     private readonly ILogPort _logPort;
     private readonly IEngineRuleSetStore _ruleSets;
+    private readonly IReadOnlyList<IOutboundEnginePort> _outboundEngines;
     private readonly SemaphoreSlim _lock = new(1, 1);
     private EngineStatus _session = EngineStatus.Stopped;
+    private IOutboundEnginePort? _activeOutbound;
 
     public SingBoxVpnEngine(
         ISingBoxPort singBoxPort,
         IDiagnosticsPort diagnosticsPort,
         IPathPolicyPort pathPolicy,
         ILogPort logPort,
-        IEngineRuleSetStore? ruleSets = null)
+        IEngineRuleSetStore? ruleSets = null,
+        IEnumerable<IOutboundEnginePort>? outboundEngines = null)
     {
         _singBoxPort = singBoxPort;
         _ruleSets = ruleSets ?? ReferencedRuleSetStore.Instance;
         _diagnosticsPort = diagnosticsPort;
         _pathPolicy = pathPolicy;
         _logPort = logPort;
+        _outboundEngines = [.. outboundEngines ?? []];
         _singBoxPort.ProcessExited += (_, _) =>
         {
             try { OnProcessExited(); }
             catch { }
         };
+        foreach (var outbound in _outboundEngines)
+        {
+            outbound.ProcessExited += (_, _) =>
+            {
+                try { OnOutboundExited(outbound); }
+                catch { }
+            };
+        }
     }
 
     public event EventHandler<EngineStatus>? StatusChanged;
@@ -50,24 +66,28 @@ public sealed class SingBoxVpnEngine : IVpnEngine
     public async Task<EngineStatus> ConnectAsync(EngineConnectRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var (profile, state) = Validate(request);
+        var (profile, state, engine) = Validate(request);
 
         await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (_singBoxPort.IsRunning)
+            if (_singBoxPort.IsRunning || _activeOutbound is not null)
                 StopCore();
 
             try
             {
                 ApplyRuleSetFiles(request, state);
-                var configPath = _singBoxPort.WriteConfig(profile, state);
+                _logPort.Clear();
+                var upstream = await StartOutboundAsync(engine, profile, state, cancellationToken).ConfigureAwait(false);
+                var configPath = _singBoxPort.WriteConfig(profile, state, upstream);
                 _singBoxPort.ValidateConfig(configPath);
                 _singBoxPort.Start(configPath);
                 await WaitForSingBoxRunningAsync(cancellationToken).ConfigureAwait(false);
 
                 if (!_singBoxPort.IsRunning)
-                    throw new InvalidOperationException(DescribeSingBoxStartupFailure());
+                    throw new InvalidOperationException(DescribeStartupFailure("sing-box"));
+                if (_activeOutbound is { IsRunning: false } outbound)
+                    throw new InvalidOperationException(DescribeStartupFailure(OutboundEnginePolicy.DisplayName(outbound.Engine)));
 
                 if (!ConnectionPolicy.IsTunMode(state.Mode))
                 {
@@ -125,12 +145,14 @@ public sealed class SingBoxVpnEngine : IVpnEngine
     /// Не доверяет нормализации интерфейса: прогоняет запрос через те же Domain-политики, что и сохранение
     /// настроек. Нормализация идемпотентна, поэтому для уже нормализованного запроса конфиг тот же.
     /// </summary>
-    private (Models.VpnProfile Profile, Models.AppStateModel State) Validate(EngineConnectRequest request)
+    private (Models.VpnProfile Profile, Models.AppStateModel State, OutboundEngine Engine) Validate(EngineConnectRequest request)
     {
         EngineContract.EnsureCompatible(request.ContractVersion);
 
         var profile = EngineRequestMapper.ToProfile(request);
         VlessEndpointPolicy.EnsureConnectable(profile.Id, profile.Uuid, profile.Host, profile.Port);
+        XhttpProfileValidator.Validate(profile);
+        var engine = OutboundEnginePolicy.Resolve(profile.Engine, profile.Type, profile.Security);
 
         var state = EngineRequestMapper.ToState(request);
         AppStateNormalizer.Normalize(state, _pathPolicy);
@@ -140,7 +162,7 @@ public sealed class SingBoxVpnEngine : IVpnEngine
         RuleSetPolicyValidator.ValidateEnabled(ConnectionSettingsMapper.ToRuleSetEntries(state.UserRuleSets));
         RuleSetPolicyValidator.EnsureContentWithinLimits(
             (request.RuleSets ?? []).Where(rs => rs.Content is not null).Select(rs => rs.Content!.Length));
-        return (profile, state);
+        return (profile, state, engine);
     }
 
     /// <summary>
@@ -157,6 +179,41 @@ public sealed class SingBoxVpnEngine : IVpnEngine
             state.UserRuleSets[i].FileName = fileNames[i];
     }
 
+    private async Task<LocalSocksUpstream?> StartOutboundAsync(
+        OutboundEngine engine,
+        Models.VpnProfile profile,
+        Models.AppStateModel state,
+        CancellationToken cancellationToken)
+    {
+        if (engine == OutboundEngine.SingBox)
+            return null;
+
+        var name = OutboundEnginePolicy.DisplayName(engine);
+        var outbound = _outboundEngines.FirstOrDefault(e => e.Engine == engine)
+            ?? throw new InvalidOperationException($"Движок {name} недоступен в этой сборке.");
+        _activeOutbound = outbound;
+        var upstream = outbound.Start(profile, state);
+
+        var deadline = Environment.TickCount64 + (long)OutboundStartupTimeout.TotalMilliseconds;
+        while (Environment.TickCount64 < deadline)
+        {
+            if (!outbound.IsRunning)
+                throw new InvalidOperationException(DescribeStartupFailure(name));
+
+            var listen = await _diagnosticsPort.CanReachTcpAsync(
+                "127.0.0.1",
+                upstream.Port,
+                OutboundProbeTimeout,
+                cancellationToken).ConfigureAwait(false);
+            if (listen.Success)
+                return upstream;
+
+            await Task.Delay(100, cancellationToken).ConfigureAwait(false);
+        }
+
+        throw new InvalidOperationException($"{name} не начал принимать соединения за {OutboundStartupTimeout.TotalSeconds:0} с.");
+    }
+
     private void StopCore()
     {
         try
@@ -165,10 +222,19 @@ public sealed class SingBoxVpnEngine : IVpnEngine
         }
         finally
         {
+            StopOutbound();
             Volatile.Write(ref _session, EngineStatus.Stopped);
             _singBoxPort.TryDeleteLastConfig();
             ClearRuleSets();
         }
+    }
+
+    private void StopOutbound()
+    {
+        var outbound = _activeOutbound;
+        _activeOutbound = null;
+        try { outbound?.Stop(); }
+        catch { }
     }
 
     private void ClearRuleSets()
@@ -188,9 +254,34 @@ public sealed class SingBoxVpnEngine : IVpnEngine
             if (_singBoxPort.IsRunning)
                 return;
 
+            StopOutbound();
             Volatile.Write(ref _session, EngineStatus.Stopped);
             _singBoxPort.TryDeleteLastConfig();
             ClearRuleSets();
+        }
+        finally
+        {
+            _lock.Release();
+        }
+
+        StatusChanged?.Invoke(this, GetStatus());
+    }
+
+    private void OnOutboundExited(IOutboundEnginePort outbound)
+    {
+        if (!_lock.Wait(0))
+            return;
+
+        try
+        {
+            if (!ReferenceEquals(_activeOutbound, outbound))
+                return;
+
+            _logPort.Append(
+                LogLevel.Error,
+                AppLogSources.Connection,
+                $"{OutboundEnginePolicy.DisplayName(outbound.Engine)} завершился, подключение остановлено.");
+            StopCore();
         }
         finally
         {
@@ -213,11 +304,11 @@ public sealed class SingBoxVpnEngine : IVpnEngine
         }
     }
 
-    private string DescribeSingBoxStartupFailure()
+    private string DescribeStartupFailure(string engineName)
     {
         var detail = _logPort.TryGetLatestMessage(LogLevel.Fatal) ?? _logPort.TryGetLatestMessage(LogLevel.Error);
         return detail is null
-            ? "sing-box завершился сразу после запуска. Откройте логи в приложении."
-            : $"sing-box завершился сразу после запуска: {detail}";
+            ? $"{engineName} завершился сразу после запуска. Откройте логи в приложении."
+            : $"{engineName} завершился сразу после запуска: {detail}";
     }
 }

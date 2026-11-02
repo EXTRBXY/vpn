@@ -1,5 +1,6 @@
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Services;
+using NothingVpn.Domain.Models;
 using NothingVpn.Presentation;
 
 namespace NothingVpn.Application.Tests;
@@ -12,7 +13,7 @@ public sealed class ProfileManagementControllerTests
         var service = new FakeProfileService();
         var controller = new ProfileManagementController(service, null);
 
-        var saved = controller.Add("vless://new", "New");
+        var saved = controller.Add("vless://new", "New", OutboundEngine.Auto);
         var snapshot = controller.Load();
 
         Assert.Equal(saved.Id, snapshot.ActiveProfileId);
@@ -25,7 +26,7 @@ public sealed class ProfileManagementControllerTests
         var service = new FakeProfileService("old");
         var controller = new ProfileManagementController(service, "old");
 
-        var saved = controller.Edit("old", "vless://new", null);
+        var saved = controller.Edit("old", "vless://new", null, OutboundEngine.Auto);
         var snapshot = controller.Load();
 
         Assert.Equal("new", saved.Id);
@@ -70,7 +71,7 @@ public sealed class ProfileManagementControllerTests
             return true;
         }
 
-        public VpnProfile UpsertFromVlessLink(string link, string? nameOverride)
+        public VpnProfile UpsertFromVlessLink(string link, string? nameOverride, OutboundEngine engine)
         {
             var profile = IdToProfile(link.EndsWith("new", StringComparison.Ordinal) ? "new" : "saved");
             profile.Name = nameOverride ?? profile.Id;

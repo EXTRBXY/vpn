@@ -186,6 +186,11 @@ UAC-перезапуска и механизма UPDATE-HANDOFF.
   `%ProgramData%\NothingVpn\rulesets` под именем `NN-<sha256>.srs` и удаляются при остановке. Конфиг службы отличается
   от конфига внутри процесса только путями `route.rule_set[].path`
   (`ServiceChannelTests.ServiceConfig_DiffersFromInProcessOnlyInRuleSetPaths`).
+- **Контракт v3** ([ADR-0002](0002-xray-outbound-engine.md)): в `EngineProfile` — `engine` (предпочтение движка),
+  `xhttpPath`, `xhttpHost`, `xhttpMode`, `xhttpExtra` (типизированный, без сырого JSON); в запросе — `xmux`
+  (`EngineXmuxSettings`, XMUX по умолчанию из настроек). Служба сама выбирает движок (`OutboundEnginePolicy`),
+  проверяет поля XHTTP (`XhttpProfileValidator`) и ищет `xray.exe` только в каталоге установки. Клиент v2 и служба v3
+  (и наоборот) не соединяются: ошибка «Обновите приложение», как для любой смены версии.
 
 #### Протокол канала
 
@@ -199,7 +204,7 @@ UAC-перезапуска и механизма UPDATE-HANDOFF.
   (`EngineConnectRequest`), `status` (`EngineStatus`), `error` (`code`, `message`) или `log` (`timestampUtc`, `level`
   со строками уровней как в state.json, `source`, `message`). Пустые поля не пишутся. Поля `contractVersion`, `type`,
   `id`, `error` не меняются между версиями — по ним любая версия распознаёт собеседника другой версии.
-- **Версия**: `contractVersion` в каждом сообщении равен `EngineContract.Version` (сейчас 2). На чужую версию служба
+- **Версия**: `contractVersion` в каждом сообщении равен `EngineContract.Version` (сейчас 3). На чужую версию служба
   отвечает `error` с кодом `version` и текстом «Несовместимая версия протокола ядра (…). Обновите приложение.» и
   закрывает соединение; клиент, получив событие чужой версии, завершает запросы той же ошибкой.
 - **Команды** (клиент → служба; ответ — `result` со `status` или `error` с тем же `id`):

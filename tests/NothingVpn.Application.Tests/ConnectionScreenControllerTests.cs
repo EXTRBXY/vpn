@@ -107,7 +107,7 @@ public sealed class ConnectionScreenControllerTests
         public IReadOnlyList<VpnProfile> ImportFromVlessLink(string link) => throw new NotSupportedException();
         public IReadOnlyList<VpnProfile> DeleteProfile(string profileId) => throw new NotSupportedException();
         public bool TryParseVlessLink(string link, out VpnProfile profile) => throw new NotSupportedException();
-        public VpnProfile UpsertFromVlessLink(string link, string? nameOverride) => throw new NotSupportedException();
+        public VpnProfile UpsertFromVlessLink(string link, string? nameOverride, OutboundEngine engine) => throw new NotSupportedException();
     }
 
     private sealed class FakeSettingsService : ISettingsService

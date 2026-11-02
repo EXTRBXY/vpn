@@ -53,6 +53,24 @@ public static class ConnectionSettingsMapper
             Action = x.Action
         });
 
+    public static XmuxSettings ToXmuxSettings(AppStateModel state) => new()
+    {
+        MaxConcurrency = state.XhttpXmuxMaxConcurrency,
+        MaxConnections = state.XhttpXmuxMaxConnections,
+        CMaxReuseTimes = state.XhttpXmuxCMaxReuseTimes,
+        HMaxRequestTimes = state.XhttpXmuxHMaxRequestTimes,
+        HMaxReusableSecs = state.XhttpXmuxHMaxReusableSecs
+    };
+
+    public static void ApplyXmuxSettings(AppStateModel state, XmuxSettings xmux)
+    {
+        state.XhttpXmuxMaxConcurrency = xmux.MaxConcurrency;
+        state.XhttpXmuxMaxConnections = xmux.MaxConnections;
+        state.XhttpXmuxCMaxReuseTimes = xmux.CMaxReuseTimes;
+        state.XhttpXmuxHMaxRequestTimes = xmux.HMaxRequestTimes;
+        state.XhttpXmuxHMaxReusableSecs = xmux.HMaxReusableSecs;
+    }
+
     public static ProxyConnectionSettings ToProxySettings(AppStateModel state) => new()
     {
         ProxyOverride = state.ProxyOverride

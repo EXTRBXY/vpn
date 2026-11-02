@@ -1,5 +1,6 @@
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Services;
+using NothingVpn.Domain.Models;
 
 namespace NothingVpn.Presentation;
 
@@ -21,19 +22,19 @@ public sealed class ProfileManagementController : IProfileManagementController
     public bool TryParse(string link, out VpnProfile profile) =>
         _profileService.TryParseVlessLink(link, out profile);
 
-    public VpnProfile Add(string link, string? nameOverride)
+    public VpnProfile Add(string link, string? nameOverride, OutboundEngine engine)
     {
-        var saved = _profileService.UpsertFromVlessLink(link, nameOverride);
+        var saved = _profileService.UpsertFromVlessLink(link, nameOverride, engine);
         if (_activeProfileId is null)
             _activeProfileId = NormalizeId(saved.Id);
         return saved;
     }
 
-    public VpnProfile Edit(string existingProfileId, string link, string? nameOverride)
+    public VpnProfile Edit(string existingProfileId, string link, string? nameOverride, OutboundEngine engine)
     {
         var oldId = NormalizeId(existingProfileId)
             ?? throw new ArgumentException("Profile id is required.", nameof(existingProfileId));
-        var saved = _profileService.UpsertFromVlessLink(link, nameOverride);
+        var saved = _profileService.UpsertFromVlessLink(link, nameOverride, engine);
         if (!string.Equals(saved.Id, oldId, StringComparison.OrdinalIgnoreCase))
             _profileService.DeleteProfile(oldId);
         if (string.Equals(_activeProfileId, oldId, StringComparison.OrdinalIgnoreCase))

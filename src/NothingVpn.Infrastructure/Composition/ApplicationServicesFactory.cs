@@ -99,7 +99,12 @@ public static class ApplicationServicesFactory
         if (UseInProcessEngine(Environment.GetEnvironmentVariable(EngineVariable)))
         {
             logPort.Append(Domain.Models.LogLevel.Warn, AppLogSources.App, $"Ядро внутри процесса интерфейса ({EngineVariable}=inprocess).");
-            return new SingBoxVpnEngine(singBoxPort, diagnosticsPort, pathPolicy, logPort);
+            return new SingBoxVpnEngine(
+                singBoxPort,
+                diagnosticsPort,
+                pathPolicy,
+                logPort,
+                outboundEngines: [new XrayOutboundPort(runtime.Paths.ConfigsDir, runtime.LogStore)]);
         }
 
         var engine = new PipeVpnEngine(logPort, runtime.Paths.RuleSetsDir);

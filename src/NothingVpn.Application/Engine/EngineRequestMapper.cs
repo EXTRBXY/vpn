@@ -28,7 +28,12 @@ public static class EngineRequestMapper
             RealityShortId = profile.RealityShortId,
             WsPath = profile.WsPath,
             WsHost = profile.WsHost,
-            GrpcServiceName = profile.GrpcServiceName
+            GrpcServiceName = profile.GrpcServiceName,
+            Engine = profile.Engine,
+            XhttpPath = profile.XhttpPath,
+            XhttpHost = profile.XhttpHost,
+            XhttpMode = profile.XhttpMode,
+            XhttpExtra = profile.XhttpExtra
         },
         Mode = state.Mode,
         LogLevel = state.SingBoxLogLevel,
@@ -49,6 +54,14 @@ public static class EngineRequestMapper
             Stack = state.TunStack,
             AutoRoute = state.TunAutoRoute,
             StrictRoute = state.TunStrictRoute
+        },
+        Xmux = new EngineXmuxSettings
+        {
+            MaxConcurrency = state.XhttpXmuxMaxConcurrency,
+            MaxConnections = state.XhttpXmuxMaxConnections,
+            CMaxReuseTimes = state.XhttpXmuxCMaxReuseTimes,
+            HMaxRequestTimes = state.XhttpXmuxHMaxRequestTimes,
+            HMaxReusableSecs = state.XhttpXmuxHMaxReusableSecs
         },
         TunAppProcessPaths = [.. state.TunAppProcessPaths],
         RuleSets = state.UserRuleSets
@@ -76,7 +89,12 @@ public static class EngineRequestMapper
             RealityShortId = p.RealityShortId,
             WsPath = p.WsPath,
             WsHost = p.WsHost,
-            GrpcServiceName = p.GrpcServiceName
+            GrpcServiceName = p.GrpcServiceName,
+            Engine = p.Engine,
+            XhttpPath = p.XhttpPath,
+            XhttpHost = p.XhttpHost,
+            XhttpMode = p.XhttpMode,
+            XhttpExtra = p.XhttpExtra
         };
     }
 
@@ -85,6 +103,7 @@ public static class EngineRequestMapper
     {
         var dns = request.Dns ?? new EngineDnsSettings();
         var tun = request.Tun ?? new EngineTunSettings();
+        var xmux = request.Xmux ?? new EngineXmuxSettings();
         return new AppStateModel
         {
             Mode = request.Mode,
@@ -101,6 +120,11 @@ public static class EngineRequestMapper
             TunStack = tun.Stack,
             TunAutoRoute = tun.AutoRoute,
             TunStrictRoute = tun.StrictRoute,
+            XhttpXmuxMaxConcurrency = xmux.MaxConcurrency ?? string.Empty,
+            XhttpXmuxMaxConnections = xmux.MaxConnections ?? string.Empty,
+            XhttpXmuxCMaxReuseTimes = xmux.CMaxReuseTimes ?? string.Empty,
+            XhttpXmuxHMaxRequestTimes = xmux.HMaxRequestTimes ?? string.Empty,
+            XhttpXmuxHMaxReusableSecs = xmux.HMaxReusableSecs ?? string.Empty,
             TunAppProcessPaths = [.. request.TunAppProcessPaths ?? []],
             UserRuleSets = (request.RuleSets ?? [])
                 .Select(rs => new UserRuleSetModel

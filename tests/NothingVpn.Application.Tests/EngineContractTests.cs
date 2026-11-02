@@ -22,8 +22,8 @@ public sealed class EngineContractTests : IDisposable
     public void ContractVersion_IsPinned()
     {
         // Смена версии — осознанное несовместимое изменение протокола: обновите тест и ADR-0001.
-        // v2 (шаг 7а): rule-set содержимым для службы.
-        Assert.Equal(2, EngineContract.Version);
+        // v2 (шаг 7а): rule-set содержимым для службы. v3 (ADR-0002): движок профиля, XHTTP, XMUX.
+        Assert.Equal(3, EngineContract.Version);
         Assert.Equal(EngineContract.Version, new EngineConnectRequest().ContractVersion);
         Assert.Equal(EngineContract.Version, new EngineStatus().ContractVersion);
     }
@@ -49,7 +49,17 @@ public sealed class EngineContractTests : IDisposable
                 RealityShortId = "a1b2",
                 WsPath = "/ws",
                 WsHost = "cdn.example.net",
-                GrpcServiceName = "grpc"
+                GrpcServiceName = "grpc",
+                Engine = OutboundEngine.Xray,
+                XhttpPath = "/xh",
+                XhttpHost = "xh.example.net",
+                XhttpMode = XhttpMode.StreamUp,
+                XhttpExtra = new XhttpExtraModel
+                {
+                    Headers = new Dictionary<string, string> { ["User-Agent"] = "ua" },
+                    XPaddingBytes = "100-1000",
+                    Xmux = new XmuxModel { MaxConcurrency = "8-16", HKeepAlivePeriod = -1 }
+                }
             },
             Mode = ConnectionMode.TunApps,
             LogLevel = LogLevel.Debug,
@@ -71,6 +81,7 @@ public sealed class EngineContractTests : IDisposable
                 AutoRoute = false,
                 StrictRoute = false
             },
+            Xmux = new EngineXmuxSettings { MaxConcurrency = "4-8", HMaxReusableSecs = "60" },
             TunAppProcessPaths = [@"C:\Apps\browser.exe"],
             RuleSets = [new EngineRuleSet { Tag = "ads", FileName = "ads.srs", Action = RuleSetAction.Block }]
         };
@@ -80,7 +91,7 @@ public sealed class EngineContractTests : IDisposable
 
         Assert.Equal(json, JsonSerializer.Serialize(restored));
         var node = JsonNode.Parse(json)!;
-        Assert.Equal(2, (int)node["contractVersion"]!);
+        Assert.Equal(3, (int)node["contractVersion"]!);
         Assert.Null(node["ruleSets"]![0]!["content"]);
         Assert.Equal("tun_apps", (string?)node["mode"]);
         Assert.Equal("debug", (string?)node["logLevel"]);
@@ -88,6 +99,11 @@ public sealed class EngineContractTests : IDisposable
         Assert.Equal("proxy", (string?)node["dns"]!["detour"]);
         Assert.Equal("gvisor", (string?)node["tun"]!["stack"]);
         Assert.Equal("block", (string?)node["ruleSets"]![0]!["action"]);
+        Assert.Equal("xray", (string?)node["profile"]!["engine"]);
+        Assert.Equal("stream-up", (string?)node["profile"]!["xhttpMode"]);
+        Assert.Equal("100-1000", (string?)node["profile"]!["xhttpExtra"]!["xPaddingBytes"]);
+        Assert.Equal("8-16", (string?)node["profile"]!["xhttpExtra"]!["xmux"]!["maxConcurrency"]);
+        Assert.Equal("4-8", (string?)node["xmux"]!["maxConcurrency"]);
         Assert.Equal("ws", restored.Profile.Type);
         Assert.Equal(["h2", "http/1.1"], restored.Profile.Alpn);
     }

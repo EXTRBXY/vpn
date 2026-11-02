@@ -21,6 +21,9 @@ env:
   # Версия sing-box из https://github.com/SagerNet/sing-box/releases (имя архива sing-box-VERSION-windows-amd64.zip)
   SING_BOX_VERSION: '1.13.21'
   SING_BOX_SHA256: 'a03291793d3a3c6e266447a58140657ac099ff278abf3b8ff678932356a62ced'
+  # Xray — выход для XHTTP и REALITY (ADR-0002): https://github.com/XTLS/Xray-core/releases, архив Xray-windows-64.zip
+  XRAY_VERSION: '26.10.31'
+  XRAY_SHA256: '2e04a9995a6f2ad1b28c0bb25c708ecb2695e43a1c9c7889c4b6ac2b48cf7a6a'
   WINTUN_VERSION: '0.14.1'
   WINTUN_SHA256: '07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51'
   INNO_SETUP_VERSION: '6.7.1'
@@ -83,6 +86,29 @@ jobs:
           $assets = Join-Path $env:GITHUB_WORKSPACE $env:RUNTIME_ASSETS_REL
           New-Item -ItemType Directory -Path $assets -Force | Out-Null
           Copy-Item -LiteralPath $exe.FullName -Destination (Join-Path $assets "sing-box.exe") -Force
+
+      - name: Скачать Xray (windows-64)
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: |
+          $ver = $env:XRAY_VERSION
+          $name = "Xray-windows-64.zip"
+          $url = "https://github.com/XTLS/Xray-core/releases/download/v$ver/$name"
+          Invoke-WebRequest -Uri $url -OutFile $name -UseBasicParsing
+          $actualHash = (Get-FileHash -LiteralPath $name -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $env:XRAY_SHA256) {
+            throw "Xray SHA-256 mismatch: '$actualHash' vs '$($env:XRAY_SHA256)'"
+          }
+          $dest = Join-Path $env:GITHUB_WORKSPACE "_xray"
+          New-Item -ItemType Directory -Path $dest -Force | Out-Null
+          Expand-Archive -Path $name -DestinationPath $dest -Force
+          foreach ($file in @('xray.exe', 'LICENSE')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $dest $file))) { throw "$file not found in Xray archive" }
+          }
+          $assets = Join-Path $env:GITHUB_WORKSPACE $env:RUNTIME_ASSETS_REL
+          New-Item -ItemType Directory -Path $assets -Force | Out-Null
+          Copy-Item -LiteralPath (Join-Path $dest 'xray.exe') -Destination (Join-Path $assets 'xray.exe') -Force
+          Copy-Item -LiteralPath (Join-Path $dest 'LICENSE') -Destination (Join-Path $assets 'xray-LICENSE.txt') -Force
 
       - name: Скачать Wintun (wintun.dll)
         shell: pwsh

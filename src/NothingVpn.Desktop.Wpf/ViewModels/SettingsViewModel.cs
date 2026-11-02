@@ -50,6 +50,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, ISettingsFeedbac
     public RuleSetsSettingsViewModel RuleSets { get; }
     public ProxySettingsViewModel Proxy { get; } = new();
     public AppBehaviorSettingsViewModel Behavior { get; } = new();
+    public XraySettingsViewModel Xray { get; } = new();
     public UpdateViewModel Updates { get; }
     public ICommand SaveCommand => _saveCommand;
 
@@ -101,7 +102,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, ISettingsFeedbac
                 TunAppPaths = paths,
                 RuleSets = rules,
                 LogLevel = Behavior.LogLevel,
-                CloseBehavior = Behavior.CloseBehavior
+                CloseBehavior = Behavior.CloseBehavior,
+                Xmux = Xray.ToSettings()
             });
             var deleteErrors = RuleSets.DeletePendingFiles();
             ApplyState(_settingsService.GetState());
@@ -143,6 +145,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, ISettingsFeedbac
         Tun.Load(state);
         Dns.Load(state);
         Behavior.Load(state);
+        Xray.Load(state);
         Apps.Load(state);
         RuleSets.Load(state);
     }

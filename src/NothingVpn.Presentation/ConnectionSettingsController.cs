@@ -34,6 +34,9 @@ public sealed class ConnectionSettingsController : IConnectionSettingsController
                 throw new InvalidOperationException("DoH SNI не задан (нужен для TLS).");
         }
         DnsPolicy.Validate(dns);
+        var xmux = draft.Xmux is null ? null : Clone(draft.Xmux);
+        if (xmux is not null)
+            XhttpPolicy.Validate(xmux);
 
         // Merge only the edited fields into the latest state under the settings lock.
         // Background updates and connection recovery data must survive a UI save.
@@ -53,8 +56,18 @@ public sealed class ConnectionSettingsController : IConnectionSettingsController
             if (draft.RuleSets is not null) target.UserRuleSets = draft.RuleSets.ToList();
             if (draft.LogLevel is { } logLevel) target.SingBoxLogLevel = logLevel;
             if (draft.CloseBehavior is { } closeBehavior) target.CloseBehavior = closeBehavior;
+            if (xmux is not null) ConnectionSettingsMapper.ApplyXmuxSettings(target, xmux);
         }
     }
+
+    private static XmuxSettings Clone(XmuxSettings source) => new()
+    {
+        MaxConcurrency = source.MaxConcurrency,
+        MaxConnections = source.MaxConnections,
+        CMaxReuseTimes = source.CMaxReuseTimes,
+        HMaxRequestTimes = source.HMaxRequestTimes,
+        HMaxReusableSecs = source.HMaxReusableSecs
+    };
 
     private static ProxyConnectionSettings Clone(ProxyConnectionSettings source) => new()
     {

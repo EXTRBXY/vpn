@@ -31,6 +31,10 @@ public static class AppStateNormalizer
         TunSettingsPolicy.Normalize(tun);
         ConnectionSettingsMapper.ApplyTunSettings(state, tun);
 
+        var xmux = ConnectionSettingsMapper.ToXmuxSettings(state);
+        XhttpPolicy.Normalize(xmux);
+        ConnectionSettingsMapper.ApplyXmuxSettings(state, xmux);
+
         var proxy = ConnectionSettingsMapper.ToProxySettings(state);
         ProxyConnectionPolicy.Normalize(proxy);
         ConnectionSettingsMapper.ApplyProxySettings(state, proxy);

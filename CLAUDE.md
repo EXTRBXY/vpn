@@ -1,7 +1,8 @@
 # CLAUDE.md
 
 Nothing VPN — Windows-клиент VLESS на .NET 8: WPF-оболочка над `sing-box.exe`. Интерфейс передаёт типизированный
-запрос службе Windows `NothingVpn`, которая строит JSON-конфиг sing-box и запускает его; сам интерфейс управляет
+запрос службе Windows `NothingVpn`, которая строит JSON-конфиг sing-box и запускает его (для XHTTP и REALITY — ещё
+`xray.exe` как выход к серверу за локальным SOCKS5, ADR-0002); сам интерфейс управляет
 системным прокси WinINET и треем. Режимы: `proxy` (mixed-inbound + системный прокси), `tun` (весь трафик),
 `tun_apps` (только выбранные `.exe`).
 
@@ -20,12 +21,12 @@ Nothing VPN — Windows-клиент VLESS на .NET 8: WPF-оболочка н�
 dotnet build NothingVpn.sln -c Release
 dotnet test NothingVpn.sln -c Release --no-build
 dotnet test NothingVpn.sln -c Release --no-build --filter "FullyQualifiedName~SingBoxConfigGeneratorTests"
-.\build\Build.ps1 -Target Publish        # artifacts\publish\win-x64\NothingVpn.Desktop.Wpf.exe (+ sing-box.exe, wintun.dll)
+.\build\Build.ps1 -Target Publish        # artifacts\publish\win-x64\NothingVpn.Desktop.Wpf.exe (+ sing-box.exe, wintun.dll, xray.exe)
 .\build\Build.ps1 -Target Installer      # Inno Setup 6 поверх существующего publish
 ```
 
-Базовая линия (20.10.2026, после шага 10 — рефакторинг завершён): сборка без предупреждений, 462 теста проходят, пропущенных нет.
-Только Windows. `Publish` берёт `sing-box.exe`/`wintun.dll` из `-RuntimeAssetsDirectory` или из установленного
+Базовая линия (02.11.2026, движок Xray, ADR-0002): сборка без предупреждений, 534 теста проходят, пропущенных нет.
+Только Windows. `Publish` берёт `sing-box.exe`/`wintun.dll`/`xray.exe`/`xray-LICENSE.txt` из `-RuntimeAssetsDirectory` или из установленного
 клиента (`%ProgramFiles%\NothingVpn`, затем старый `%LOCALAPPDATA%\Programs\NothingVpn`). Ничего не устанавливайте и
 не регистрируйте службу на машине пользователя; установку проверяет он сам по `docs/SERVICE-INSTALL-CHECKLIST.md`.
 
@@ -55,6 +56,9 @@ Directory.Build.props          единственный источник вер�
 - `Application/Services/VpnConnectionService.cs` — клиентская оркестрация подключения: state.json, WinINET,
   проверка прав для ядра в процессе, откат, восстановление после остановки ядра.
 - `Infrastructure/SingBox/SingBoxConfigGenerator.cs` — вся генерация конфига; `SingBoxRunner.cs` — процесс sing-box.
+- Движок выхода (ADR-0002): `Domain/Policies/OutboundEnginePolicy.cs` выбирает sing-box или Xray для профиля;
+  порт `IOutboundEnginePort`, реализация `Infrastructure/Ports/XrayOutboundPort.cs` и `Infrastructure/Xray/XrayConfigGenerator.cs`;
+  общий код процессов — `Infrastructure/Windows/` (`SupervisedProcess`, `ChildProcess`, `ExecutableLocator`).
 - `Domain/Policies/*` — правила маршрутизации, DNS, TUN, значения по умолчанию; меняйте поведение здесь, а не в
   генераторе или UI. `Application/Services/AppStateNormalizer.cs` — единственная точка нормализации состояния.
 - `Application/Services/SettingsService.cs` — единственный путь записи `state.json` для UI.
@@ -72,7 +76,7 @@ Directory.Build.props          единственный источник вер�
 - Логику не класть в окна и code-behind; диалоги, буфер обмена, файловые пикеры — допустимы в code-behind.
 - sing-box — источник истины для туннелирования. Не дублировать в C# то, что делает ядро (DNS, маршрутизация).
   Новое поведение — политика в Domain, компилируемая в поля конфига. Поля проверять по документации sing-box
-  версии из `.github/workflows/release.yml` (`SING_BOX_VERSION`).
+  версии из `.github/workflows/release.yml` (`SING_BOX_VERSION`), поля Xray — по версии `XRAY_VERSION`.
 - Порядок route-правил значим (first match). Пользовательские rule-set идут до QUIC/IPv6-фолбэков и до
   `process_path`. См. `docs/SINGBOX-CONFIG.md`.
 
@@ -102,7 +106,8 @@ Directory.Build.props          единственный источник вер�
   и имена свойств `SubscriptionRecord` — это схема JSON на диске (camelCase).
 - Строковые значения enum-настроек в состоянии: `proxy|tun|tun_apps`, `doh|system`, DNS detour `direct|proxy`,
   действие rule-set `direct|block`, стек `""|system|mixed|gvisor` (`""` — по умолчанию), `tray|exit`,
-  `trace…panic`. В коде это enum'ы; строки задаёт `SettingValueMap<T>` в Domain-политиках, чтение state.json
+  `trace…panic`, движок профиля `auto|sing-box|xray`, режим XHTTP `auto|packet-up|stream-up|stream-one`.
+  В коде это enum'ы; строки задаёт `SettingValueMap<T>` в Domain-политиках, чтение state.json
   толерантное (неизвестное → значение по умолчанию, не исключение). Enum в строку — только `ToValue()`, не `ToString()`.
 - `VlessLinkParser.StableId` — Id профиля; на нём держатся активный профиль и синхронизация подписок.
 - Хеш profileId → адреса TUN; `BuiltinId`/`Tag` встроенных rule-set.
@@ -128,7 +133,7 @@ Directory.Build.props          единственный источник вер�
 - sing-box запускается только через `IVpnEngine` — это и контракт канала службы. Запрос к ядру типизированный:
   никакого готового JSON sing-box и путей, куда ядро пишет. Новое поле, нужное ядру, — в `EngineConnectRequest`
   (с `[JsonPropertyName]`) и `EngineRequestMapper`; несовместимое изменение — с ростом `EngineContract.Version`
-  (сейчас 2) и записью в ADR-0001. Поля конверта канала `contractVersion`/`type`/`id`/`error` не меняются никогда.
+  (сейчас 3) и записью в ADR-0001. Поля конверта канала `contractVersion`/`type`/`id`/`error` не меняются никогда.
 - Клиент канала проверяет сервер (`LocalSystemPipeServerVerifier`) до отправки первого байта — не ослабляйте и не
   обходите проверку; в тестах её подменяет внутренний `IPipeServerVerifier`.
   WinINET и state.json остаются в `VpnConnectionService`, а не в ядре.

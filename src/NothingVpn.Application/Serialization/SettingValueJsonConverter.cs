@@ -43,3 +43,7 @@ public sealed class TunStackJsonConverter() : SettingValueJsonConverter<TunStack
 public sealed class LogLevelJsonConverter() : SettingValueJsonConverter<LogLevel>(SingBoxLogLevelPolicy.Levels);
 
 public sealed class AppCloseBehaviorJsonConverter() : SettingValueJsonConverter<AppCloseBehavior>(AppCloseBehaviors.Values);
+
+public sealed class OutboundEngineJsonConverter() : SettingValueJsonConverter<OutboundEngine>(OutboundEnginePolicy.Preferences);
+
+public sealed class XhttpModeJsonConverter() : SettingValueJsonConverter<XhttpMode>(XhttpPolicy.Modes);

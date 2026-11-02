@@ -1,5 +1,7 @@
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
+using NothingVpn.Domain.Models;
+using NothingVpn.Domain.Policies;
 
 namespace NothingVpn.Application.Services;
 
@@ -10,6 +12,9 @@ public sealed class ProfileService(IProfileStorePort profileStore, IProfileParse
     public IReadOnlyList<VpnProfile> ImportFromVlessLink(string link)
     {
         var parsed = profileParser.ParseVlessLink(link);
+        var existing = profileStore.Load().FirstOrDefault(p => string.Equals(p.Id, parsed.Id, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+            parsed.Engine = existing.Engine;
         return profileStore.Upsert(parsed);
     }
 
@@ -39,7 +44,7 @@ public sealed class ProfileService(IProfileStorePort profileStore, IProfileParse
         }
     }
 
-    public VpnProfile UpsertFromVlessLink(string link, string? nameOverride)
+    public VpnProfile UpsertFromVlessLink(string link, string? nameOverride, OutboundEngine engine)
     {
         if (string.IsNullOrWhiteSpace(link))
             throw new ArgumentException("VLESS link is required.", nameof(link));
@@ -47,6 +52,8 @@ public sealed class ProfileService(IProfileStorePort profileStore, IProfileParse
         var parsed = profileParser.ParseVlessLink(link);
         if (!string.IsNullOrWhiteSpace(nameOverride))
             parsed.Name = SanitizeName(nameOverride);
+        OutboundEnginePolicy.Resolve(engine, parsed.Type, parsed.Security);
+        parsed.Engine = OutboundEnginePolicy.Preferences.Normalize(engine);
 
         var updated = profileStore.Upsert(parsed);
         var saved = updated.FirstOrDefault(p => string.Equals(p.Id, parsed.Id, StringComparison.OrdinalIgnoreCase));

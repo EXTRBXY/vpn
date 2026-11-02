@@ -1,10 +1,18 @@
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using NothingVpn.Application.Models;
+using NothingVpn.Domain.Policies;
 
 namespace NothingVpn.Application.Services;
 
 public static class VlessLinkFormatter
 {
+    private static readonly JsonSerializerOptions ExtraJsonOptions = new()
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
     public static string Build(VpnProfile profile)
     {
         if (profile is null)
@@ -53,6 +61,17 @@ public static class VlessLinkFormatter
             q["host"] = profile.WsHost.Trim();
         if (!string.IsNullOrWhiteSpace(profile.GrpcServiceName))
             q["serviceName"] = profile.GrpcServiceName.Trim();
+
+        if (XhttpPolicy.IsXhttp(profile.Type))
+        {
+            if (!string.IsNullOrWhiteSpace(profile.XhttpPath))
+                q["path"] = profile.XhttpPath;
+            if (!string.IsNullOrWhiteSpace(profile.XhttpHost))
+                q["host"] = profile.XhttpHost;
+            q["mode"] = XhttpPolicy.Modes.ToValue(profile.XhttpMode);
+            if (profile.XhttpExtra is not null)
+                q["extra"] = JsonSerializer.Serialize(profile.XhttpExtra, ExtraJsonOptions);
+        }
 
         // Preserve unknown parameters from imports.
         foreach (var kv in profile.ExtraQuery)

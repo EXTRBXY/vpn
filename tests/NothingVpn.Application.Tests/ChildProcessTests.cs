@@ -1,17 +1,17 @@
 using System.Diagnostics;
-using NothingVpn.Infrastructure.SingBox;
+using NothingVpn.Infrastructure.Windows;
 
 namespace NothingVpn.Application.Tests;
 
-public sealed class SingBoxRunnerTests
+public sealed class ChildProcessTests
 {
     [Fact]
-    public async Task RunProcessAsync_DrainsStdoutAndStderrWithoutDeadlock()
+    public async Task RunAsync_DrainsStdoutAndStderrWithoutDeadlock()
     {
         var startInfo = CreateCommand(
             "(for /L %i in (1,1,20000) do @echo stderr-line 1>&2) & echo stdout-line");
 
-        var result = await SingBoxRunner.RunProcessAsync(startInfo, TimeSpan.FromSeconds(10));
+        var result = await ChildProcess.RunAsync(startInfo, TimeSpan.FromSeconds(10));
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("stdout-line", result.Stdout, StringComparison.Ordinal);
@@ -20,13 +20,13 @@ public sealed class SingBoxRunnerTests
     }
 
     [Fact]
-    public async Task RunProcessAsync_KillsProcessAndThrowsWhenTimeoutExpires()
+    public async Task RunAsync_KillsProcessAndThrowsWhenTimeoutExpires()
     {
         var startInfo = CreateCommand("ping 127.0.0.1 -n 10 >nul");
         var stopwatch = Stopwatch.StartNew();
 
         await Assert.ThrowsAsync<TimeoutException>(() =>
-            SingBoxRunner.RunProcessAsync(startInfo, TimeSpan.FromMilliseconds(200)));
+            ChildProcess.RunAsync(startInfo, TimeSpan.FromMilliseconds(200)));
 
         Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5));
     }

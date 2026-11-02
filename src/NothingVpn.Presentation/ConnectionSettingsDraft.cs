@@ -12,4 +12,5 @@ public sealed record ConnectionSettingsDraft(
     public IReadOnlyList<UserRuleSetModel>? RuleSets { get; init; }
     public LogLevel? LogLevel { get; init; }
     public AppCloseBehavior? CloseBehavior { get; init; }
+    public XmuxSettings? Xmux { get; init; }
 }

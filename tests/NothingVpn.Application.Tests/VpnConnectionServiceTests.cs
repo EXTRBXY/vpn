@@ -654,7 +654,7 @@ public sealed class VpnConnectionServiceTests
         public bool FireExitedOnStart { get; init; }
         public bool DeleteConfigCalled { get; private set; }
         public bool ValidateCalled { get; private set; }
-        public string WriteConfig(VpnProfile profile, AppStateModel state) => "config.json";
+        public string WriteConfig(VpnProfile profile, AppStateModel state, LocalSocksUpstream? upstream = null) => "config.json";
         public void ValidateConfig(string configPath) => ValidateCalled = true;
 
         public void Start(string configPath)

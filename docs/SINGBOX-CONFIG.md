@@ -7,7 +7,7 @@ sing-box именно этой версии: генератор использу
 rule `action`).
 
 Тесты, фиксирующие форму конфигурации: `tests/NothingVpn.Application.Tests/SingBoxConfigGeneratorTests.cs`,
-`SecurityRegressionTests.cs`, `DomainPoliciesTests.cs`.
+`SecurityRegressionTests.cs`, `DomainPoliciesTests.cs`; выход через Xray — `XrayConfigGeneratorTests.cs`.
 
 ## Жизненный цикл файла
 
@@ -48,8 +48,28 @@ rule `action`).
 - Транспорт: `tcp` — нет; `ws` — `path` (по умолчанию `/`) и заголовок `Host`; `grpc` — `service_name` (по умолчанию `default`).
 
 Поддерживаемые VLESS-ссылки (`Profile/VlessLinkParser.cs`): `encryption=none`, `security ∈ {tls, reality, none}`,
-`type ∈ {tcp, ws, grpc}`; для REALITY обязательны `pbk`, `sid`, `sni`. Неизвестные параметры сохраняются в
-`ExtraQuery` и возвращаются при экспорте ссылки, но в конфигурацию **не попадают**.
+`type ∈ {tcp, ws, grpc, xhttp}` (`splithttp` — синоним `xhttp`); для REALITY обязательны `pbk`, `sid`, `sni`.
+Неизвестные параметры сохраняются в `ExtraQuery` и возвращаются при экспорте ссылки, но в конфигурацию **не попадают**.
+
+### Выход через Xray (ADR-0002)
+
+Если `OutboundEnginePolicy.Resolve` выбрал для профиля Xray (XHTTP всегда, REALITY в режиме «авто», либо явный
+выбор пользователя), `proxy` — не `vless`, а локальный SOCKS5 к процессу Xray:
+
+```json
+{ "type": "socks", "tag": "proxy", "server": "127.0.0.1", "server_port": <порт>, "version": "5",
+  "username": "<одноразовый>", "password": "<одноразовый>" }
+```
+
+- Порт и учётные данные новые на каждое подключение (`XrayOutboundPort`); `domain_resolver` не ставится — имя
+  сервера разрешает сам Xray.
+- Всё остальное (inbounds, DNS, rule-set, правила) — то же, что для sing-box-выхода; в TUN добавляются два правила
+  исключения (см. ниже).
+- Конфиг Xray — `XrayConfigGenerator`: `socks`-inbound на `127.0.0.1` с паролем и `udp`, один `vless`-outbound
+  (`raw`/`ws`/`grpc`/`xhttp`, `tlsSettings`/`realitySettings`), `log.access: none`. Файл
+  `configs\{profileId}.xray.json`, проверяется `xray run -test -c`, удаляется вместе с конфигом sing-box.
+- XHTTP: `xhttpSettings.path/host/mode` и `extra` из профиля; если в `extra` нет `xmux`, пишется XMUX из настроек
+  (по умолчанию — значения, которые Xray берёт сам: 16-32 / 0 / 0 / 600-900 / 1800-3000).
 
 ## Inbound TUN
 
@@ -82,6 +102,8 @@ rule `action`).
 2. `protocol: dns` → `hijack-dns`
 3. `ip_is_private` → `direct`
 4. Домен сервера профиля (если это не IP) → `direct` — иначе туннель зациклится на себя
+4а. Только с выходом через Xray: `process_path: [путь xray.exe]` → `direct`, затем `ip_cidr: [IP сервера/32|128]`
+    → `direct` (если адрес сервера — IP). Иначе соединения Xray к серверу вернулись бы в TUN.
 5. Только `tun`: известные DoH-домены (`TunRoutingPolicy.KnownSecureDnsDomains`) → `proxy`
 6. `protocol: stun` → `reject`
 7. Пользовательские rule-set → `direct` | `block`

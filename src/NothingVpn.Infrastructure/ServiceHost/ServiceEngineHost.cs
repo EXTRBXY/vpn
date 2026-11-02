@@ -16,20 +16,27 @@ namespace NothingVpn.Infrastructure.ServiceHost;
 public sealed class ServiceEngineHost : IAsyncDisposable
 {
     private readonly SingBoxRunner _runner;
+    private readonly XrayOutboundPort _xray;
     private readonly ServicePipeServer _server;
 
-    private ServiceEngineHost(SingBoxVpnEngine engine, InMemoryLogStore logStore, SingBoxRunner runner, ServicePipeServer server)
+    private ServiceEngineHost(
+        SingBoxVpnEngine engine,
+        InMemoryLogStore logStore,
+        SingBoxRunner runner,
+        XrayOutboundPort xray,
+        ServicePipeServer server)
     {
         Engine = engine;
         LogStore = logStore;
         _runner = runner;
+        _xray = xray;
         _server = server;
     }
 
     public IVpnEngine Engine { get; }
     public InMemoryLogStore LogStore { get; }
 
-    /// <param name="installDirectory">Каталог exe службы; sing-box.exe и wintun.dll ищутся только здесь.</param>
+    /// <param name="installDirectory">Каталог exe службы; sing-box.exe, wintun.dll и xray.exe ищутся только здесь.</param>
     /// <param name="dataDirectory">Каталог данных; по умолчанию <c>%ProgramData%\NothingVpn</c> с ACL SYSTEM и администраторов.</param>
     public static ServiceEngineHost Create(string installDirectory, string? dataDirectory = null, ServicePipeServerOptions? pipeOptions = null)
     {
@@ -37,18 +44,20 @@ public sealed class ServiceEngineHost : IAsyncDisposable
         var logStore = new InMemoryLogStore(maxBytes: 1_000_000);
         var runner = SingBoxRunner.ForInstallDirectory(installDirectory, logStore);
         var runtime = new LegacyRuntimeContext(paths, logStore, runner);
+        var xray = new XrayOutboundPort(paths.ConfigsDir, logStore, installDirectory);
         var engine = new SingBoxVpnEngine(
             new SingBoxPort(runtime),
             new DiagnosticsPort(),
             new PathPolicyPort(),
             new LogPort(logStore),
-            new ServiceRuleSetStore(paths.RuleSetsDir));
+            new ServiceRuleSetStore(paths.RuleSetsDir),
+            [xray]);
 
         var options = pipeOptions ?? new ServicePipeServerOptions
         {
             Trace = message => logStore.AppendStructured(LogLevel.Error, "service", message)
         };
-        return new ServiceEngineHost(engine, logStore, runner, new ServicePipeServer(engine, logStore, options));
+        return new ServiceEngineHost(engine, logStore, runner, xray, new ServicePipeServer(engine, logStore, options));
     }
 
     /// <summary>Занимает канал службы. Исключение — имя канала уже занято (другим экземпляром или чужим процессом).</summary>
@@ -60,5 +69,6 @@ public sealed class ServiceEngineHost : IAsyncDisposable
         try { await Engine.DisconnectAsync().ConfigureAwait(false); }
         catch { }
         _runner.Dispose();
+        _xray.Dispose();
     }
 }

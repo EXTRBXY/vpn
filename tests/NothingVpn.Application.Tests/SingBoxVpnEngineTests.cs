@@ -220,12 +220,194 @@ public sealed class SingBoxVpnEngineTests
         Assert.Null(engine.GetStatus().ProfileId);
     }
 
+    [Fact]
+    public async Task ConnectAsync_StartsXrayBeforeSingBoxAndPassesUpstream()
+    {
+        var singBox = new FakeSingBoxPort();
+        var xray = new FakeOutboundEnginePort();
+        var diagnostics = new FakeDiagnosticsPort();
+
+        var status = await CreateEngine(singBox, diagnostics, xray).ConnectAsync(XhttpRequest());
+
+        Assert.True(status.IsRunning);
+        Assert.Equal("p1", xray.StartedProfile?.Id);
+        Assert.Same(xray.Upstream, singBox.WrittenUpstream);
+        Assert.True(xray.StartedBeforeConfig(singBox));
+        Assert.Contains(41000, diagnostics.Ports);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_DoesNotStartXrayForSingBoxProfile()
+    {
+        var singBox = new FakeSingBoxPort();
+        var xray = new FakeOutboundEnginePort();
+
+        await CreateEngine(singBox, outbound: xray).ConnectAsync(ValidRequest());
+
+        Assert.Null(xray.StartedProfile);
+        Assert.Null(singBox.WrittenUpstream);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_RejectsXrayProfile_WhenEngineIsMissing()
+    {
+        var singBox = new FakeSingBoxPort();
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => CreateEngine(singBox).ConnectAsync(XhttpRequest()));
+
+        Assert.Equal("Движок Xray недоступен в этой сборке.", error.Message);
+        Assert.False(singBox.StartCalled);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_RejectsSingBoxPreferenceForXhttp()
+    {
+        var singBox = new FakeSingBoxPort();
+        var xray = new FakeOutboundEnginePort();
+        var request = XhttpRequest();
+        request.Profile.Engine = OutboundEngine.SingBox;
+
+        await Assert.ThrowsAsync<ArgumentException>(() => CreateEngine(singBox, outbound: xray).ConnectAsync(request));
+
+        Assert.Null(xray.StartedProfile);
+        Assert.False(singBox.StartCalled);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_RollsBack_WhenXrayExitsOnStart()
+    {
+        var singBox = new FakeSingBoxPort();
+        var xray = new FakeOutboundEnginePort { ExitOnStart = true };
+        var engine = CreateEngine(singBox, outbound: xray);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => engine.ConnectAsync(XhttpRequest()));
+
+        Assert.Equal("Xray завершился сразу после запуска: FATAL test", error.Message);
+        Assert.True(xray.StopCalled);
+        Assert.False(singBox.StartCalled);
+        Assert.False(engine.GetStatus().IsRunning);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_StopsXray_WhenSingBoxFailsToStart()
+    {
+        var singBox = new FakeSingBoxPort { ExitOnStart = true };
+        var xray = new FakeOutboundEnginePort();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => CreateEngine(singBox, outbound: xray).ConnectAsync(XhttpRequest()));
+
+        Assert.True(xray.StopCalled);
+        Assert.False(xray.IsRunning);
+    }
+
+    [Fact]
+    public async Task XrayExit_StopsSingBoxAndReportsStopped()
+    {
+        var singBox = new FakeSingBoxPort();
+        var xray = new FakeOutboundEnginePort();
+        var log = new FakeLogPort();
+        var engine = CreateEngine(singBox, outbound: xray, log: log);
+        await engine.ConnectAsync(XhttpRequest());
+        EngineStatus? changed = null;
+        engine.StatusChanged += (_, status) => changed = status;
+
+        xray.RaiseProcessExited();
+
+        Assert.False(singBox.IsRunning);
+        Assert.True(singBox.DeleteConfigCalled);
+        Assert.False(changed?.IsRunning);
+        Assert.Contains("Xray завершился, подключение остановлено.", log.Messages);
+    }
+
+    [Fact]
+    public async Task SingBoxExit_StopsXray()
+    {
+        var singBox = new FakeSingBoxPort();
+        var xray = new FakeOutboundEnginePort();
+        var engine = CreateEngine(singBox, outbound: xray);
+        await engine.ConnectAsync(XhttpRequest());
+
+        singBox.RaiseProcessExited();
+
+        Assert.True(xray.StopCalled);
+        Assert.False(engine.GetStatus().IsRunning);
+    }
+
+    [Fact]
+    public async Task DisconnectAsync_StopsXray()
+    {
+        var singBox = new FakeSingBoxPort();
+        var xray = new FakeOutboundEnginePort();
+        var engine = CreateEngine(singBox, outbound: xray);
+        await engine.ConnectAsync(XhttpRequest());
+
+        await engine.DisconnectAsync();
+
+        Assert.True(xray.StopCalled);
+        Assert.False(xray.IsRunning);
+    }
+
     private static EngineConnectRequest ValidRequest() => EngineRequestMapper.CreateRequest(
         new VpnProfile { Id = "p1", Uuid = "11111111-2222-3333-4444-555555555555", Host = "node.example.com", Port = 443 },
         new AppStateModel { Mode = ConnectionMode.Proxy, LocalMixedPort = 1080 });
 
-    private static SingBoxVpnEngine CreateEngine(FakeSingBoxPort singBox, FakeDiagnosticsPort? diagnostics = null) =>
-        new(singBox, diagnostics ?? new FakeDiagnosticsPort(), new FakePathPolicyPort(), new FakeLogPort());
+    private static EngineConnectRequest XhttpRequest()
+    {
+        var request = ValidRequest();
+        request.Profile.Type = "xhttp";
+        request.Profile.XhttpPath = "/xh";
+        return request;
+    }
+
+    private static SingBoxVpnEngine CreateEngine(
+        FakeSingBoxPort singBox,
+        FakeDiagnosticsPort? diagnostics = null,
+        FakeOutboundEnginePort? outbound = null,
+        FakeLogPort? log = null) =>
+        new(
+            singBox,
+            diagnostics ?? new FakeDiagnosticsPort(),
+            new FakePathPolicyPort(),
+            log ?? new FakeLogPort(),
+            outboundEngines: outbound is null ? null : [outbound]);
+
+    private sealed class FakeOutboundEnginePort : IOutboundEnginePort
+    {
+        private static long _clock;
+        private long _startedAt;
+
+        public event EventHandler? ProcessExited;
+        public OutboundEngine Engine => OutboundEngine.Xray;
+        public bool IsRunning { get; private set; }
+        public bool ExitOnStart { get; init; }
+        public bool StopCalled { get; private set; }
+        public VpnProfile? StartedProfile { get; private set; }
+        public LocalSocksUpstream Upstream { get; } = new(41000, "user", "pass", @"C:\NothingVpn\xray.exe");
+
+        public LocalSocksUpstream Start(VpnProfile profile, AppStateModel state)
+        {
+            StartedProfile = profile;
+            _startedAt = Interlocked.Increment(ref _clock);
+            IsRunning = !ExitOnStart;
+            return Upstream;
+        }
+
+        public void Stop()
+        {
+            StopCalled = true;
+            IsRunning = false;
+        }
+
+        public bool StartedBeforeConfig(FakeSingBoxPort singBox) => _startedAt != 0 && _startedAt < singBox.WrittenAt;
+
+        public void RaiseProcessExited()
+        {
+            IsRunning = false;
+            ProcessExited?.Invoke(this, EventArgs.Empty);
+        }
+
+        internal static long Tick() => Interlocked.Increment(ref _clock);
+    }
 
     private sealed class FakeSingBoxPort : ISingBoxPort
     {
@@ -237,10 +419,14 @@ public sealed class SingBoxVpnEngineTests
         public bool DeleteConfigCalled { get; private set; }
         public bool ExitOnStart { get; init; }
         public AppStateModel? WrittenState { get; private set; }
+        public LocalSocksUpstream? WrittenUpstream { get; private set; }
+        public long WrittenAt { get; private set; }
 
-        public string WriteConfig(VpnProfile profile, AppStateModel state)
+        public string WriteConfig(VpnProfile profile, AppStateModel state, LocalSocksUpstream? upstream = null)
         {
             WrittenState = state;
+            WrittenUpstream = upstream;
+            WrittenAt = FakeOutboundEnginePort.Tick();
             return "config.json";
         }
 
@@ -271,10 +457,12 @@ public sealed class SingBoxVpnEngineTests
     {
         public string? Error { get; init; }
         public int Calls { get; private set; }
+        public List<int> Ports { get; } = [];
 
         public Task<(bool Success, string? Error)> CanReachTcpAsync(string host, int port, TimeSpan timeout, CancellationToken cancellationToken = default)
         {
             Calls++;
+            Ports.Add(port);
             return Task.FromResult((Error is null, Error));
         }
 
@@ -302,7 +490,8 @@ public sealed class SingBoxVpnEngineTests
         public int Version => 0;
         public string SnapshotText(LogLevel minLevel) => string.Empty;
         public string? TryGetLatestMessage(LogLevel minLevel) => "FATAL test";
-        public void Append(LogLevel level, string source, string message) { }
+        public List<string> Messages { get; } = [];
+        public void Append(LogLevel level, string source, string message) => Messages.Add(message);
         public void Clear() { }
     }
 }

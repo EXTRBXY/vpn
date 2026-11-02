@@ -15,7 +15,8 @@ alwaysApply: true
 - Рефакторинг завершён. Инварианты и правила `CLAUDE.md` действуют для любой задачи, включая новые функции и протоколы;
   порядок добавления функциональности — раздел «Новая функциональность» в `CLAUDE.md`.
 - Интерфейс: `C#`, `.NET 8`, `WPF` (`NothingVpn.Desktop.Wpf`): системный прокси WinINET, трей, state.json.
-- Ядро: служба Windows `NothingVpn` (`NothingVpn.Service`, LocalSystem) строит конфиг и запускает `sing-box.exe`;
+- Ядро: служба Windows `NothingVpn` (`NothingVpn.Service`, LocalSystem) строит конфиг и запускает `sing-box.exe`
+  (и `xray.exe` как выход для XHTTP/REALITY, [ADR-0002](../../docs/adr/0002-xray-outbound-engine.md));
   интерфейс передаёт ей типизированный запрос `EngineConnectRequest` через порт `IVpnEngine` по каналу
   `NothingVpn.Service` ([ADR-0001](../../docs/adr/0001-privileged-service.md)). Интерфейс себя не повышает.
 - Упаковка: `Inno Setup`, per-machine установка в `%ProgramFiles%\NothingVpn` вместе со службой.

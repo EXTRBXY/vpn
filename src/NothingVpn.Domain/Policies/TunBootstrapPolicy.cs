@@ -14,6 +14,15 @@ public static class TunBootstrapPolicy
         return set.ToList();
     }
 
+    /// <summary>Адрес сервера как CIDR одного хоста, если он задан IP-адресом; для домена — null.</summary>
+    public static string? EndpointHostCidr(string? host)
+    {
+        var value = (host ?? string.Empty).Trim().TrimStart('[').TrimEnd(']');
+        if (!IPAddress.TryParse(value, out var ip))
+            return null;
+        return ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? $"{ip}/128" : $"{ip}/32";
+    }
+
     public static string? ResolveDefaultDomainResolver(bool useTun, bool useDohResolver)
     {
         if (!useTun)

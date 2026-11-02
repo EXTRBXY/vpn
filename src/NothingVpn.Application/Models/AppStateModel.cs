@@ -72,6 +72,21 @@ public sealed class AppStateModel
     [JsonConverter(typeof(DnsDetourJsonConverter))]
     public DnsDetour DnsDetour { get; set; } = DnsPolicy.DefaultDetour;
 
+    [JsonPropertyName("xhttpXmuxMaxConcurrency")]
+    public string XhttpXmuxMaxConcurrency { get; set; } = XhttpPolicy.DefaultXmuxMaxConcurrency;
+
+    [JsonPropertyName("xhttpXmuxMaxConnections")]
+    public string XhttpXmuxMaxConnections { get; set; } = XhttpPolicy.DefaultXmuxMaxConnections;
+
+    [JsonPropertyName("xhttpXmuxCMaxReuseTimes")]
+    public string XhttpXmuxCMaxReuseTimes { get; set; } = XhttpPolicy.DefaultXmuxCMaxReuseTimes;
+
+    [JsonPropertyName("xhttpXmuxHMaxRequestTimes")]
+    public string XhttpXmuxHMaxRequestTimes { get; set; } = XhttpPolicy.DefaultXmuxHMaxRequestTimes;
+
+    [JsonPropertyName("xhttpXmuxHMaxReusableSecs")]
+    public string XhttpXmuxHMaxReusableSecs { get; set; } = XhttpPolicy.DefaultXmuxHMaxReusableSecs;
+
     [JsonPropertyName("debugLogs")]
     public bool DebugLogs { get; set; }
 

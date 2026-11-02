@@ -443,7 +443,9 @@ public sealed class StorageFormatCompatibilityTests : IDisposable
     [
         "activeProfileId", "mode", "tunAppProcessPaths", "userRuleSets", "localMixedPort", "proxyWasEnabledByUs",
         "previousProxySettings", "proxyOverride", "tunInterfaceName", "tunAddressCidr", "tunMtu", "tunStack",
-        "tunAutoRoute", "tunStrictRoute", "dnsMode", "dohServer", "dohPath", "dohSni", "dnsDetour", "debugLogs",
+        "tunAutoRoute", "tunStrictRoute", "dnsMode", "dohServer", "dohPath", "dohSni", "dnsDetour",
+        "xhttpXmuxMaxConcurrency", "xhttpXmuxMaxConnections", "xhttpXmuxCMaxReuseTimes", "xhttpXmuxHMaxRequestTimes",
+        "xhttpXmuxHMaxReusableSecs", "debugLogs",
         "singBoxLogLevel", "closeBehavior", "updateDismissedModalForTag", "lastRecordedAppSemver", "updateLastCheckUtc"
     ];
 
@@ -454,8 +456,9 @@ public sealed class StorageFormatCompatibilityTests : IDisposable
 
     private static readonly string[] ProfileSchema =
     [
-        "id", "subscriptionId", "name", "uuid", "host", "port", "type", "security", "encryption", "sni", "alpn",
-        "fingerprint", "flow", "realityPublicKey", "realityShortId", "wsPath", "wsHost", "grpcServiceName", "extraQuery"
+        "id", "subscriptionId", "name", "uuid", "host", "port", "engine", "type", "security", "encryption", "sni", "alpn",
+        "fingerprint", "flow", "realityPublicKey", "realityShortId", "wsPath", "wsHost", "grpcServiceName", "xhttpPath",
+        "xhttpHost", "xhttpMode", "xhttpExtra", "extraQuery"
     ];
 
     private static readonly string[] SubscriptionSchema =
