@@ -94,6 +94,14 @@ public sealed class EngineProfile
 
     [JsonPropertyName("grpcServiceName")]
     public string? GrpcServiceName { get; set; }
+
+    /// <summary>XHTTP: mode (auto|packet-up|stream-up|stream-one). Путь и Host — в WsPath/WsHost (параметры path/host).</summary>
+    [JsonPropertyName("xhttpMode")]
+    public string? XhttpMode { get; set; }
+
+    /// <summary>XHTTP: параметр extra ссылки (JSON-объект xhttpSettings.extra), передаётся в Xray как есть.</summary>
+    [JsonPropertyName("xhttpExtra")]
+    public string? XhttpExtra { get; set; }
 }
 
 public sealed class EngineDnsSettings

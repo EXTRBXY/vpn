@@ -103,7 +103,7 @@ public sealed class SingBoxVpnEngineTests
         Assert.Equal(ConnectionMode.Proxy, state.Mode);
         Assert.Equal(DnsDetour.Direct, state.DnsDetour);
         Assert.Equal(1500, state.TunMtu);
-        Assert.Equal("NothingVpn", state.TunInterfaceName);
+        Assert.Equal("NothingX", state.TunInterfaceName);
         Assert.True(Enum.IsDefined(state.SingBoxLogLevel));
     }
 

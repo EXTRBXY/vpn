@@ -68,6 +68,8 @@ internal static class VlessLinkParser
         profile.WsPath = Get(query, "path");
         profile.WsHost = Get(query, "host");
         profile.GrpcServiceName = Get(query, "serviceName") ?? Get(query, "servicename");
+        profile.XhttpMode = Get(query, "mode");
+        profile.XhttpExtra = Get(query, "extra");
 
         // Keep extra params we don't map (e.g. ech)
         foreach (var kv in query)
@@ -100,8 +102,39 @@ internal static class VlessLinkParser
         if (p.Security is not ("tls" or "reality" or "none"))
             throw new ArgumentException("Unsupported security. Expected tls|reality|none.");
 
-        if (p.Type is not ("tcp" or "ws" or "grpc"))
-            throw new ArgumentException("Unsupported type. Expected tcp|ws|grpc.");
+        if (p.Type == "splithttp")
+            p.Type = "xhttp";
+
+        if (p.Type is not ("tcp" or "ws" or "grpc" or "xhttp"))
+            throw new ArgumentException("Unsupported type. Expected tcp|ws|grpc|xhttp.");
+
+        if (p.Type == "xhttp")
+        {
+            p.XhttpMode = string.IsNullOrWhiteSpace(p.XhttpMode) ? null : p.XhttpMode.Trim().ToLowerInvariant();
+            if (p.XhttpMode is not (null or "auto" or "packet-up" or "stream-up" or "stream-one"))
+                throw new ArgumentException("Unsupported xhttp mode. Expected auto|packet-up|stream-up|stream-one.");
+            p.XhttpExtra = string.IsNullOrWhiteSpace(p.XhttpExtra) ? null : p.XhttpExtra.Trim();
+            if (p.XhttpExtra is not null)
+            {
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(p.XhttpExtra);
+                    if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+                        throw new ArgumentException("xhttp extra must be a JSON object.");
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    throw new ArgumentException("xhttp extra is not valid JSON.");
+                }
+            }
+            // XTLS Vision работает только поверх RAW/TCP; с XHTTP flow не используется.
+            p.Flow = null;
+        }
+        else
+        {
+            p.XhttpMode = null;
+            p.XhttpExtra = null;
+        }
 
         if (p.Security == "reality")
         {
@@ -114,6 +147,8 @@ internal static class VlessLinkParser
     private static string StableId(VpnProfile p)
     {
         var key = $"{p.Uuid}|{p.Host}|{p.Port}|{p.Type}|{p.Security}|{p.Sni}|{p.Flow}|{p.RealityPublicKey}|{p.RealityShortId}|{p.WsPath}|{p.WsHost}|{p.GrpcServiceName}";
+        if (p.Type == "xhttp")
+            key += $"|xhttp|{p.XhttpMode}|{p.XhttpExtra}";
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(key));
         return Convert.ToHexString(bytes).ToLowerInvariant()[..16];
     }
@@ -166,7 +201,9 @@ internal static class VlessLinkParser
             || key.Equals("path", StringComparison.OrdinalIgnoreCase)
             || key.Equals("host", StringComparison.OrdinalIgnoreCase)
             || key.Equals("serviceName", StringComparison.OrdinalIgnoreCase)
-            || key.Equals("servicename", StringComparison.OrdinalIgnoreCase);
+            || key.Equals("servicename", StringComparison.OrdinalIgnoreCase)
+            || key.Equals("mode", StringComparison.OrdinalIgnoreCase)
+            || key.Equals("extra", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string SanitizeName(string name)

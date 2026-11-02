@@ -2,8 +2,8 @@ namespace NothingVpn.Domain.Updates;
 
 public static class InstallerFilePolicy
 {
-    public const string ReleaseFileName = "NothingVpnSetup.exe";
-    public const string CachedFilePrefix = "NothingVpnSetup-";
+    public const string ReleaseFileName = "NothingXSetup.exe";
+    public const string CachedFilePrefix = "NothingXSetup-";
 
     public static bool IsAcceptedFileName(string? path)
     {

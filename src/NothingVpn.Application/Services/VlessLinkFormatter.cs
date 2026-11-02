@@ -53,6 +53,10 @@ public static class VlessLinkFormatter
             q["host"] = profile.WsHost.Trim();
         if (!string.IsNullOrWhiteSpace(profile.GrpcServiceName))
             q["serviceName"] = profile.GrpcServiceName.Trim();
+        if (!string.IsNullOrWhiteSpace(profile.XhttpMode))
+            q["mode"] = profile.XhttpMode.Trim();
+        if (!string.IsNullOrWhiteSpace(profile.XhttpExtra))
+            q["extra"] = profile.XhttpExtra.Trim();
 
         // Preserve unknown parameters from imports.
         foreach (var kv in profile.ExtraQuery)

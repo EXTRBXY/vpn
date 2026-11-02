@@ -113,7 +113,7 @@ public static class ApplicationServicesFactory
         }
         catch (Exception ex)
         {
-            logPort.Append(Domain.Models.LogLevel.Warn, AppLogSources.App, $"Служба Nothing VPN недоступна: {ex.Message}");
+            logPort.Append(Domain.Models.LogLevel.Warn, AppLogSources.App, $"Служба NothingX недоступна: {ex.Message}");
         }
 
         return engine;

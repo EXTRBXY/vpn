@@ -36,12 +36,12 @@ public static class ServicePipeSecurity
 
 /// <summary>Отказ проверки подлинности сервера канала. Запрос (с UUID и ключами профиля) не отправлен.</summary>
 public sealed class ServiceAuthenticationException(string reason)
-    : InvalidOperationException($"Служба Nothing VPN не прошла проверку подлинности: {reason}. Данные подключения не отправлены.");
+    : InvalidOperationException($"Служба NothingX не прошла проверку подлинности: {reason}. Данные подключения не отправлены.");
 
 /// <summary>Проверка сервера канала до отправки первого сообщения. Подменяется в тестах.</summary>
 internal interface IPipeServerVerifier
 {
-    /// <exception cref="ServiceAuthenticationException">Сервер — не служба Nothing VPN.</exception>
+    /// <exception cref="ServiceAuthenticationException">Сервер — не служба NothingX.</exception>
     void Verify(NamedPipeClientStream pipe);
 }
 

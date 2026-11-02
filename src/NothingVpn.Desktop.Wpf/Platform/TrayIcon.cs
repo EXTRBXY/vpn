@@ -32,7 +32,7 @@ internal sealed class TrayIcon : IDisposable
         {
             Icon = _baseIcon,
             Visible = true,
-            Text = "Nothing VPN"
+            Text = "NothingX"
         };
 
         var menu = new Forms.ContextMenuStrip();
@@ -56,7 +56,7 @@ internal sealed class TrayIcon : IDisposable
         _notifyIcon.Icon = nextIcon;
         _statusIcon?.Dispose();
         _statusIcon = nextIcon;
-        _notifyIcon.Text = connected ? "Nothing VPN — подключено" : "Nothing VPN — отключено";
+        _notifyIcon.Text = connected ? "NothingX — подключено" : "NothingX — отключено";
         _connectItem.Enabled = !connected;
         _disconnectItem.Enabled = connected;
     }
@@ -64,7 +64,7 @@ internal sealed class TrayIcon : IDisposable
     public void ShowUpdateAvailable(AppReleaseModel release)
     {
         if (_disposed) return;
-        _notifyIcon.BalloonTipTitle = "Доступно обновление Nothing VPN";
+        _notifyIcon.BalloonTipTitle = "Доступно обновление NothingX";
         _notifyIcon.BalloonTipText = $"Версия {release.Semver} готова к загрузке. Нажмите, чтобы открыть приложение.";
         _notifyIcon.BalloonTipIcon = Forms.ToolTipIcon.Info;
         _notifyIcon.ShowBalloonTip(8000);

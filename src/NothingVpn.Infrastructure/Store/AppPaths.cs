@@ -28,13 +28,13 @@ internal sealed record AppPaths(
         var localAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA");
         if (!string.IsNullOrWhiteSpace(localAppData))
         {
-            return Path.Combine(localAppData, "NothingVpn.Tray");
+            return Path.Combine(localAppData, "NothingX");
         }
 
         var fallback = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         if (!string.IsNullOrWhiteSpace(fallback))
         {
-            return Path.Combine(fallback, "NothingVpn.Tray");
+            return Path.Combine(fallback, "NothingX");
         }
 
         return Path.Combine(AppContext.BaseDirectory, ".data");

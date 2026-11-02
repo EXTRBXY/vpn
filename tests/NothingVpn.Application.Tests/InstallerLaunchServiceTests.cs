@@ -20,7 +20,7 @@ public sealed class InstallerLaunchServiceTests : IDisposable
     {
         var starts = new List<ProcessStartInfo>();
         var service = new InstallerLaunchService(() => true, starts.Add);
-        var installer = CreateInstaller("NothingVpnSetup-1.2.3.exe");
+        var installer = CreateInstaller("NothingXSetup-1.2.3.exe");
 
         var ensure = Assert.Throws<InvalidOperationException>(service.EnsureLaunchAllowed);
         Assert.Throws<InvalidOperationException>(() => service.Prepare(installer));
@@ -46,7 +46,7 @@ public sealed class InstallerLaunchServiceTests : IDisposable
     {
         var starts = new List<ProcessStartInfo>();
         var service = new InstallerLaunchService(() => false, starts.Add);
-        var installer = CreateInstaller("NothingVpnSetup-1.2.3.exe");
+        var installer = CreateInstaller("NothingXSetup-1.2.3.exe");
 
         service.Launch(service.Prepare(installer));
 
@@ -62,8 +62,8 @@ public sealed class InstallerLaunchServiceTests : IDisposable
 
     [Theory]
     [InlineData("setup.exe")]
-    [InlineData("NothingVpnSetup-1.2.3.exe.cmd")]
-    [InlineData("NothingVpnSetup-1.2.3.ps1")]
+    [InlineData("NothingXSetup-1.2.3.exe.cmd")]
+    [InlineData("NothingXSetup-1.2.3.ps1")]
     public void Launch_UnexpectedInstallerName_IsRejected(string fileName)
     {
         var starts = new List<ProcessStartInfo>();
@@ -81,7 +81,7 @@ public sealed class InstallerLaunchServiceTests : IDisposable
         var starts = new List<ProcessStartInfo>();
         var service = new InstallerLaunchService(() => false, starts.Add);
 
-        Assert.Throws<FileNotFoundException>(() => service.Launch(Path.Combine(_directory, "NothingVpnSetup-9.9.9.exe")));
+        Assert.Throws<FileNotFoundException>(() => service.Launch(Path.Combine(_directory, "NothingXSetup-9.9.9.exe")));
         Assert.Empty(starts);
     }
 
@@ -93,7 +93,7 @@ public sealed class InstallerLaunchServiceTests : IDisposable
         var starts = new List<ProcessStartInfo>();
         var service = new InstallerLaunchService(() => false, starts.Add);
         Directory.CreateDirectory(Path.Combine(_directory, folder));
-        var installer = CreateInstaller(Path.Combine(folder, "NothingVpnSetup-1.2.3.exe"));
+        var installer = CreateInstaller(Path.Combine(folder, "NothingXSetup-1.2.3.exe"));
 
         service.Launch(installer);
 
@@ -110,7 +110,7 @@ public sealed class InstallerLaunchServiceTests : IDisposable
         Environment.SetEnvironmentVariable(name, "inprocess");
         try
         {
-            var info = InstallerLaunchService.BuildStartInfo(@"C:\Temp\NothingVpnSetup-1.2.3.exe");
+            var info = InstallerLaunchService.BuildStartInfo(@"C:\Temp\NothingXSetup-1.2.3.exe");
 
             Assert.False(info.Environment.ContainsKey(name));
             Assert.DoesNotContain(info.Environment.Keys, key => key.StartsWith("NOTHINGVPN_", StringComparison.OrdinalIgnoreCase));

@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -193,6 +193,8 @@ public sealed class StorageRoundtripTests : IDisposable
         WsPath = "/profile-ws-path",
         WsHost = "profile-ws-host.example",
         GrpcServiceName = "profile-grpc-service",
+        XhttpMode = "stream-one",
+        XhttpExtra = "{\"xPaddingBytes\":\"100-1000\"}",
         ExtraQuery = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["ech"] = "profile-ech",

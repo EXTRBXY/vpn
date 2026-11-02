@@ -28,7 +28,9 @@ public static class EngineRequestMapper
             RealityShortId = profile.RealityShortId,
             WsPath = profile.WsPath,
             WsHost = profile.WsHost,
-            GrpcServiceName = profile.GrpcServiceName
+            GrpcServiceName = profile.GrpcServiceName,
+            XhttpMode = profile.XhttpMode,
+            XhttpExtra = profile.XhttpExtra
         },
         Mode = state.Mode,
         LogLevel = state.SingBoxLogLevel,
@@ -76,7 +78,9 @@ public static class EngineRequestMapper
             RealityShortId = p.RealityShortId,
             WsPath = p.WsPath,
             WsHost = p.WsHost,
-            GrpcServiceName = p.GrpcServiceName
+            GrpcServiceName = p.GrpcServiceName,
+            XhttpMode = p.XhttpMode,
+            XhttpExtra = p.XhttpExtra
         };
     }
 

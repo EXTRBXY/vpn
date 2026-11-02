@@ -33,7 +33,7 @@ public sealed class LegacyUserInstallMigration
 {
     public const string Switch = "--migrate-user-install";
     public const string AutorunSwitch = "--autorun";
-    public const string AppName = "Nothing VPN";
+    public const string AppName = "NothingX";
 
     private static readonly string[] ProgramFiles =
     [
@@ -67,7 +67,7 @@ public sealed class LegacyUserInstallMigration
                 new UserShellFolders(
                     Environment.GetFolderPath(Environment.SpecialFolder.Programs),
                     Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory)),
-                Path.Combine(AppContext.BaseDirectory, "NothingVpn.Desktop.Wpf.exe"));
+                Path.Combine(AppContext.BaseDirectory, "NothingX.exe"));
             var result = migration.Run(enableAutorun);
             Console.WriteLine(result.ToString());
             return result.LeftoverFiles == 0 ? 0 : 2;
@@ -215,10 +215,10 @@ internal sealed class CurrentUserInstallRegistry : IUserInstallRegistry
 {
     /// <summary>AppId установщика прежний, поэтому имя ключа старой per-user установки известно.</summary>
     public const string LegacyUninstallKey =
-        @"Software\Microsoft\Windows\CurrentVersion\Uninstall\{A2D610D2-2A69-4D7A-9B06-6C0B4E5F5C87}_is1";
+        @"Software\Microsoft\Windows\CurrentVersion\Uninstall\{480C4BA1-6EB0-428F-8DD0-28DD0FEA4BE5}_is1";
 
     public const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    public const string RunValue = "NothingVpn";
+    public const string RunValue = "NothingX";
 
     public LegacyUninstallEntry? ReadLegacyUninstallEntry()
     {

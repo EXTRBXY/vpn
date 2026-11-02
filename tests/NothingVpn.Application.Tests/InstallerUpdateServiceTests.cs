@@ -11,8 +11,8 @@ public sealed class InstallerUpdateServiceTests
 
         var path = service.GetCachedInstallerPath("v12.34.5");
 
-        Assert.Equal("NothingVpnSetup-12.34.5.exe", Path.GetFileName(path));
-        Assert.Equal("NothingVpn", Path.GetFileName(Path.GetDirectoryName(path)));
+        Assert.Equal("NothingXSetup-12.34.5.exe", Path.GetFileName(path));
+        Assert.Equal("NothingX", Path.GetFileName(Path.GetDirectoryName(path)));
     }
 
     [Fact]

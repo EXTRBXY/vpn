@@ -15,7 +15,7 @@ namespace NothingVpn.Infrastructure.ServiceChannel;
 /// </summary>
 public static class ServiceProtocol
 {
-    public const string PipeName = "NothingVpn.Service";
+    public const string PipeName = "NothingX.Service";
 
     /// <summary>Предел кадра. Самое большое сообщение — Connect с rule-set в base64 (не больше 16 МиБ данных).</summary>
     public const int MaxFrameBytes = 24 * 1024 * 1024;

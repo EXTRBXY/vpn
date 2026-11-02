@@ -41,7 +41,7 @@ public sealed class PipeVpnEngine : IVpnEngine, IDisposable
     private volatile bool _disposed;
 
     internal const string ServiceUnavailableMessage =
-        "Служба Nothing VPN не отвечает. Запустите службу «Nothing VPN» (services.msc) или переустановите приложение.";
+        "Служба NothingX не отвечает. Запустите службу «NothingX» (services.msc) или переустановите приложение.";
 
     public PipeVpnEngine(ILogPort log, string ruleSetsDirectory, PipeVpnEngineOptions? options = null)
         : this(log, ruleSetsDirectory, options ?? new PipeVpnEngineOptions(), LocalSystemPipeServerVerifier.Instance)
@@ -155,7 +155,7 @@ public sealed class PipeVpnEngine : IVpnEngine, IDisposable
             {
                 // ACL канала пускает только интерактивных пользователей (не сетевых, не службы).
                 pipe.Dispose();
-                throw new InvalidOperationException("Нет доступа к службе Nothing VPN: подключаться может только пользователь, вошедший в Windows на этом компьютере.", ex);
+                throw new InvalidOperationException("Нет доступа к службе NothingX: подключаться может только пользователь, вошедший в Windows на этом компьютере.", ex);
             }
             catch
             {
@@ -353,13 +353,13 @@ public sealed class PipeVpnEngine : IVpnEngine, IDisposable
                 }
                 catch (TimeoutException ex)
                 {
-                    throw new InvalidOperationException("Служба Nothing VPN не ответила вовремя.", ex);
+                    throw new InvalidOperationException("Служба NothingX не ответила вовремя.", ex);
                 }
 
                 if (response.Type == ServiceMessageTypes.Error)
                     throw new InvalidOperationException(response.Error?.Message is { Length: > 0 } text
                         ? text
-                        : "Служба Nothing VPN вернула ошибку.");
+                        : "Служба NothingX вернула ошибку.");
                 return response;
             }
             finally
@@ -418,7 +418,7 @@ public sealed class PipeVpnEngine : IVpnEngine, IDisposable
         private Exception ConnectionLost(Exception? inner = null) =>
             inner is InvalidOperationException { InnerException: null } userFacing && inner is not ObjectDisposedException
                 ? userFacing
-                : new InvalidOperationException("Связь со службой Nothing VPN потеряна.", inner);
+                : new InvalidOperationException("Связь со службой NothingX потеряна.", inner);
     }
 }
 

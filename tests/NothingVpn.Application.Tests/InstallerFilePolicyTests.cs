@@ -5,9 +5,9 @@ namespace NothingVpn.Application.Tests;
 public sealed class InstallerFilePolicyTests
 {
     [Theory]
-    [InlineData("NothingVpnSetup.exe")]
-    [InlineData("NothingVpnSetup-1.2.3.exe")]
-    [InlineData(@"C:\Temp\NothingVpnSetup-2.0.0.EXE")]
+    [InlineData("NothingXSetup.exe")]
+    [InlineData("NothingXSetup-1.2.3.exe")]
+    [InlineData(@"C:\Temp\NothingXSetup-2.0.0.EXE")]
     public void IsAcceptedFileName_AcceptsReleaseAndCacheNames(string path)
     {
         Assert.True(InstallerFilePolicy.IsAcceptedFileName(path));
@@ -15,7 +15,7 @@ public sealed class InstallerFilePolicyTests
 
     [Theory]
     [InlineData("setup.exe")]
-    [InlineData("NothingVpnSetup-1.2.3.zip")]
+    [InlineData("NothingXSetup-1.2.3.zip")]
     [InlineData("")]
     public void IsAcceptedFileName_RejectsUnexpectedNames(string path)
     {
@@ -27,7 +27,7 @@ public sealed class InstallerFilePolicyTests
     {
         var directory = Path.Combine(Path.GetTempPath(), $"nothingvpn-installer-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, "NothingVpnSetup-9.9.9.exe");
+        var path = Path.Combine(directory, "NothingXSetup-9.9.9.exe");
         File.WriteAllBytes(path, [1]);
         try
         {

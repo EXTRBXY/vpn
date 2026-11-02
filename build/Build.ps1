@@ -20,7 +20,7 @@ $script:Artifacts = Join-Path $script:RepoRoot 'artifacts'
 $script:PublishDirectory = Join-Path $script:Artifacts "publish\$Runtime"
 $script:TestResultsDirectory = Join-Path $script:Artifacts 'test-results'
 $script:InstallerOutputDirectory = Join-Path $script:Artifacts 'installer'
-$script:InstallerScript = Join-Path $PSScriptRoot 'installer\NothingVpn.iss'
+$script:InstallerScript = Join-Path $PSScriptRoot 'installer\NothingX.iss'
 
 function Invoke-DotNet {
     param([Parameter(Mandatory = $true)][string[]]$Arguments)
@@ -61,7 +61,7 @@ function Invoke-Tests {
 }
 
 function Invoke-WpfSmokeTest {
-    $application = Join-Path $script:RepoRoot "src\NothingVpn.Desktop.Wpf\bin\$Configuration\net8.0-windows\$Runtime\NothingVpn.Desktop.Wpf.exe"
+    $application = Join-Path $script:RepoRoot "src\NothingVpn.Desktop.Wpf\bin\$Configuration\net8.0-windows\$Runtime\NothingX.exe"
     if (-not (Test-Path -LiteralPath $application)) {
         throw "WPF smoke-test executable not found: $application"
     }
@@ -93,10 +93,10 @@ function Get-VersionArguments {
 function Copy-RuntimeAssets {
     # Fallback for local builds: an installed client, per-machine (step 7b) or the legacy per-user copy.
     $installedDirectories = @()
-    if ($env:ProgramFiles) { $installedDirectories += Join-Path $env:ProgramFiles 'NothingVpn' }
-    if ($env:LOCALAPPDATA) { $installedDirectories += Join-Path $env:LOCALAPPDATA 'Programs\NothingVpn' }
+    if ($env:ProgramFiles) { $installedDirectories += Join-Path $env:ProgramFiles 'NothingX' }
+    if ($env:LOCALAPPDATA) { $installedDirectories += Join-Path $env:LOCALAPPDATA 'Programs\NothingX' }
 
-    foreach ($name in @('sing-box.exe', 'wintun.dll')) {
+    foreach ($name in @('sing-box.exe', 'wintun.dll', 'nothingx-xray.exe')) {
         $destination = Join-Path $script:PublishDirectory $name
         $candidates = @()
         if (-not [string]::IsNullOrWhiteSpace($RuntimeAssetsDirectory)) {
@@ -110,8 +110,8 @@ function Copy-RuntimeAssets {
         if ($source) {
             Copy-Item -LiteralPath $source -Destination $destination -Force
             Write-Host "Runtime asset: $name"
-        } elseif ($name -eq 'sing-box.exe') {
-            Write-Warning "sing-box.exe was not found. Installer creation requires it."
+        } elseif ($name -in @('sing-box.exe', 'nothingx-xray.exe')) {
+            Write-Warning "$name was not found. Installer creation requires it (nothingx-xray.exe = xray.exe из Xray-windows-64.zip)."
         } else {
             Write-Warning "wintun.dll was not found. TUN mode will be unavailable."
         }
@@ -141,7 +141,7 @@ function Invoke-Publish {
     }
     Copy-RuntimeAssets
 
-    foreach ($name in @('NothingVpn.Desktop.Wpf.exe', 'NothingVpn.Service.exe')) {
+    foreach ($name in @('NothingX.exe', 'NothingX.Service.exe')) {
         $output = Join-Path $script:PublishDirectory $name
         if (-not (Test-Path -LiteralPath $output)) {
             throw "Publish output not found: $output"
@@ -169,7 +169,7 @@ function Resolve-InnoCompiler {
 
 function Invoke-Installer {
     $singBox = Join-Path $script:PublishDirectory 'sing-box.exe'
-    foreach ($name in @('NothingVpn.Desktop.Wpf.exe', 'NothingVpn.Service.exe')) {
+    foreach ($name in @('NothingX.exe', 'NothingX.Service.exe')) {
         $output = Join-Path $script:PublishDirectory $name
         if (-not (Test-Path -LiteralPath $output)) {
             throw "Publish the application before creating the installer: $output"
@@ -192,7 +192,7 @@ function Invoke-Installer {
         throw "Inno Setup failed with exit code $LASTEXITCODE."
     }
 
-    $installer = Join-Path $script:InstallerOutputDirectory 'NothingVpnSetup.exe'
+    $installer = Join-Path $script:InstallerOutputDirectory 'NothingXSetup.exe'
     if (-not (Test-Path -LiteralPath $installer)) {
         throw "Installer output not found: $installer"
     }

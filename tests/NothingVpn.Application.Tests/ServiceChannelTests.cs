@@ -251,7 +251,7 @@ public sealed class ServiceChannelTests : IAsyncDisposable
 
         await stopped.Task.WaitAsync(Wait);
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => client.DisconnectAsync());
-        Assert.Contains("Служба Nothing VPN", error.Message, StringComparison.Ordinal);
+        Assert.Contains("Служба NothingX", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]

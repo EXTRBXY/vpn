@@ -11,7 +11,7 @@ public sealed class InstallerLaunchService : IInstallerLaunchService
 
     internal const string ElevatedClientMessage =
         "Интерфейс запущен от имени администратора: установщик унаследовал бы эти права. " +
-        "Закройте Nothing VPN, запустите его обычным способом и повторите обновление.";
+        "Закройте NothingX, запустите его обычным способом и повторите обновление.";
 
     private const string ClientVariablePrefix = "NOTHINGVPN_";
 

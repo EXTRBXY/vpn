@@ -103,6 +103,6 @@ public sealed class SubscriptionHttpFetcher : ISubscriptionFetcherPort
     private static string BuildUserAgent()
     {
         var version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1.0.0";
-        return $"NothingVpn/{version}";
+        return $"NothingX/{version}";
     }
 }

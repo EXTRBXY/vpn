@@ -7,7 +7,7 @@ namespace NothingVpn.Desktop.Wpf;
 /// <summary>Сообщения уровня приложения, которые не относятся к конкретному экрану.</summary>
 internal static class AppDialogs
 {
-    private const string Caption = "Nothing VPN";
+    private const string Caption = "NothingX";
 
     public static void ShowStartupError(string message) =>
         System.Windows.MessageBox.Show(message, Caption, MessageBoxButton.OK, MessageBoxImage.Error);

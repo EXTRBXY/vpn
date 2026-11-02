@@ -8,7 +8,7 @@ namespace NothingVpn.Desktop.Wpf;
 /// <summary>Старт, выход и связывание частей клиента. Сборка зависимостей — <see cref="DesktopCompositionRoot"/>.</summary>
 public partial class App : System.Windows.Application
 {
-    private const string AppId = "NothingVpn.Desktop.Wpf";
+    private const string AppId = "NothingX.Desktop";
     private SystemThemeWatcher? _theme;
     private SingleInstance? _singleInstance;
     private GlobalExceptionHandler? _exceptions;
@@ -59,7 +59,7 @@ public partial class App : System.Windows.Application
             exceptions.Attach(this);
             _exceptions = exceptions;
             _log = composition.Log;
-            composition.Log.Append(LogLevel.Info, AppLogSources.App, $"Nothing VPN {composition.Updates.CurrentVersion} запущен.");
+            composition.Log.Append(LogLevel.Info, AppLogSources.App, $"NothingX {composition.Updates.CurrentVersion} запущен.");
 
             var viewModel = composition.Main;
             _viewModel = viewModel;
@@ -176,7 +176,7 @@ public partial class App : System.Windows.Application
             _exceptions?.Report(ex, "Не удалось запустить установщик обновления");
             AppDialogs.ShowUnexpectedError(
                 _window,
-                $"Не удалось запустить установщик обновления: {ex.Message}\nVPN отключён. Запустите Nothing VPN снова.");
+                $"Не удалось запустить установщик обновления: {ex.Message}\nVPN отключён. Запустите NothingX снова.");
         }
     }
 }

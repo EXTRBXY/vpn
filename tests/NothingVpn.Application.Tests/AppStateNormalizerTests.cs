@@ -48,7 +48,7 @@ public sealed class AppStateNormalizerTests
         Assert.Equal("/dns-query", state.DohPath);
         Assert.Equal("dns.quad9.net", state.DohSni);
         Assert.Equal("proxy", state.DnsDetour.ToValue());
-        Assert.Equal("NothingVpn", state.TunInterfaceName);
+        Assert.Equal("NothingX", state.TunInterfaceName);
         Assert.Equal("auto", state.TunAddressCidr);
         Assert.Equal(1500, state.TunMtu);
         Assert.Equal("gvisor", state.TunStack.ToValue());
@@ -82,7 +82,7 @@ public sealed class AppStateNormalizerTests
             DohServer = " 8.8.8.8 ",
             DohPath = "",
             DohSni = " dns.google ",
-            TunInterfaceName = " NothingVpn ",
+            TunInterfaceName = " NothingX ",
             TunAddressCidr = " AUTO ",
             TunMtu = 0,
             TunStack = TunSettingsPolicy.Stacks.Parse("unknown"),

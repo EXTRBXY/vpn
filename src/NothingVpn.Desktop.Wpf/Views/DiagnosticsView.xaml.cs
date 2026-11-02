@@ -34,7 +34,7 @@ public partial class DiagnosticsView : System.Windows.Controls.UserControl
             var dialog = new Microsoft.Win32.SaveFileDialog
             {
                 Filter = "Текст (*.txt)|*.txt",
-                FileName = $"nothingvpn-{DateTimeOffset.Now:yyyyMMdd-HHmmss}.txt"
+                FileName = $"nothingx-{DateTimeOffset.Now:yyyyMMdd-HHmmss}.txt"
             };
             if (dialog.ShowDialog() == true)
                 vm.SaveFullLog(dialog.FileName, text);

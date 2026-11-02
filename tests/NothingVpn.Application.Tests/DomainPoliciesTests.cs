@@ -300,7 +300,7 @@ public sealed class DomainPoliciesTests
     {
         var settings = new TunSettings { InterfaceName = "bad/name", Mtu = 1500 };
         TunSettingsPolicy.Normalize(settings);
-        Assert.Equal("NothingVpn", settings.InterfaceName);
+        Assert.Equal("NothingX", settings.InterfaceName);
     }
 
     [Theory]

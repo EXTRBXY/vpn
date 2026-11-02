@@ -12,6 +12,9 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <PublishTrimmed>false</PublishTrimmed>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <AssemblyName>NothingX</AssemblyName>
+    <Product>NothingX</Product>
+    <AssemblyTitle>NothingX</AssemblyTitle>
   </PropertyGroup>
 
   <ItemGroup>

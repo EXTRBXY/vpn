@@ -6,7 +6,7 @@ namespace NothingVpn.Domain.Policies;
 
 public static class TunSettingsPolicy
 {
-    public const string DefaultInterfaceName = "NothingVpn";
+    public const string DefaultInterfaceName = "NothingX";
     public const string AutoAddressCidr = "auto";
     public const TunStack DefaultStack = TunStack.Default;
     public const int DefaultMtu = 1500;

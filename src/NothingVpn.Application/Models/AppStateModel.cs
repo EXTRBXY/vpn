@@ -16,7 +16,7 @@ public sealed class AppStateModel
 
     [JsonPropertyName("mode")]
     [JsonConverter(typeof(ConnectionModeJsonConverter))]
-    public ConnectionMode Mode { get; set; } = ConnectionPolicy.DefaultMode;
+    public ConnectionMode Mode { get; set; } = ConnectionPolicy.InitialMode;
 
     [JsonPropertyName("tunAppProcessPaths")]
     public List<string> TunAppProcessPaths { get; set; } = new();

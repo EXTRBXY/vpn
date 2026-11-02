@@ -26,7 +26,7 @@ public sealed class VpnProfile
     [JsonPropertyName("port")]
     public int Port { get; set; } = 443;
 
-    /// <summary>tcp|ws|grpc.</summary>
+    /// <summary>tcp|ws|grpc|xhttp.</summary>
     [JsonPropertyName("type")]
     public string Type { get; set; } = "tcp";
 
@@ -66,6 +66,14 @@ public sealed class VpnProfile
 
     [JsonPropertyName("grpcServiceName")]
     public string? GrpcServiceName { get; set; }
+
+    /// <summary>XHTTP: mode (auto|packet-up|stream-up|stream-one). Путь и Host — в WsPath/WsHost (параметры path/host).</summary>
+    [JsonPropertyName("xhttpMode")]
+    public string? XhttpMode { get; set; }
+
+    /// <summary>XHTTP: параметр extra ссылки (JSON-объект xhttpSettings.extra), передаётся в Xray как есть.</summary>
+    [JsonPropertyName("xhttpExtra")]
+    public string? XhttpExtra { get; set; }
 
     /// <summary>Параметры ссылки, которые клиент не разбирает (например ech). Ключи без учёта регистра.</summary>
     // Populate: при чтении словарь из инициализатора заполняется, а не заменяется — компаратор сохраняется.

@@ -46,7 +46,7 @@ public sealed class ConnectionDiagnosticController : IConnectionDiagnosticContro
 
             var elapsed = stopwatch.ElapsedMilliseconds;
             var message = isTunApps
-                ? $"Связность: OK\nВремя: {elapsed} мс\n\nВажно: в режиме «TUN (выбранные приложения)» тест идёт из процесса Nothing VPN (обычно напрямую, без VLESS). OK здесь не означает, что выбранные .exe ходят в интернет через туннель — проверяйте сами браузер/игру из списка."
+                ? $"Связность: OK\nВремя: {elapsed} мс\n\nВажно: в режиме «TUN (выбранные приложения)» тест идёт из процесса NothingX (обычно напрямую, без VLESS). OK здесь не означает, что выбранные .exe ходят в интернет через туннель — проверяйте сами браузер/игру из списка."
                 : $"{(isTun ? "TUN" : "Прокси")}: OK\nВремя: {elapsed} мс";
             return new ConnectionDiagnosticResult(ConnectionDiagnosticStatus.Success, message);
         }

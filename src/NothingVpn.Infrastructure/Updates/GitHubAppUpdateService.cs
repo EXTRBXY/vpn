@@ -11,7 +11,7 @@ public sealed class GitHubAppUpdateService : IAppUpdateService
 {
     private const string Owner = "EXTRBXY";
     private const string Repository = "vpn";
-    private const string InstallerAssetName = "NothingVpnSetup.exe";
+    private const string InstallerAssetName = "NothingXSetup.exe"; // NothingX: такого файла нет в релизах EXTRBXY/vpn — автообновление на оригинал выключено
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     public Task<AppReleaseModel?> GetLatestAsync(string currentVersion, CancellationToken cancellationToken = default) =>
@@ -27,7 +27,7 @@ public sealed class GitHubAppUpdateService : IAppUpdateService
     {
         using var handler = new HttpClientHandler { Proxy = null, UseProxy = false };
         using var client = new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(2) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd($"NothingVpn/{SemanticVersionPolicy.Normalize(currentVersion)}");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd($"NothingX/{SemanticVersionPolicy.Normalize(currentVersion)}");
         client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
         var url = $"https://api.github.com/repos/{Owner}/{Repository}/releases/{releasePath}";
         using var response = await client.GetAsync(url, cancellationToken).ConfigureAwait(false);

@@ -5,6 +5,10 @@ namespace NothingVpn.Domain.Policies;
 public static class ConnectionPolicy
 {
     public const ConnectionMode DefaultMode = ConnectionMode.Proxy;
+
+    // Mode of a fresh state.json (first launch): TUN, all traffic. DefaultMode stays the
+    // fallback for unknown values and the idle engine status.
+    public const ConnectionMode InitialMode = ConnectionMode.Tun;
     public const int DefaultLocalMixedPort = 1080;
 
     public static readonly SettingValueMap<ConnectionMode> Modes = new(

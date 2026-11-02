@@ -47,14 +47,14 @@ public sealed class LegacyUserInstallMigrationTests : IDisposable
             File.WriteAllText(Path.Combine(_legacyDir, name), "x");
         File.WriteAllText(Path.Combine(_dataDir, "state.json"), "{}");
         File.WriteAllText(Path.Combine(_dataDir, "profiles.json"), "{}");
-        var group = Path.Combine(_programs, "Nothing VPN");
+        var group = Path.Combine(_programs, "NothingX");
         Directory.CreateDirectory(group);
-        File.WriteAllText(Path.Combine(group, "Nothing VPN.lnk"), "x");
-        File.WriteAllText(Path.Combine(group, "Uninstall Nothing VPN.lnk"), "x");
-        File.WriteAllText(Path.Combine(_desktop, "Nothing VPN.lnk"), "x");
+        File.WriteAllText(Path.Combine(group, "NothingX.lnk"), "x");
+        File.WriteAllText(Path.Combine(group, "Uninstall NothingX.lnk"), "x");
+        File.WriteAllText(Path.Combine(_desktop, "NothingX.lnk"), "x");
         var registry = new FakeRegistry
         {
-            Entry = new LegacyUninstallEntry(_legacyDir, $"\"{Path.Combine(_legacyDir, "unins000.exe")}\"", "Nothing VPN")
+            Entry = new LegacyUninstallEntry(_legacyDir, $"\"{Path.Combine(_legacyDir, "unins000.exe")}\"", "NothingX")
         };
 
         var result = Migrate(registry, enableAutorun: false);
@@ -63,7 +63,7 @@ public sealed class LegacyUserInstallMigrationTests : IDisposable
         Assert.Equal(0, result.LeftoverFiles);
         Assert.False(Directory.Exists(_legacyDir));
         Assert.False(Directory.Exists(group));
-        Assert.False(File.Exists(Path.Combine(_desktop, "Nothing VPN.lnk")));
+        Assert.False(File.Exists(Path.Combine(_desktop, "NothingX.lnk")));
         Assert.True(registry.EntryDeleted);
         Assert.True(File.Exists(Path.Combine(_dataDir, "state.json")));
         Assert.True(File.Exists(Path.Combine(_dataDir, "profiles.json")));

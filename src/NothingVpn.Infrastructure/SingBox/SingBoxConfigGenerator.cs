@@ -16,39 +16,72 @@ internal static class SingBoxConfigGenerator
 {
     public static string WriteConfig(AppPaths paths, VpnProfile profile, AppStateModel state)
     {
-        var config = Build(paths, profile, state);
-        var json = JsonSerializer.Serialize(config, JsonOptions());
-
         var path = Path.Combine(paths.ConfigsDir, $"{profile.Id}.{state.Mode.ToValue()}.json");
+        var xrayPath = XrayConfigGenerator.ConfigPathFor(path);
+
+        XraySidecar? sidecar = null;
+        if (XrayConfigGenerator.IsRequired(profile))
+        {
+            sidecar = XrayConfigGenerator.CreateSidecar();
+            File.WriteAllText(xrayPath, XrayConfigGenerator.Build(profile, state, sidecar));
+        }
+        else if (File.Exists(xrayPath))
+        {
+            File.Delete(xrayPath);
+        }
+
+        var config = Build(paths, profile, state, sidecar);
+        var json = JsonSerializer.Serialize(config, JsonOptions());
         File.WriteAllText(path, json);
         return path;
     }
 
-    public static SingBoxConfig Build(AppPaths paths, VpnProfile profile, AppStateModel state)
+    public static SingBoxConfig Build(AppPaths paths, VpnProfile profile, AppStateModel state, XraySidecar? xray = null)
     {
+        if (XrayConfigGenerator.IsRequired(profile) && xray is null)
+            throw new ArgumentException("xhttp profile requires the Xray sidecar.");
+
         var mode = state.Mode;
         var useTun = ConnectionPolicy.IsTunMode(mode);
         var inbounds = useTun
             ? new List<SingBoxInbound> { BuildTunInbound(state, profile, mode) }
             : new List<SingBoxInbound> { BuildMixedInbound(state.LocalMixedPort) };
 
-        var outbound = new SingBoxOutbound
+        SingBoxOutbound outbound;
+        if (xray is not null)
         {
-            Type = "vless",
-            Tag = "proxy",
-            Server = profile.Host,
-            ServerPort = profile.Port,
-            Uuid = profile.Uuid,
-            Flow = profile.Flow,
-            Tls = BuildTls(profile)
-        };
+            // XHTTP: VLESS-соединение к серверу делает Xray, sing-box отдаёт ему трафик по локальному SOCKS5.
+            outbound = new SingBoxOutbound
+            {
+                Type = "socks",
+                Tag = "proxy",
+                Server = "127.0.0.1",
+                ServerPort = xray.Port,
+                Version = "5",
+                Username = xray.Username,
+                Password = xray.Password
+            };
+        }
+        else
+        {
+            outbound = new SingBoxOutbound
+            {
+                Type = "vless",
+                Tag = "proxy",
+                Server = profile.Host,
+                ServerPort = profile.Port,
+                Uuid = profile.Uuid,
+                Flow = profile.Flow,
+                Tls = BuildTls(profile)
+            };
 
-        outbound.Transport = BuildTransport(profile);
+            outbound.Transport = BuildTransport(profile);
+        }
 
         var routing = EvaluateRoutingPolicy(state, useTun);
         var useDohResolver = state.DnsMode == DnsMode.Doh;
         var dnsDetour = ResolveDnsDetour(state, mode, useTun);
-        if (dnsDetour == "proxy")
+        if (dnsDetour == "proxy" && xray is null)
             outbound.DomainResolver = TunBootstrapPolicy.BootstrapLocalDnsTag;
 
         return new SingBoxConfig
@@ -62,7 +95,7 @@ internal static class SingBoxConfigGenerator
                 new SingBoxOutbound { Type = "direct", Tag = "direct" },
                 new SingBoxOutbound { Type = "block", Tag = "block" }
             },
-            Route = BuildRoute(paths, mode, state, profile, useDohResolver)
+            Route = BuildRoute(paths, mode, state, profile, useDohResolver, xray is not null)
         };
     }
 
@@ -84,7 +117,7 @@ internal static class SingBoxConfigGenerator
             requestedProxy ? DnsDetour.Proxy : DnsDetour.Direct);
     }
 
-    private static List<SingBoxRouteRule> BuildTunHeadRules(VpnProfile profile, ConnectionMode mode)
+    private static List<SingBoxRouteRule> BuildTunHeadRules(VpnProfile profile, ConnectionMode mode, bool usesXray)
     {
         var rules = new List<SingBoxRouteRule>
         {
@@ -109,6 +142,31 @@ internal static class SingBoxConfigGenerator
                 Action = "route",
                 Outbound = "direct"
             });
+        }
+
+        if (usesXray)
+        {
+            // Соединения самого Xray к серверу не должны снова попасть в TUN (петля).
+            rules.Add(new SingBoxRouteRule
+            {
+                ProcessName = new List<string> { XrayConfigGenerator.ExeName },
+                Action = "route",
+                Outbound = "direct"
+            });
+            if (System.Net.IPAddress.TryParse(profile.Host.Trim('[', ']'), out var serverIp))
+            {
+                rules.Add(new SingBoxRouteRule
+                {
+                    IpCidr = new List<string>
+                    {
+                        serverIp.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
+                            ? $"{serverIp}/128"
+                            : $"{serverIp}/32"
+                    },
+                    Action = "route",
+                    Outbound = "direct"
+                });
+            }
         }
 
         if (TunRoutingPolicy.RouteSecureDnsThroughProxy(mode))
@@ -155,7 +213,8 @@ internal static class SingBoxConfigGenerator
         ConnectionMode mode,
         AppStateModel state,
         VpnProfile profile,
-        bool useDohResolver)
+        bool useDohResolver,
+        bool usesXray)
     {
         var useTun = ConnectionPolicy.IsTunMode(mode);
         var defaultResolver = TunBootstrapPolicy.ResolveDefaultDomainResolver(useTun, useDohResolver);
@@ -183,7 +242,7 @@ internal static class SingBoxConfigGenerator
             };
         }
 
-        var rules = BuildTunHeadRules(profile, mode);
+        var rules = BuildTunHeadRules(profile, mode, usesXray);
         rules.Add(new SingBoxRouteRule { Protocol = "stun", Action = "reject" });
         rules.AddRange(userRules);
         AddTunFallbackRules(rules, mode);
@@ -466,6 +525,7 @@ internal static class SingBoxConfigGenerator
                 Type = "grpc",
                 ServiceName = p.GrpcServiceName ?? "default"
             },
+            "xhttp" => throw new ArgumentException("xhttp обслуживает Xray, а не sing-box."),
             _ => throw new ArgumentException("Unsupported transport type.")
         };
     }
@@ -520,6 +580,11 @@ internal sealed class SingBoxOutbound
     public int? ServerPort { get; set; }
     public string? Uuid { get; set; }
     public string? Flow { get; set; }
+
+    // socks fields (NothingX: выход на локальный Xray для XHTTP)
+    public string? Version { get; set; }
+    public string? Username { get; set; }
+    public string? Password { get; set; }
 
     public string? DomainResolver { get; set; }
     public SingBoxTls? Tls { get; set; }
@@ -580,6 +645,8 @@ internal sealed class SingBoxRouteRule
     public int? IpVersion { get; set; }
 
     public bool? IpIsPrivate { get; set; }
+
+    public List<string>? IpCidr { get; set; }
 
     public List<string>? ProcessPath { get; set; }
 

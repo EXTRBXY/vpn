@@ -10,7 +10,7 @@ namespace NothingVpn.Service;
 /// </summary>
 internal sealed class NothingVpnWindowsService : ServiceBase
 {
-    public const string Name = "NothingVpn";
+    public const string Name = "NothingX";
 
     private ServiceEngineHost? _host;
 
@@ -32,7 +32,7 @@ internal sealed class NothingVpnWindowsService : ServiceBase
         catch (Exception ex)
         {
             // Например, имя канала уже занято чужим процессом: служба не работает поверх чужого канала.
-            EventLog.WriteEntry($"Служба Nothing VPN не запустилась: {ex.Message}", EventLogEntryType.Error);
+            EventLog.WriteEntry($"Служба NothingX не запустилась: {ex.Message}", EventLogEntryType.Error);
             StopHost();
             throw;
         }

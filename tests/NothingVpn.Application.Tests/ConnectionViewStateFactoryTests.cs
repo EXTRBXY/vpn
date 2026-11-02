@@ -28,7 +28,7 @@ public sealed class ConnectionViewStateFactoryTests
         Assert.True(viewState.CanEditConnection);
         Assert.Equal("Amsterdam", viewState.ProfileText);
         Assert.Equal("Прокси", viewState.ModeText);
-        Assert.Equal("Nothing VPN (прокси)", viewState.WindowTitle);
+        Assert.Equal("NothingX (прокси)", viewState.WindowTitle);
     }
 
     [Fact]

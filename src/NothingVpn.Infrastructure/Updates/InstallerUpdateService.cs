@@ -11,7 +11,7 @@ public sealed class InstallerUpdateService : IInstallerUpdateService
         var normalized = SemanticVersionPolicy.Normalize(version);
         if (normalized.Length == 0)
             throw new ArgumentException("Некорректная версия обновления.", nameof(version));
-        var directory = Path.Combine(Path.GetTempPath(), "NothingVpn");
+        var directory = Path.Combine(Path.GetTempPath(), "NothingX");
         Directory.CreateDirectory(directory);
         return Path.Combine(directory, $"{InstallerFilePolicy.CachedFilePrefix}{normalized}.exe");
     }
@@ -20,7 +20,7 @@ public sealed class InstallerUpdateService : IInstallerUpdateService
     {
         try
         {
-            var directory = Path.Combine(Path.GetTempPath(), "NothingVpn");
+            var directory = Path.Combine(Path.GetTempPath(), "NothingX");
             if (!Directory.Exists(directory))
                 return;
             foreach (var path in Directory.EnumerateFiles(directory, $"{InstallerFilePolicy.CachedFilePrefix}*.exe", SearchOption.TopDirectoryOnly))
@@ -43,7 +43,7 @@ public sealed class InstallerUpdateService : IInstallerUpdateService
             InstallerDownloadUrlValidator.EnsureValid(release.InstallerDownloadUrl, InstallerFilePolicy.ReleaseFileName);
             using var handler = new HttpClientHandler();
             using var client = new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(10) };
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("NothingVpn-InstallerDownload/1");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("NothingX-InstallerDownload/1");
             using var response = await client.GetAsync(
                 release.InstallerDownloadUrl,
                 HttpCompletionOption.ResponseHeadersRead,

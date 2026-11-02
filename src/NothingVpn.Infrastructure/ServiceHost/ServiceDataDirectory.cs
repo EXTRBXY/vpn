@@ -12,7 +12,7 @@ namespace NothingVpn.Infrastructure.ServiceHost;
 internal static class ServiceDataDirectory
 {
     public static string DefaultRoot =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "NothingVpn");
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "NothingX");
 
     public static AppPaths Create(string root, bool applyAcl)
     {

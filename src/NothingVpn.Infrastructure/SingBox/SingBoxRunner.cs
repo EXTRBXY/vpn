@@ -18,7 +18,10 @@ internal sealed class SingBoxRunner : IDisposable
     private Process? _process;
     private string? _lastConfigPath;
     private ProcessJobScope? _processJob;
+    private Process? _xray;
+    private ProcessJobScope? _xrayJob;
     private readonly object _gate = new();
+    private static readonly TimeSpan XrayStartupTimeout = TimeSpan.FromSeconds(5);
 
     public event EventHandler? ProcessExited;
 
@@ -83,7 +86,10 @@ internal sealed class SingBoxRunner : IDisposable
             .GetResult();
 
         if (exitCode == 0)
+        {
+            ValidateXrayConfig(configPath, exePath);
             return;
+        }
 
         var detail = ExtractCheckFailure(stdout, stderr);
         throw new InvalidOperationException(
@@ -169,6 +175,8 @@ internal sealed class SingBoxRunner : IDisposable
             _logStore.Clear();
             _lastConfigPath = configPath;
 
+            StartXrayIfRequired(configPath, exePath);
+
             var psi = new ProcessStartInfo
             {
                 FileName = exePath,
@@ -186,7 +194,10 @@ internal sealed class SingBoxRunner : IDisposable
             p.Exited += OnProcessExited;
 
             if (!p.Start())
+            {
+                StopXray();
                 throw new InvalidOperationException("Failed to start sing-box process.");
+            }
 
             _processJob?.Dispose();
             _processJob = ProcessJobScope.TryAttach(p);
@@ -207,14 +218,17 @@ internal sealed class SingBoxRunner : IDisposable
         }
 
         if (string.IsNullOrWhiteSpace(path)) return;
-        try
+        foreach (var file in new[] { path, XrayConfigGenerator.ConfigPathFor(path) })
         {
-            if (File.Exists(path))
-                File.Delete(path);
-        }
-        catch
-        {
-            // best-effort; do not fail disconnect
+            try
+            {
+                if (File.Exists(file))
+                    File.Delete(file);
+            }
+            catch
+            {
+                // best-effort; do not fail disconnect
+            }
         }
     }
 
@@ -235,6 +249,7 @@ internal sealed class SingBoxRunner : IDisposable
         }
 
         job?.Dispose();
+        StopXray();
         TryDeleteLastConfig();
         ProcessExited?.Invoke(this, EventArgs.Empty);
     }
@@ -252,7 +267,10 @@ internal sealed class SingBoxRunner : IDisposable
         }
 
         if (proc is null)
+        {
+            StopXray();
             return;
+        }
 
         try
         {
@@ -273,6 +291,7 @@ internal sealed class SingBoxRunner : IDisposable
         {
             job?.Dispose();
             try { proc.Dispose(); } catch { }
+            StopXray();
             TryDeleteLastConfig();
         }
     }
@@ -496,6 +515,163 @@ internal sealed class SingBoxRunner : IDisposable
         Stop();
     }
 
+    // ---------- NothingX: Xray для XHTTP ----------
+
+    private static string XrayExePathNear(string singBoxExePath) =>
+        Path.Combine(Path.GetDirectoryName(singBoxExePath)!, XrayConfigGenerator.ExeName);
+
+    private void ValidateXrayConfig(string configPath, string singBoxExePath)
+    {
+        var xrayConfig = XrayConfigGenerator.ConfigPathFor(configPath);
+        if (!File.Exists(xrayConfig))
+            return;
+
+        var xrayExe = XrayExePathNear(singBoxExePath);
+        if (!File.Exists(xrayExe))
+            throw new FileNotFoundException($"Для XHTTP нужен {XrayConfigGenerator.ExeName} рядом с sing-box.exe.", xrayExe);
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = xrayExe,
+            Arguments = $"run -test -c \"{xrayConfig}\"",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = System.Text.Encoding.UTF8,
+            StandardErrorEncoding = System.Text.Encoding.UTF8,
+            WorkingDirectory = Path.GetDirectoryName(xrayExe)!
+        };
+
+        var (exitCode, stdout, stderr) = RunProcessAsync(psi, TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
+        if (exitCode == 0)
+            return;
+
+        var detail = ExtractCheckFailure(stdout, stderr);
+        throw new InvalidOperationException(
+            string.IsNullOrWhiteSpace(detail)
+                ? $"Xray: проверка конфигурации не прошла (код {exitCode})."
+                : $"Xray: проверка конфигурации не прошла: {detail}");
+    }
+
+    /// <summary>Под <see cref="_gate"/>: запускает Xray и ждёт, пока он начнёт слушать локальный SOCKS-порт.</summary>
+    private void StartXrayIfRequired(string configPath, string singBoxExePath)
+    {
+        var xrayConfig = XrayConfigGenerator.ConfigPathFor(configPath);
+        if (!File.Exists(xrayConfig))
+            return;
+
+        var xrayExe = XrayExePathNear(singBoxExePath);
+        if (!File.Exists(xrayExe))
+            throw new FileNotFoundException($"Для XHTTP нужен {XrayConfigGenerator.ExeName} рядом с sing-box.exe.", xrayExe);
+
+        var port = XrayConfigGenerator.TryReadSocksPort(xrayConfig)
+            ?? throw new InvalidOperationException("Xray: в конфиге нет локального порта.");
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = xrayExe,
+            Arguments = $"run -c \"{xrayConfig}\"",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = System.Text.Encoding.UTF8,
+            StandardErrorEncoding = System.Text.Encoding.UTF8,
+            WorkingDirectory = Path.GetDirectoryName(xrayExe)!
+        };
+
+        var xray = new Process { StartInfo = psi, EnableRaisingEvents = true };
+        xray.Exited += OnXrayExited;
+        if (!xray.Start())
+            throw new InvalidOperationException("Не удалось запустить Xray.");
+
+        _xrayJob?.Dispose();
+        _xrayJob = ProcessJobScope.TryAttach(xray);
+        _xray = xray;
+        _ = Task.Run(() => PumpAsync(xray.StandardOutput, "xray/stdout", _logStore));
+        _ = Task.Run(() => PumpAsync(xray.StandardError, "xray/stderr", _logStore));
+
+        var deadline = Environment.TickCount64 + (long)XrayStartupTimeout.TotalMilliseconds;
+        while (Environment.TickCount64 < deadline)
+        {
+            if (xray.HasExited)
+                break;
+            if (IsLoopbackPortListening(port))
+                return;
+            Thread.Sleep(50);
+        }
+
+        StopXray();
+        throw new InvalidOperationException("Xray не запустился (локальный SOCKS-порт не открылся). Откройте логи в приложении.");
+    }
+
+    private static bool IsLoopbackPortListening(int port)
+    {
+        try
+        {
+            using var client = new System.Net.Sockets.TcpClient();
+            var task = client.ConnectAsync(System.Net.IPAddress.Loopback, port);
+            return task.Wait(200) && client.Connected;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Xray упал при живом sing-box — гасим sing-box, чтобы ядро увидело выход процесса как обычно.</summary>
+    private void OnXrayExited(object? sender, EventArgs e)
+    {
+        Process? singBox;
+        lock (_gate)
+        {
+            if (!ReferenceEquals(_xray, sender))
+                return;
+            singBox = _process;
+        }
+
+        _logStore.AppendStructured(LogLevel.Error, "xray", "Xray завершился; подключение XHTTP остановлено.");
+        try
+        {
+            if (singBox is { HasExited: false })
+                singBox.Kill(entireProcessTree: true);
+        }
+        catch { }
+    }
+
+    private void StopXray()
+    {
+        Process? xray;
+        ProcessJobScope? job;
+        lock (_gate)
+        {
+            xray = _xray;
+            job = _xrayJob;
+            _xray = null;
+            _xrayJob = null;
+        }
+
+        if (xray is null)
+            return;
+
+        try
+        {
+            if (!xray.HasExited)
+            {
+                CloseProcessStreams(xray);
+                try { xray.Kill(entireProcessTree: true); } catch { }
+                WaitForProcessExit(xray, ProcessStopTimeout);
+            }
+        }
+        catch { }
+        finally
+        {
+            job?.Dispose();
+            try { xray.Dispose(); } catch { }
+        }
+    }
+
     private static bool UsesTunInbound(string configPath)
     {
         try
@@ -565,7 +741,7 @@ internal sealed class SingBoxRunner : IDisposable
         var installedDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Programs",
-            "NothingVpn");
+            "NothingX");
 
         var candidates = new List<string>
         {

@@ -20,7 +20,7 @@ public static class ConnectionViewStateFactory
             CanStop: isRunning,
             CanEditConnection: !isRunning,
             CanEditTunApps: canEditTunApps,
-            WindowTitle: $"Nothing VPN ({TitleMode(mode)})",
+            WindowTitle: $"NothingX ({TitleMode(mode)})",
             StatusText: isRunning ? "Запущено" : "Остановлено",
             AdministratorText: isAdministrator ? "Администратор" : "Обычный пользователь",
             ModeText: DisplayMode(mode),

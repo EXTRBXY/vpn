@@ -49,7 +49,9 @@ public sealed class EngineContractTests : IDisposable
                 RealityShortId = "a1b2",
                 WsPath = "/ws",
                 WsHost = "cdn.example.net",
-                GrpcServiceName = "grpc"
+                GrpcServiceName = "grpc",
+                XhttpMode = "packet-up",
+                XhttpExtra = "{}"
             },
             Mode = ConnectionMode.TunApps,
             LogLevel = LogLevel.Debug,

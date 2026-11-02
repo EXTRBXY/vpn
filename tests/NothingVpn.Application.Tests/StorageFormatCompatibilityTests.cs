@@ -248,7 +248,7 @@ public sealed class StorageFormatCompatibilityTests : IDisposable
         Assert.Equal("proxy", state.Mode.ToValue());
         Assert.Equal(1080, state.LocalMixedPort);
         Assert.Equal("localhost;127.*;10.*;192.168.*;172.16.*", state.ProxyOverride);
-        Assert.Equal("NothingVpn", state.TunInterfaceName);
+        Assert.Equal("NothingX", state.TunInterfaceName);
         Assert.Equal("auto", state.TunAddressCidr);
         Assert.Equal(1500, state.TunMtu);
         Assert.Equal("", state.TunStack.ToValue());
@@ -455,7 +455,7 @@ public sealed class StorageFormatCompatibilityTests : IDisposable
     private static readonly string[] ProfileSchema =
     [
         "id", "subscriptionId", "name", "uuid", "host", "port", "type", "security", "encryption", "sni", "alpn",
-        "fingerprint", "flow", "realityPublicKey", "realityShortId", "wsPath", "wsHost", "grpcServiceName", "extraQuery"
+        "fingerprint", "flow", "realityPublicKey", "realityShortId", "wsPath", "wsHost", "grpcServiceName", "xhttpMode", "xhttpExtra", "extraQuery"
     ];
 
     private static readonly string[] SubscriptionSchema =

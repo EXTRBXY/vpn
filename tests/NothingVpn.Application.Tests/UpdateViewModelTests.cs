@@ -108,10 +108,10 @@ public sealed class UpdateViewModelTests
 
         await ((AsyncRelayCommand)viewModel.InstallCommand).ExecuteAsync(null);
 
-        Assert.Equal(new[] { "ensure", @"prepare:C:\Temp\NothingVpnSetup-2.0.0.exe" }, launcher.Calls);
+        Assert.Equal(new[] { "ensure", @"prepare:C:\Temp\NothingXSetup-2.0.0.exe" }, launcher.Calls);
         var launch = Assert.Single(exits);
         launch();
-        Assert.Equal(@"launch:C:\Prepared\NothingVpnSetup-2.0.0.exe", launcher.Calls[^1]);
+        Assert.Equal(@"launch:C:\Prepared\NothingXSetup-2.0.0.exe", launcher.Calls[^1]);
     }
 
     [Fact]
@@ -193,7 +193,7 @@ public sealed class UpdateViewModelTests
         };
         var viewModel = new UpdateViewModel(
             controller,
-            new FakeInstallerUpdateService { DownloadedPath = @"C:\Temp\NothingVpnSetup-2.0.0.exe" },
+            new FakeInstallerUpdateService { DownloadedPath = @"C:\Temp\NothingXSetup-2.0.0.exe" },
             launcher,
             settings,
             settings.GetState(),

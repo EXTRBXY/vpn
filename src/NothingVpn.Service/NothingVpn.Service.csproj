@@ -5,7 +5,9 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>NothingVpn.Service</AssemblyName>
+    <AssemblyName>NothingX.Service</AssemblyName>
+    <Product>NothingX</Product>
+    <AssemblyTitle>NothingX Service</AssemblyTitle>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
