@@ -1,7 +1,13 @@
 ﻿using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using NothingVpn.Application.Models;
+using NothingVpn.Application.Services;
+using NothingVpn.Domain.Models;
+using NothingVpn.Domain.Policies;
 
 namespace NothingVpn.Infrastructure.Profile;
 
@@ -65,20 +71,86 @@ internal static class VlessLinkParser
         profile.RealityShortId = Get(query, "sid");
 
         // Transports (optional)
-        profile.WsPath = Get(query, "path");
-        profile.WsHost = Get(query, "host");
+        var isXhttp = XhttpPolicy.IsXhttp(XhttpPolicy.NormalizeTransport(profile.Type.Trim()));
+        if (isXhttp)
+        {
+            profile.XhttpPath = Get(query, "path");
+            profile.XhttpHost = Get(query, "host");
+            profile.XhttpMode = ParseXhttpMode(Get(query, "mode"));
+            profile.XhttpExtra = ParseXhttpExtra(Get(query, "extra"));
+        }
+        else
+        {
+            profile.WsPath = Get(query, "path");
+            profile.WsHost = Get(query, "host");
+        }
         profile.GrpcServiceName = Get(query, "serviceName") ?? Get(query, "servicename");
 
         // Keep extra params we don't map (e.g. ech)
         foreach (var kv in query)
         {
-            if (!IsKnownKey(kv.Key))
+            if (!IsKnownKey(kv.Key) && !(isXhttp && IsXhttpKey(kv.Key)))
                 profile.ExtraQuery[kv.Key] = kv.Value;
         }
 
         ValidateProfile(profile);
+        XhttpProfileValidator.Validate(profile);
         profile.Id = StableId(profile);
         return profile;
+    }
+
+    private static readonly JsonSerializerOptions XhttpExtraOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
+    };
+
+    private static readonly string[] UnsupportedXhttpExtraKeys = ["downloadSettings", "h2Params", "extra"];
+
+    /// <summary>Поля только для сервера: в общих extra встречаются, клиенту Xray не нужны.</summary>
+    private static readonly string[] ServerOnlyXhttpExtraKeys = ["noSSEHeader", "scMaxBufferedPosts", "scStreamUpServerSecs", "serverMaxHeaderBytes"];
+
+    private static XhttpMode ParseXhttpMode(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return XhttpPolicy.DefaultMode;
+        return XhttpPolicy.Modes.TryParse(value, out var mode)
+            ? mode
+            : throw new ArgumentException("XHTTP: неизвестный mode. Ожидается auto|packet-up|stream-up|stream-one.");
+    }
+
+    private static XhttpExtraModel? ParseXhttpExtra(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+
+        JsonObject extra;
+        try
+        {
+            extra = JsonNode.Parse(json) as JsonObject
+                ?? throw new ArgumentException("XHTTP: extra должен быть JSON-объектом.");
+        }
+        catch (JsonException)
+        {
+            throw new ArgumentException("XHTTP: extra — некорректный JSON.");
+        }
+
+        foreach (var key in extra.Select(kv => kv.Key).ToList())
+        {
+            if (UnsupportedXhttpExtraKeys.Contains(key, StringComparer.OrdinalIgnoreCase))
+                throw new ArgumentException($"XHTTP: параметр extra.{key} не поддерживается.");
+            if (ServerOnlyXhttpExtraKeys.Contains(key, StringComparer.OrdinalIgnoreCase))
+                extra.Remove(key);
+        }
+
+        try
+        {
+            return extra.Deserialize<XhttpExtraModel>(XhttpExtraOptions);
+        }
+        catch (JsonException ex)
+        {
+            throw new ArgumentException($"XHTTP: неизвестный или неверный параметр extra ({ex.Path}).");
+        }
     }
 
     private static void ValidateProfile(VpnProfile p)
@@ -87,7 +159,7 @@ internal static class VlessLinkParser
         if (string.IsNullOrWhiteSpace(p.Host)) throw new ArgumentException("Host is required.");
         if (p.Port <= 0 || p.Port > 65535) throw new ArgumentException("Port invalid.");
 
-        p.Type = NormalizeLower(p.Type, "type");
+        p.Type = XhttpPolicy.NormalizeTransport(NormalizeLower(p.Type, "type"));
         p.Security = NormalizeLower(p.Security, "security");
         p.Encryption = NormalizeLower(p.Encryption, "encryption");
         p.Flow = string.IsNullOrWhiteSpace(p.Flow) ? null : p.Flow.Trim();
@@ -100,8 +172,12 @@ internal static class VlessLinkParser
         if (p.Security is not ("tls" or "reality" or "none"))
             throw new ArgumentException("Unsupported security. Expected tls|reality|none.");
 
-        if (p.Type is not ("tcp" or "ws" or "grpc"))
-            throw new ArgumentException("Unsupported type. Expected tcp|ws|grpc.");
+        if (p.Type is not ("tcp" or "ws" or "grpc" or XhttpPolicy.Transport))
+            throw new ArgumentException("Unsupported type. Expected tcp|ws|grpc|xhttp.");
+
+        // Xray допускает Vision (flow) только для TCP+TLS/REALITY.
+        if (p.Type == XhttpPolicy.Transport)
+            p.Flow = null;
 
         if (p.Security == "reality")
         {
@@ -114,6 +190,11 @@ internal static class VlessLinkParser
     private static string StableId(VpnProfile p)
     {
         var key = $"{p.Uuid}|{p.Host}|{p.Port}|{p.Type}|{p.Security}|{p.Sni}|{p.Flow}|{p.RealityPublicKey}|{p.RealityShortId}|{p.WsPath}|{p.WsHost}|{p.GrpcServiceName}";
+        if (p.Type == XhttpPolicy.Transport)
+        {
+            var extra = p.XhttpExtra is null ? "" : JsonSerializer.Serialize(p.XhttpExtra);
+            key += $"|{p.XhttpPath}|{p.XhttpHost}|{XhttpPolicy.Modes.ToValue(p.XhttpMode)}|{extra}";
+        }
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(key));
         return Convert.ToHexString(bytes).ToLowerInvariant()[..16];
     }
@@ -168,6 +249,10 @@ internal static class VlessLinkParser
             || key.Equals("serviceName", StringComparison.OrdinalIgnoreCase)
             || key.Equals("servicename", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static bool IsXhttpKey(string key) =>
+        key.Equals("mode", StringComparison.OrdinalIgnoreCase)
+        || key.Equals("extra", StringComparison.OrdinalIgnoreCase);
 
     private static string SanitizeName(string name)
     {

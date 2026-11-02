@@ -38,11 +38,19 @@
 
 ### `profiles.json` — `List<VpnProfile>` (`Application/Models/VpnProfile.cs`)
 
-`id`, `subscriptionId`, `name`, `uuid`, `host`, `port`, `type`, `security`, `encryption`, `sni`, `alpn[]`,
-`fingerprint`, `flow`, `realityPublicKey`, `realityShortId`, `wsPath`, `wsHost`, `grpcServiceName`, `extraQuery{}`.
+`id`, `subscriptionId`, `name`, `uuid`, `host`, `port`, `engine`, `type`, `security`, `encryption`, `sni`, `alpn[]`,
+`fingerprint`, `flow`, `realityPublicKey`, `realityShortId`, `wsPath`, `wsHost`, `grpcServiceName`, `xhttpPath`,
+`xhttpHost`, `xhttpMode`, `xhttpExtra{}`, `extraQuery{}`.
+
+- `engine` — предпочтение движка (ADR-0002): `auto` (по умолчанию, также для отсутствующего или неизвестного
+  значения) / `sing-box` / `xray`. Выбор пользователя: сохраняется при синхронизации подписки и повторном импорте.
+- `type` — `tcp` / `ws` / `grpc` / `xhttp`. `xhttpMode` — `auto` / `packet-up` / `stream-up` / `stream-one`
+  (толерантно, неизвестное → `auto`). `xhttpExtra` — объект с именами полей Xray (`xPaddingBytes`, `xmux{}`, …);
+  диапазоны пишутся строками, при чтении принимаются и числа.
 
 `id` — первые 16 hex-символов SHA-256 от
-`uuid|host|port|type|security|sni|flow|pbk|sid|wsPath|wsHost|grpcServiceName` (`VlessLinkParser.StableId`).
+`uuid|host|port|type|security|sni|flow|pbk|sid|wsPath|wsHost|grpcServiceName` (`VlessLinkParser.StableId`); только для
+`xhttp` к ключу добавляется `|xhttpPath|xhttpHost|xhttpMode|xhttpExtra` — Id существующих профилей не меняется.
 Имя не входит в Id. На Id завязаны: `state.activeProfileId`, синхронизация подписок (добавить/обновить/удалить),
 имя конфига и имя TUN-интерфейса, адреса TUN. Редактирование профиля, меняющее эти поля, создаёт новый Id; контроллер
 удаляет старый профиль.
@@ -75,6 +83,7 @@
 | `dnsMode` | `doh` | `doh` / `system` |
 | `dohServer`, `dohPath`, `dohSni` | `8.8.8.8`, `/dns-query`, `dns.google` | |
 | `dnsDetour` | `direct` | `direct` / `proxy`; в `tun_apps` всегда `direct` |
+| `xhttpXmuxMaxConcurrency`, `xhttpXmuxMaxConnections`, `xhttpXmuxCMaxReuseTimes`, `xhttpXmuxHMaxRequestTimes`, `xhttpXmuxHMaxReusableSecs` | `16-32`, `0`, `0`, `600-900`, `1800-3000` | XMUX по умолчанию для XHTTP (`XhttpPolicy`): `N` или `N-M`; неверное → значение по умолчанию; `maxConcurrency` и `maxConnections` не задаются одновременно |
 | `debugLogs` | false | использовал только удалённый WinForms-клиент; поле сохраняется ради формата |
 | `singBoxLogLevel` | `warn` | |
 | `closeBehavior` | `tray` | `tray` / `exit` |
@@ -113,7 +122,7 @@ Runtime-флаги `proxyWasEnabledByUs` / `previousProxySettings` пишет т
 ## Значения по умолчанию
 
 Один источник — константы Domain-политик (`ConnectionPolicy`, `DnsPolicy`, `TunSettingsPolicy`,
-`ProxyConnectionPolicy`, `SingBoxLogLevelPolicy`). `AppStateModel` и `DnsSettings`/`TunSettings`/
+`ProxyConnectionPolicy`, `SingBoxLogLevelPolicy`, `OutboundEnginePolicy`, `XhttpPolicy`). `AppStateModel` и `DnsSettings`/`TunSettings`/
 `ProxyConnectionSettings` ссылаются на них. Отсутствующее в файле поле получает значение по умолчанию модели.
 
 Исключение — профиль: у `VpnProfile` пустые `id` и `name` по умолчанию (у удалённого legacy-класса были новый GUID и

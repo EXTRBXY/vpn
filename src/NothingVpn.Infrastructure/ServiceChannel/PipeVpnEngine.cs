@@ -365,6 +365,10 @@ public sealed class PipeVpnEngine : IVpnEngine, IDisposable
             finally
             {
                 _pending.TryRemove(id, out _);
+                // Ответа больше никто не ждёт: ошибка, которую цикл чтения выставил или выставит позже, не должна
+                // стать незамеченным исключением задачи (UnobservedTaskException в журнале как «необработанная»).
+                if (!completion.TrySetCanceled())
+                    _ = completion.Task.Exception;
             }
         }
 

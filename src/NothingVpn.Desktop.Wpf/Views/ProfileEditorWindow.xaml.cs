@@ -1,6 +1,8 @@
 using System.Windows;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Services;
+using NothingVpn.Domain.Models;
+using NothingVpn.Domain.Policies;
 
 namespace NothingVpn.Desktop.Wpf;
 
@@ -15,6 +17,7 @@ public partial class ProfileEditorWindow : Window
         _viewModel = viewModel;
         _existing = existing;
         Heading.Text = existing is null ? "Добавить профиль" : "Изменить профиль";
+        EngineBox.SelectedValue = existing?.Engine ?? OutboundEnginePolicy.DefaultPreference;
         if (existing is not null)
         {
             NameBox.Text = existing.Name;
@@ -52,7 +55,8 @@ public partial class ProfileEditorWindow : Window
             if (!_viewModel.TryParse(link, out _))
                 throw new InvalidOperationException("Не удалось распознать VLESS-ссылку.");
             var name = string.IsNullOrWhiteSpace(NameBox.Text) ? null : NameBox.Text.Trim();
-            _viewModel.Save(_existing, link, name);
+            var engine = EngineBox.SelectedValue is OutboundEngine selected ? selected : OutboundEnginePolicy.DefaultPreference;
+            _viewModel.Save(_existing, link, name, engine);
             DialogResult = true;
         }
         catch (Exception ex)

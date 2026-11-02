@@ -439,6 +439,7 @@ public sealed class ServiceChannelTests : IAsyncDisposable
     public async Task ServiceConfig_DiffersFromInProcessOnlyInRuleSetPaths()
     {
         var profile = SingBoxConfigGoldenTests.RealityProfile();
+        profile.Engine = OutboundEngine.SingBox;
         var state = SingBoxConfigGoldenTests.CreateState("tun", "doh", "direct", ruleSets: true);
         var userRuleSets = Path.Combine(_root, "user-rulesets");
         Directory.CreateDirectory(userRuleSets);
@@ -606,7 +607,7 @@ public sealed class ServiceChannelTests : IAsyncDisposable
         public VpnProfile? WrittenProfile { get; private set; }
         public AppStateModel? WrittenState { get; private set; }
 
-        public string WriteConfig(VpnProfile profile, AppStateModel state)
+        public string WriteConfig(VpnProfile profile, AppStateModel state, LocalSocksUpstream? upstream = null)
         {
             WrittenProfile = profile;
             WrittenState = state;

@@ -8,7 +8,8 @@
 | [SECURITY.md](SECURITY.md) | Защита секретов, валидация входных данных, привилегии, известные риски |
 | [TESTING.md](TESTING.md) | Состав тестов, запуск, smoke-test, что не покрыто, что добавить перед рефакторингом |
 | [adr/0001-privileged-service.md](adr/0001-privileged-service.md) | Решение: служба Windows вместо повышения клиента; протокол, установка, переход со старых версий |
-| [REFACTORING.md](REFACTORING.md) | Инварианты, найденные риски, технический долг и предлагаемый порядок рефакторинга |
+| [adr/0002-xray-outbound-engine.md](adr/0002-xray-outbound-engine.md) | Решение: Xray как выход к серверу для XHTTP и REALITY рядом с sing-box; выбор движка по профилю |
+| [REFACTORING.md](REFACTORING.md) | Инварианты внешних контрактов (действуют для любых изменений), найденные риски, технический долг и история завершённого рефакторинга |
 | [UPDATE-HANDOFF.md](UPDATE-HANDOFF.md) | Запуск установщика обновления из интерфейса: порядок, защита от наследования прав, история помощника |
 | [SERVICE-INSTALL-CHECKLIST.md](SERVICE-INSTALL-CHECKLIST.md) | Ручная проверка установки службы, подключения без UAC, обновления, удаления и перехода с 0.6.8 |
 | [UI-REGRESSION-CHECKLIST.md](UI-REGRESSION-CHECKLIST.md) | Исправления WPF UI и ручная проверка перед релизом |

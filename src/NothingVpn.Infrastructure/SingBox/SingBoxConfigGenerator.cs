@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 using NothingVpn.Application.Mappers;
 using NothingVpn.Application.Models;
+using NothingVpn.Application.Ports;
 using NothingVpn.Domain.Models;
 using NothingVpn.Domain.Policies;
 using NothingVpn.Infrastructure.Store;
@@ -14,9 +15,9 @@ namespace NothingVpn.Infrastructure.SingBox;
 /// </summary>
 internal static class SingBoxConfigGenerator
 {
-    public static string WriteConfig(AppPaths paths, VpnProfile profile, AppStateModel state)
+    public static string WriteConfig(AppPaths paths, VpnProfile profile, AppStateModel state, LocalSocksUpstream? upstream = null)
     {
-        var config = Build(paths, profile, state);
+        var config = Build(paths, profile, state, upstream);
         var json = JsonSerializer.Serialize(config, JsonOptions());
 
         var path = Path.Combine(paths.ConfigsDir, $"{profile.Id}.{state.Mode.ToValue()}.json");
@@ -24,7 +25,8 @@ internal static class SingBoxConfigGenerator
         return path;
     }
 
-    public static SingBoxConfig Build(AppPaths paths, VpnProfile profile, AppStateModel state)
+    /// <param name="upstream">Внешний движок (ADR-0002): выход «proxy» — его SOCKS5, сам движок исключается из TUN.</param>
+    public static SingBoxConfig Build(AppPaths paths, VpnProfile profile, AppStateModel state, LocalSocksUpstream? upstream = null)
     {
         var mode = state.Mode;
         var useTun = ConnectionPolicy.IsTunMode(mode);
@@ -32,23 +34,12 @@ internal static class SingBoxConfigGenerator
             ? new List<SingBoxInbound> { BuildTunInbound(state, profile, mode) }
             : new List<SingBoxInbound> { BuildMixedInbound(state.LocalMixedPort) };
 
-        var outbound = new SingBoxOutbound
-        {
-            Type = "vless",
-            Tag = "proxy",
-            Server = profile.Host,
-            ServerPort = profile.Port,
-            Uuid = profile.Uuid,
-            Flow = profile.Flow,
-            Tls = BuildTls(profile)
-        };
-
-        outbound.Transport = BuildTransport(profile);
+        var outbound = upstream is null ? BuildVlessOutbound(profile) : BuildSocksOutbound(upstream);
 
         var routing = EvaluateRoutingPolicy(state, useTun);
         var useDohResolver = state.DnsMode == DnsMode.Doh;
         var dnsDetour = ResolveDnsDetour(state, mode, useTun);
-        if (dnsDetour == "proxy")
+        if (dnsDetour == "proxy" && upstream is null)
             outbound.DomainResolver = TunBootstrapPolicy.BootstrapLocalDnsTag;
 
         return new SingBoxConfig
@@ -62,9 +53,32 @@ internal static class SingBoxConfigGenerator
                 new SingBoxOutbound { Type = "direct", Tag = "direct" },
                 new SingBoxOutbound { Type = "block", Tag = "block" }
             },
-            Route = BuildRoute(paths, mode, state, profile, useDohResolver)
+            Route = BuildRoute(paths, mode, state, profile, useDohResolver, upstream)
         };
     }
+
+    private static SingBoxOutbound BuildVlessOutbound(VpnProfile profile) => new()
+    {
+        Type = "vless",
+        Tag = "proxy",
+        Server = profile.Host,
+        ServerPort = profile.Port,
+        Uuid = profile.Uuid,
+        Flow = profile.Flow,
+        Tls = BuildTls(profile),
+        Transport = BuildTransport(profile)
+    };
+
+    private static SingBoxOutbound BuildSocksOutbound(LocalSocksUpstream upstream) => new()
+    {
+        Type = "socks",
+        Tag = "proxy",
+        Server = "127.0.0.1",
+        ServerPort = upstream.Port,
+        Version = "5",
+        Username = upstream.Username,
+        Password = upstream.Password
+    };
 
     private static RuleSetRoutingDecision EvaluateRoutingPolicy(AppStateModel state, bool useTun) =>
         RuleSetRoutingPolicy.Evaluate(ConnectionSettingsMapper.ToRuleSetEntries(state.UserRuleSets), state.DnsMode, useTun);
@@ -84,7 +98,7 @@ internal static class SingBoxConfigGenerator
             requestedProxy ? DnsDetour.Proxy : DnsDetour.Direct);
     }
 
-    private static List<SingBoxRouteRule> BuildTunHeadRules(VpnProfile profile, ConnectionMode mode)
+    private static List<SingBoxRouteRule> BuildTunHeadRules(VpnProfile profile, ConnectionMode mode, LocalSocksUpstream? upstream)
     {
         var rules = new List<SingBoxRouteRule>
         {
@@ -109,6 +123,25 @@ internal static class SingBoxConfigGenerator
                 Action = "route",
                 Outbound = "direct"
             });
+        }
+
+        if (upstream is not null)
+        {
+            rules.Add(new SingBoxRouteRule
+            {
+                ProcessPath = [upstream.ProcessPath],
+                Action = "route",
+                Outbound = "direct"
+            });
+            if (TunBootstrapPolicy.EndpointHostCidr(profile.Host) is { } serverCidr)
+            {
+                rules.Add(new SingBoxRouteRule
+                {
+                    IpCidr = [serverCidr],
+                    Action = "route",
+                    Outbound = "direct"
+                });
+            }
         }
 
         if (TunRoutingPolicy.RouteSecureDnsThroughProxy(mode))
@@ -155,7 +188,8 @@ internal static class SingBoxConfigGenerator
         ConnectionMode mode,
         AppStateModel state,
         VpnProfile profile,
-        bool useDohResolver)
+        bool useDohResolver,
+        LocalSocksUpstream? upstream)
     {
         var useTun = ConnectionPolicy.IsTunMode(mode);
         var defaultResolver = TunBootstrapPolicy.ResolveDefaultDomainResolver(useTun, useDohResolver);
@@ -183,7 +217,7 @@ internal static class SingBoxConfigGenerator
             };
         }
 
-        var rules = BuildTunHeadRules(profile, mode);
+        var rules = BuildTunHeadRules(profile, mode, upstream);
         rules.Add(new SingBoxRouteRule { Protocol = "stun", Action = "reject" });
         rules.AddRange(userRules);
         AddTunFallbackRules(rules, mode);
@@ -521,6 +555,11 @@ internal sealed class SingBoxOutbound
     public string? Uuid { get; set; }
     public string? Flow { get; set; }
 
+    // socks fields
+    public string? Version { get; set; }
+    public string? Username { get; set; }
+    public string? Password { get; set; }
+
     public string? DomainResolver { get; set; }
     public SingBoxTls? Tls { get; set; }
     public SingBoxTransport? Transport { get; set; }
@@ -580,6 +619,8 @@ internal sealed class SingBoxRouteRule
     public int? IpVersion { get; set; }
 
     public bool? IpIsPrivate { get; set; }
+
+    public List<string>? IpCidr { get; set; }
 
     public List<string>? ProcessPath { get; set; }
 

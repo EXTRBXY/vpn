@@ -1,4 +1,5 @@
 using NothingVpn.Application.Models;
+using NothingVpn.Domain.Models;
 
 namespace NothingVpn.Application.Services;
 
@@ -9,6 +10,7 @@ public interface IProfileService
     IReadOnlyList<VpnProfile> DeleteProfile(string profileId);
 
     bool TryParseVlessLink(string link, out VpnProfile profile);
-    VpnProfile UpsertFromVlessLink(string link, string? nameOverride);
-}
 
+    /// <param name="engine">Выбор движка пользователем; несовместимый с транспортом отклоняется.</param>
+    VpnProfile UpsertFromVlessLink(string link, string? nameOverride, OutboundEngine engine);
+}

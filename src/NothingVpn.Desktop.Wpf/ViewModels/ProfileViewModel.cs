@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using NothingVpn.Application.Models;
+using NothingVpn.Domain.Models;
 using NothingVpn.Presentation;
 
 namespace NothingVpn.Desktop.Wpf;
@@ -68,11 +69,11 @@ public sealed class ProfileViewModel : INotifyPropertyChanged
             string.Equals(x.Id, selectionId, StringComparison.OrdinalIgnoreCase));
     }
 
-    public VpnProfile Save(VpnProfile? existing, string link, string? name)
+    public VpnProfile Save(VpnProfile? existing, string link, string? name, OutboundEngine engine)
     {
         var saved = existing is null
-            ? _controller.Add(link, name)
-            : _controller.Edit(existing.Id, link, name);
+            ? _controller.Add(link, name, engine)
+            : _controller.Edit(existing.Id, link, name, engine);
         Reload(saved.Id);
         ProfilesChanged?.Invoke(this, saved.Id);
         return saved;

@@ -85,6 +85,26 @@
                     </StackPanel>
                 </Border>
 
+                <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0" DataContext="{Binding Xray}">
+                    <StackPanel>
+                        <TextBlock Text="Xray (XHTTP)" FontSize="17" FontWeight="SemiBold" />
+                        <TextBlock Text="Мультиплексирование XMUX для профилей XHTTP, если ссылка не задаёт своё. Число или диапазон «N-M»; значения по умолчанию совпадают с Xray."
+                                   Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,6,0,12" TextWrapping="Wrap" />
+                        <TextBlock Text="Запросов на соединение (maxConcurrency)" Foreground="{DynamicResource MutedBrush}" />
+                        <TextBox Text="{Binding MaxConcurrency, UpdateSourceTrigger=PropertyChanged}" Padding="10" Margin="0,6,0,10" />
+                        <TextBlock Text="Максимум соединений (maxConnections, 0 — без ограничения)" Foreground="{DynamicResource MutedBrush}" />
+                        <TextBox Text="{Binding MaxConnections, UpdateSourceTrigger=PropertyChanged}" Padding="10" Margin="0,6,0,10" />
+                        <TextBlock Text="Повторных использований соединения (cMaxReuseTimes, 0 — без ограничения)" Foreground="{DynamicResource MutedBrush}" />
+                        <TextBox Text="{Binding CMaxReuseTimes, UpdateSourceTrigger=PropertyChanged}" Padding="10" Margin="0,6,0,10" />
+                        <TextBlock Text="HTTP-запросов на соединение (hMaxRequestTimes)" Foreground="{DynamicResource MutedBrush}" />
+                        <TextBox Text="{Binding HMaxRequestTimes, UpdateSourceTrigger=PropertyChanged}" Padding="10" Margin="0,6,0,10" />
+                        <TextBlock Text="Время жизни соединения, с (hMaxReusableSecs)" Foreground="{DynamicResource MutedBrush}" />
+                        <TextBox Text="{Binding HMaxReusableSecs, UpdateSourceTrigger=PropertyChanged}" Padding="10" Margin="0,6,0,10" />
+                        <Button Content="Значения по умолчанию" Command="{Binding ResetCommand}" Style="{StaticResource SecondaryButtonStyle}"
+                                HorizontalAlignment="Left" />
+                    </StackPanel>
+                </Border>
+
                 <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0" DataContext="{Binding Apps}">
                     <StackPanel>
                         <TextBlock Text="Приложения через TUN" FontSize="17" FontWeight="SemiBold" />

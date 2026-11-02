@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using NothingVpn.Application.Models;
 using NothingVpn.Application.Serialization;
 using NothingVpn.Domain.Models;
 using NothingVpn.Domain.Policies;
@@ -36,6 +37,9 @@ public sealed class EngineConnectRequest
 
     [JsonPropertyName("tun")]
     public EngineTunSettings Tun { get; set; } = new();
+
+    [JsonPropertyName("xmux")]
+    public EngineXmuxSettings Xmux { get; set; } = new();
 
     /// <summary>Полные пути .exe для режима tun_apps.</summary>
     [JsonPropertyName("tunAppProcessPaths")]
@@ -94,6 +98,42 @@ public sealed class EngineProfile
 
     [JsonPropertyName("grpcServiceName")]
     public string? GrpcServiceName { get; set; }
+
+    [JsonPropertyName("engine")]
+    [JsonConverter(typeof(OutboundEngineJsonConverter))]
+    public OutboundEngine Engine { get; set; } = OutboundEnginePolicy.DefaultPreference;
+
+    [JsonPropertyName("xhttpPath")]
+    public string? XhttpPath { get; set; }
+
+    [JsonPropertyName("xhttpHost")]
+    public string? XhttpHost { get; set; }
+
+    [JsonPropertyName("xhttpMode")]
+    [JsonConverter(typeof(XhttpModeJsonConverter))]
+    public XhttpMode XhttpMode { get; set; } = XhttpPolicy.DefaultMode;
+
+    /// <summary>Имена полей — имена Xray (<see cref="XhttpExtraModel"/>), ядро проверяет их заново.</summary>
+    [JsonPropertyName("xhttpExtra")]
+    public XhttpExtraModel? XhttpExtra { get; set; }
+}
+
+public sealed class EngineXmuxSettings
+{
+    [JsonPropertyName("maxConcurrency")]
+    public string MaxConcurrency { get; set; } = XhttpPolicy.DefaultXmuxMaxConcurrency;
+
+    [JsonPropertyName("maxConnections")]
+    public string MaxConnections { get; set; } = XhttpPolicy.DefaultXmuxMaxConnections;
+
+    [JsonPropertyName("cMaxReuseTimes")]
+    public string CMaxReuseTimes { get; set; } = XhttpPolicy.DefaultXmuxCMaxReuseTimes;
+
+    [JsonPropertyName("hMaxRequestTimes")]
+    public string HMaxRequestTimes { get; set; } = XhttpPolicy.DefaultXmuxHMaxRequestTimes;
+
+    [JsonPropertyName("hMaxReusableSecs")]
+    public string HMaxReusableSecs { get; set; } = XhttpPolicy.DefaultXmuxHMaxReusableSecs;
 }
 
 public sealed class EngineDnsSettings

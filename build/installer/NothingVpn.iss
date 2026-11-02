@@ -1,6 +1,7 @@
 ; Inno Setup script for Nothing VPN: per-machine установка в Program Files и служба NothingVpn (ADR-0001, шаг 7б).
 ; Собирается через build\Build.ps1 -Target Installer поверх build\Build.ps1 -Target Publish: пути подставляет скрипт
-; сборки, в каталоге публикации должны быть NothingVpn.Desktop.Wpf.exe, NothingVpn.Service.exe и sing-box.exe.
+; сборки, в каталоге публикации должны быть NothingVpn.Desktop.Wpf.exe, NothingVpn.Service.exe, sing-box.exe, xray.exe
+; и xray-LICENSE.txt (Xray — выход для XHTTP и REALITY, ADR-0002).
 
 #define MyAppName "Nothing VPN"
 #define MyAppExeName "NothingVpn.Desktop.Wpf.exe"
@@ -73,6 +74,8 @@ Name: "autorun"; Description: "Запускать при входе в сист�
 Source: "{#PublishDir}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PublishDir}\{#MyServiceExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PublishDir}\sing-box.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PublishDir}\xray.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PublishDir}\xray-LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PublishDir}\wintun.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#PublishDir}\*.pdb"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
@@ -330,7 +333,7 @@ begin
   if not Result then
     Exit;
 
-  Sc('description ' + ServiceName + ' "Ядро Nothing VPN: запускает sing-box по командам интерфейса."');
+  Sc('description ' + ServiceName + ' "Ядро Nothing VPN: запускает sing-box и Xray по командам интерфейса."');
   { Падение — перезапуск через 5 с, 10 с, затем раз в минуту; счётчик сбрасывается через сутки. failureflag —
     то же при остановке с кодом ошибки (например, имя канала занято чужим процессом). }
   Sc('failure ' + ServiceName + ' reset= 86400 actions= restart/5000/restart/10000/restart/60000');

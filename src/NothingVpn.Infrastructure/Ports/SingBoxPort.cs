@@ -22,8 +22,8 @@ public sealed class SingBoxPort : ISingBoxPort
 
     public bool IsRunning => _context.Runner.IsRunning;
 
-    public string WriteConfig(VpnProfile profile, AppStateModel state)
-        => SingBoxConfigGenerator.WriteConfig(_context.Paths, profile, state);
+    public string WriteConfig(VpnProfile profile, AppStateModel state, LocalSocksUpstream? upstream = null)
+        => SingBoxConfigGenerator.WriteConfig(_context.Paths, profile, state, upstream);
 
     public void Start(string configPath) => _context.Runner.Start(configPath);
 

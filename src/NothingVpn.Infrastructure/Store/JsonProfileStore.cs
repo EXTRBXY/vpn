@@ -58,6 +58,7 @@ internal sealed class JsonProfileStore
             var idx = list.FindIndex(p => string.Equals(p.Id, profile.Id, StringComparison.OrdinalIgnoreCase));
             if (idx >= 0)
             {
+                profile.Engine = list[idx].Engine;
                 list[idx] = profile;
                 if (wasExisting)
                     updated++;

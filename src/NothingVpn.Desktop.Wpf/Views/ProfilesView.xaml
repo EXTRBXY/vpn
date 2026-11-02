@@ -1,6 +1,10 @@
 <UserControl x:Class="NothingVpn.Desktop.Wpf.ProfilesView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:NothingVpn.Desktop.Wpf">
+    <UserControl.Resources>
+        <local:ProfileEngineLabelConverter x:Key="EngineLabel" />
+    </UserControl.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -30,7 +34,7 @@
                                 <StackPanel>
                                     <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
                                     <TextBlock Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,4,0,0">
-                                        <Run Text="{Binding Host}" /><Run Text=":" /><Run Text="{Binding Port}" />
+                                        <Run Text="{Binding Host}" /><Run Text=":" /><Run Text="{Binding Port}" /><Run Text=" · " /><Run Text="{Binding Type, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding Mode=OneWay, Converter={StaticResource EngineLabel}}" />
                                     </TextBlock>
                                 </StackPanel>
                                 <Border Grid.Column="1" Background="{DynamicResource SubtleBrush}" CornerRadius="8" Padding="9,5" VerticalAlignment="Center">

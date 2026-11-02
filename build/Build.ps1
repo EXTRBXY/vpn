@@ -96,7 +96,7 @@ function Copy-RuntimeAssets {
     if ($env:ProgramFiles) { $installedDirectories += Join-Path $env:ProgramFiles 'NothingVpn' }
     if ($env:LOCALAPPDATA) { $installedDirectories += Join-Path $env:LOCALAPPDATA 'Programs\NothingVpn' }
 
-    foreach ($name in @('sing-box.exe', 'wintun.dll')) {
+    foreach ($name in @('sing-box.exe', 'wintun.dll', 'xray.exe', 'xray-LICENSE.txt')) {
         $destination = Join-Path $script:PublishDirectory $name
         $candidates = @()
         if (-not [string]::IsNullOrWhiteSpace($RuntimeAssetsDirectory)) {
@@ -110,10 +110,10 @@ function Copy-RuntimeAssets {
         if ($source) {
             Copy-Item -LiteralPath $source -Destination $destination -Force
             Write-Host "Runtime asset: $name"
-        } elseif ($name -eq 'sing-box.exe') {
-            Write-Warning "sing-box.exe was not found. Installer creation requires it."
-        } else {
+        } elseif ($name -eq 'wintun.dll') {
             Write-Warning "wintun.dll was not found. TUN mode will be unavailable."
+        } else {
+            Write-Warning "$name was not found. Installer creation requires it."
         }
     }
 }
@@ -168,15 +168,17 @@ function Resolve-InnoCompiler {
 }
 
 function Invoke-Installer {
-    $singBox = Join-Path $script:PublishDirectory 'sing-box.exe'
     foreach ($name in @('NothingVpn.Desktop.Wpf.exe', 'NothingVpn.Service.exe')) {
         $output = Join-Path $script:PublishDirectory $name
         if (-not (Test-Path -LiteralPath $output)) {
             throw "Publish the application before creating the installer: $output"
         }
     }
-    if (-not (Test-Path -LiteralPath $singBox)) {
-        throw "Required runtime asset not found: $singBox"
+    foreach ($name in @('sing-box.exe', 'xray.exe', 'xray-LICENSE.txt')) {
+        $asset = Join-Path $script:PublishDirectory $name
+        if (-not (Test-Path -LiteralPath $asset)) {
+            throw "Required runtime asset not found: $asset"
+        }
     }
 
     New-Item -ItemType Directory -Path $script:InstallerOutputDirectory -Force | Out-Null

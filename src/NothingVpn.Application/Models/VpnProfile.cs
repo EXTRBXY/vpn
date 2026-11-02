@@ -1,4 +1,7 @@
 using System.Text.Json.Serialization;
+using NothingVpn.Application.Serialization;
+using NothingVpn.Domain.Models;
+using NothingVpn.Domain.Policies;
 
 namespace NothingVpn.Application.Models;
 
@@ -26,7 +29,12 @@ public sealed class VpnProfile
     [JsonPropertyName("port")]
     public int Port { get; set; } = 443;
 
-    /// <summary>tcp|ws|grpc.</summary>
+    /// <summary>Выбор движка пользователем (ADR-0002); не входит в StableId и переживает синхронизацию подписки.</summary>
+    [JsonPropertyName("engine")]
+    [JsonConverter(typeof(OutboundEngineJsonConverter))]
+    public OutboundEngine Engine { get; set; } = OutboundEnginePolicy.DefaultPreference;
+
+    /// <summary>tcp|ws|grpc|xhttp.</summary>
     [JsonPropertyName("type")]
     public string Type { get; set; } = "tcp";
 
@@ -66,6 +74,19 @@ public sealed class VpnProfile
 
     [JsonPropertyName("grpcServiceName")]
     public string? GrpcServiceName { get; set; }
+
+    [JsonPropertyName("xhttpPath")]
+    public string? XhttpPath { get; set; }
+
+    [JsonPropertyName("xhttpHost")]
+    public string? XhttpHost { get; set; }
+
+    [JsonPropertyName("xhttpMode")]
+    [JsonConverter(typeof(XhttpModeJsonConverter))]
+    public XhttpMode XhttpMode { get; set; } = XhttpPolicy.DefaultMode;
+
+    [JsonPropertyName("xhttpExtra")]
+    public XhttpExtraModel? XhttpExtra { get; set; }
 
     /// <summary>Параметры ссылки, которые клиент не разбирает (например ech). Ключи без учёта регистра.</summary>
     // Populate: при чтении словарь из инициализатора заполняется, а не заменяется — компаратор сохраняется.
