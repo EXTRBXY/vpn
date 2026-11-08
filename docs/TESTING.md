@@ -91,3 +91,20 @@ Smoke-test работает с **настоящим** каталогом дан�
 или не-строковые значения читаются как значения по умолчанию, не ломая остальной файл.
 
 Доменные исключения: `DomainExceptionTests` — нормализация и валидация, приоритет direct над `.srs`, QUIC/IPv6 и приложениями, split DNS во всех режимах, отключённые записи и атомарное сохранение; `WpfSettingsBindingTests` — ввод, флажки и удаление в представлении; `SingBoxVpnEngineTests` — повторная проверка службой. Хранение покрыто `StorageRoundtripTests` и `StorageFormatCompatibilityTests`.
+
+Split DNS по содержимому `.srs`: `RuleSetDnsTests` использует маленькие списки, скомпилированные sing-box 1.13.21,
+без зависимости тестового запуска от exe. Проверяются домены, IPv4/IPv6, смешанные и вложенные логические правила,
+AdGuard, остальные поля SRS и повреждённые данные. Генерация через настоящий `SingBoxPort` проверяется для всех
+трёх режимов с выходом sing-box/Xray, с обманчивыми именами (`geoip-*` для доменов и `geosite-*` для IP), а также
+после переименования файлов хранилищем службы. IP-списки сохраняются в маршрутизации, доменный split DNS и ручные
+исключения работают; отключённые/block-списки и системный DNS не запускают анализ для split DNS.
+
+## Передача доменных исключений службе
+
+`ServiceChannelTests.Connect_HitmosException_ReachesServiceWithoutRuleSetFiles` воспроизводит путь
+`PipeVpnEngine` → настоящий named pipe → `ServicePipeServer` → `SingBoxVpnEngine` без `.srs`.
+Регрессия: при пересборке запроса в `WithRuleSetContent` терялось поле `DomainExceptions`, поэтому служба
+получала пустой список несмотря на сохранённые настройки UI.
+`Connect_DomainExceptionsProduceDirectRouteAndDnsAfterPipeTransfer` проверяет конфиг из принятого службой
+состояния: три режима, оба режима DNS, точное имя/поддомены, с `.srs` и без него. Проверяются исключение
+отключённых записей, приоритет direct над block-списком и split DNS для DoH.

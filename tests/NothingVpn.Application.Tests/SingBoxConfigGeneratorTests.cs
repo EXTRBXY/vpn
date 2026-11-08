@@ -68,7 +68,8 @@ public sealed class SingBoxConfigGeneratorTests
             ]
         };
 
-        var config = SingBoxConfigGenerator.Build(paths, profile, state);
+        var config = SingBoxConfigGenerator.Build(paths, profile, state,
+            ipRuleSetTags: new HashSet<string> { "geoip-ru" });
 
         Assert.NotNull(config.Route.Rules);
         Assert.Equal("sniff", config.Route.Rules![0].Action);

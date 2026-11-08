@@ -70,7 +70,8 @@ public sealed class SingBoxConfigGoldenTests : IDisposable
     {
         // Тот же путь, что при подключении: VpnConnectionService нормализует состояние перед генерацией.
         AppStateNormalizer.Normalize(state, new PathPolicyPort());
-        var actual = Normalize(File.ReadAllText(SingBoxConfigGenerator.WriteConfig(CreatePaths(), profile, state)));
+        var actual = Normalize(File.ReadAllText(SingBoxConfigGenerator.WriteConfig(CreatePaths(), profile, state,
+            ipRuleSetTags: new HashSet<string> { "geoip-ru" })));
 
         if (Environment.GetEnvironmentVariable(UpdateGoldenVariable) == "1")
         {

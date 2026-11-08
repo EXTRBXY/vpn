@@ -19,7 +19,8 @@ public static class RuleSetRoutingPolicy
     public static RuleSetRoutingDecision Evaluate(
         IEnumerable<UserRuleSetEntry> entries,
         DnsMode dnsMode,
-        bool isTunMode)
+        bool isTunMode,
+        IReadOnlySet<string>? ipRuleSetTags = null)
     {
         var directTags = new List<string>();
         var dnsTags = new List<string>();
@@ -37,8 +38,8 @@ public static class RuleSetRoutingPolicy
             if (entry.Action != RuleSetAction.Direct) continue;
 
             directTags.Add(tag);
-            // geoip rule-sets match addresses, not query names — skip for DNS split.
-            if (!tag.StartsWith("geoip-", StringComparison.OrdinalIgnoreCase))
+            // IP conditions require a DNS response before matching: using them here causes extra queries.
+            if (ipRuleSetTags?.Contains(tag) != true)
                 dnsTags.Add(tag);
         }
 
