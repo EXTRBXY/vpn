@@ -32,6 +32,78 @@ public sealed class ServiceChannelTests : IAsyncDisposable
     private readonly List<PipeVpnEngine> _clients = new();
 
     [Fact]
+    public async Task Connect_HitmosException_ReachesServiceWithoutRuleSetFiles()
+    {
+        var service = StartService();
+        var request = ValidRequest();
+        request.Mode = ConnectionMode.Tun;
+        request.DomainExceptions = [new() { Domain = "hitmos.fm", IncludeSubdomains = true }];
+
+        await CreateClient(out _).ConnectAsync(request);
+
+        var entry = Assert.Single(service.SingBox.WrittenState!.DomainExceptions);
+        Assert.Equal("hitmos.fm", entry.Domain);
+        Assert.True(entry.IncludeSubdomains);
+    }
+
+    public static IEnumerable<object[]> DomainExceptionCases()
+    {
+        foreach (var mode in new[] { ConnectionMode.Proxy, ConnectionMode.Tun, ConnectionMode.TunApps })
+        foreach (var dns in new[] { DnsMode.Doh, DnsMode.System })
+        foreach (var includeSubdomains in new[] { false, true })
+        foreach (var hasRuleSet in new[] { false, true })
+            yield return [mode, dns, includeSubdomains, hasRuleSet];
+    }
+
+    [Theory]
+    [MemberData(nameof(DomainExceptionCases))]
+    public async Task Connect_DomainExceptionsProduceDirectRouteAndDnsAfterPipeTransfer(
+        ConnectionMode mode, DnsMode dns, bool includeSubdomains, bool hasRuleSet)
+    {
+        var service = StartService();
+        var state = new AppStateModel
+        {
+            Mode = mode, DnsMode = dns,
+            TunAppProcessPaths = [@"C:\Apps\browser.exe"],
+            DomainExceptions = [new() { Domain = "hitmos.fm", IncludeSubdomains = includeSubdomains },
+                new() { Domain = "disabled.example", Enabled = false }]
+        };
+        var request = EngineRequestMapper.CreateRequest(new()
+        {
+            Id = "p1", Uuid = "11111111-2222-3333-4444-555555555555", Host = "node.example.com", Port = 443
+        }, state);
+        if (hasRuleSet)
+            request.RuleSets = [new() { Tag = "block-sites", FileName = "sites.srs", Action = RuleSetAction.Block, Content = [1, 2, 3] }];
+
+        await CreateClient(out _).ConnectAsync(request);
+
+        var received = service.SingBox.WrittenState!;
+        var entry = Assert.Single(received.DomainExceptions);
+        Assert.Equal("hitmos.fm", entry.Domain);
+        Assert.Equal(includeSubdomains, entry.IncludeSubdomains);
+        Assert.True(entry.Enabled);
+        var configs = Path.Combine(_root, "domain-exception-config");
+        Directory.CreateDirectory(configs);
+        var paths = new AppPaths(_root, configs, service.RuleSetsDirectory, _root, "profiles", "subscriptions", "state");
+        var json = JsonNode.Parse(File.ReadAllText(SingBoxConfigGenerator.WriteConfig(paths, service.SingBox.WrittenProfile!, received)))!;
+        var matcher = includeSubdomains ? "domain_suffix" : "domain";
+        var routeRules = json["route"]!["rules"]!.AsArray();
+        var direct = Assert.Single(routeRules, x => (string?)x?[matcher]?[0] == "hitmos.fm");
+        Assert.Equal("direct", (string?)direct!["outbound"]);
+        if (hasRuleSet)
+        {
+            var block = Assert.Single(routeRules, x => (string?)x?["rule_set"]?[0] == "block-sites");
+            Assert.True(routeRules.IndexOf(direct) < routeRules.IndexOf(block));
+        }
+        if (dns == DnsMode.Doh)
+        {
+            var dnsRule = Assert.Single(json["dns"]!["rules"]!.AsArray(), x => (string?)x?[matcher]?[0] == "hitmos.fm");
+            Assert.Equal("bootstrap-local", (string?)dnsRule!["server"]);
+        }
+        else Assert.Equal("bootstrap-local", (string?)json["dns"]!["final"]);
+    }
+
+    [Fact]
     public async Task Connect_ReturnsStatusAndRaisesEvent()
     {
         var service = StartService();

@@ -149,7 +149,8 @@ public sealed class DomainPoliciesTests
             }
         };
 
-        var doh = RuleSetRoutingPolicy.Evaluate(entries, DnsMode.Doh, isTunMode: true);
+        var doh = RuleSetRoutingPolicy.Evaluate(entries, DnsMode.Doh, isTunMode: true,
+            ipRuleSetTags: new HashSet<string> { "geoip-ru" });
         Assert.True(doh.RequiresSplitDns);
         Assert.Equal(new[] { "geosite-category-ru", "geoip-ru" }, doh.DirectRuleSetTags);
         Assert.Equal(new[] { "geosite-category-ru" }, doh.DnsDirectRuleSetTags);

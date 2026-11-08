@@ -15,9 +15,10 @@ namespace NothingVpn.Infrastructure.SingBox;
 /// </summary>
 internal static class SingBoxConfigGenerator
 {
-    public static string WriteConfig(AppPaths paths, VpnProfile profile, AppStateModel state, LocalSocksUpstream? upstream = null)
+    public static string WriteConfig(AppPaths paths, VpnProfile profile, AppStateModel state, LocalSocksUpstream? upstream = null,
+        IReadOnlySet<string>? ipRuleSetTags = null)
     {
-        var config = Build(paths, profile, state, upstream);
+        var config = Build(paths, profile, state, upstream, ipRuleSetTags);
         var json = JsonSerializer.Serialize(config, JsonOptions());
 
         var path = Path.Combine(paths.ConfigsDir, $"{profile.Id}.{state.Mode.ToValue()}.json");
@@ -26,7 +27,8 @@ internal static class SingBoxConfigGenerator
     }
 
     /// <param name="upstream">Внешний движок (ADR-0002): выход «proxy» — его SOCKS5, сам движок исключается из TUN.</param>
-    public static SingBoxConfig Build(AppPaths paths, VpnProfile profile, AppStateModel state, LocalSocksUpstream? upstream = null)
+    public static SingBoxConfig Build(AppPaths paths, VpnProfile profile, AppStateModel state, LocalSocksUpstream? upstream = null,
+        IReadOnlySet<string>? ipRuleSetTags = null)
     {
         var mode = state.Mode;
         var useTun = ConnectionPolicy.IsTunMode(mode);
@@ -36,7 +38,7 @@ internal static class SingBoxConfigGenerator
 
         var outbound = upstream is null ? BuildVlessOutbound(profile) : BuildSocksOutbound(upstream);
 
-        var routing = EvaluateRoutingPolicy(state, useTun);
+        var routing = EvaluateRoutingPolicy(state, useTun, ipRuleSetTags);
         var useDohResolver = state.DnsMode == DnsMode.Doh;
         var dnsDetour = ResolveDnsDetour(state, mode, useTun);
         if (dnsDetour == "proxy" && upstream is null)
@@ -80,8 +82,8 @@ internal static class SingBoxConfigGenerator
         Password = upstream.Password
     };
 
-    private static RuleSetRoutingDecision EvaluateRoutingPolicy(AppStateModel state, bool useTun) =>
-        RuleSetRoutingPolicy.Evaluate(ConnectionSettingsMapper.ToRuleSetEntries(state.UserRuleSets), state.DnsMode, useTun);
+    private static RuleSetRoutingDecision EvaluateRoutingPolicy(AppStateModel state, bool useTun, IReadOnlySet<string>? ipRuleSetTags) =>
+        RuleSetRoutingPolicy.Evaluate(ConnectionSettingsMapper.ToRuleSetEntries(state.UserRuleSets), state.DnsMode, useTun, ipRuleSetTags);
 
     private static string? ResolveDnsDetour(AppStateModel state, ConnectionMode mode, bool useTun)
     {

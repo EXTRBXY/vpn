@@ -264,6 +264,7 @@ public sealed class PipeVpnEngine : IVpnEngine, IDisposable
         Dns = request.Dns,
         Tun = request.Tun,
         TunAppProcessPaths = request.TunAppProcessPaths,
+        DomainExceptions = request.DomainExceptions,
         RuleSets = (request.RuleSets ?? []).Select(rs => new EngineRuleSet
         {
             Tag = rs.Tag,
