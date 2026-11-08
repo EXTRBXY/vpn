@@ -141,3 +141,11 @@ Runtime-флаги `proxyWasEnabledByUs` / `previousProxySettings` пишет т
 - `wpf-smoke-error.txt` рядом с exe — только при `--smoke-test`.
 - Реестр: `HKCU\...\Internet Settings` (`ProxyEnable`, `ProxyServer`, `ProxyOverride`) — системный прокси;
   `HKCU\...\Run\NothingVpn` — автозапуск, если выбран при установке.
+
+## Доменные исключения
+
+`state.json.domainExceptions` — массив `{ "domain": "hitmos.fm", "includeSubdomains": true, "enabled": true }`.
+В старых файлах отсутствие поля означает пустой список. Записи хранятся под тем же DPAPI, что и остальные настройки.
+Домены нормализуются в ASCII/Punycode и нижний регистр, конечная точка убирается; протокол, порт, путь,
+IP-адреса и wildcard не допускаются. Максимум 500 записей, повтор домена запрещён независимо от флажков.
+Отключённые записи сохраняются, но не передаются ядру. По умолчанию новая запись включает поддомены.

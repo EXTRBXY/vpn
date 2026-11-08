@@ -33,6 +33,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, ISettingsFeedbac
     {
         _controller = controller;
         _settingsService = settingsService;
+        Exceptions = new ExceptionsSettingsViewModel(this);
         Apps = new TunAppsSettingsViewModel(tunAppsController, appDiscovery, this);
         RuleSets = new RuleSetsSettingsViewModel(ruleSetController, ruleSetFiles, this);
         _saveCommand = new RelayCommand(Save, () => RuleSets.CanEditRuleSets);
@@ -44,6 +45,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, ISettingsFeedbac
     public event PropertyChangedEventHandler? PropertyChanged;
     public event EventHandler? SettingsChanged;
 
+    public ExceptionsSettingsViewModel Exceptions { get; }
     public DnsSettingsViewModel Dns { get; } = new();
     public TunSettingsViewModel Tun { get; } = new();
     public TunAppsSettingsViewModel Apps { get; }
@@ -101,6 +103,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, ISettingsFeedbac
             {
                 TunAppPaths = paths,
                 RuleSets = rules,
+                DomainExceptions = Exceptions.ToSettings(),
                 LogLevel = Behavior.LogLevel,
                 CloseBehavior = Behavior.CloseBehavior,
                 Xmux = Xray.ToSettings()
@@ -148,6 +151,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, ISettingsFeedbac
         Xray.Load(state);
         Apps.Load(state);
         RuleSets.Load(state);
+        Exceptions.Load(state);
     }
 
     private void OnPropertyChanged([CallerMemberName] string? name = null) =>

@@ -9,24 +9,61 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <ScrollViewer x:Name="SettingsScroll" VerticalScrollBarVisibility="Auto" PreviewMouseWheel="OnSettingsMouseWheel">
+        <ScrollViewer x:Name="SettingsScroll" Padding="0,0,12,0" VerticalScrollBarVisibility="Auto" PreviewMouseWheel="OnSettingsMouseWheel">
             <StackPanel>
-                <TextBlock Text="Настройки" FontSize="28" FontWeight="SemiBold" />
-                <TextBlock Text="Параметры подключения" Foreground="{DynamicResource MutedBrush}" Margin="0,5,0,22" />
+                <TextBlock TextWrapping="Wrap" Text="Настройки" Style="{StaticResource PageTitleTextStyle}" />
+                <TextBlock TextWrapping="Wrap" Text="Параметры подключения" Foreground="{DynamicResource MutedBrush}" Margin="0,8,0,24" />
+
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,24" DataContext="{Binding Exceptions}">
+                    <StackPanel>
+                        <TextBlock TextWrapping="Wrap" Text="Исключения" Style="{StaticResource SectionTitleTextStyle}" />
+                        <TextBlock Text="Эти домены идут напрямую. Исключения имеют приоритет над списками .srs. Изменения применятся после сохранения и переподключения."
+                                   TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="{StaticResource FieldMargin}" />
+                        <TextBlock TextWrapping="Wrap" Text="Домен, например hitmos.fm" />
+                        <TextBox Text="{Binding NewDomain, UpdateSourceTrigger=PropertyChanged}" Margin="{StaticResource FieldMargin}" />
+                        <CheckBox Content="Включая поддомены" IsChecked="{Binding IncludeSubdomains}" />
+                        <Button Content="Добавить домен" Command="{Binding AddCommand}" HorizontalAlignment="Left"
+                                Style="{StaticResource SecondaryButtonStyle}" Margin="0,12,0,12" />
+                        <Border Style="{StaticResource TableFrameStyle}">
+                            <DataGrid BorderThickness="0" ItemsSource="{Binding Entries}" SelectedItem="{Binding SelectedEntry}" AutoGenerateColumns="False"
+                                      CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single" MaxHeight="280">
+                                <DataGrid.Columns>
+                                    <DataGridTemplateColumn Header="Включено">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsChecked="{Binding Enabled, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="Домен" Binding="{Binding Domain}" IsReadOnly="True" Width="*" />
+                                    <DataGridTemplateColumn Header="Включая поддомены">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsChecked="{Binding IncludeSubdomains, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Border>
+                        <Button Content="Удалить" Command="{Binding RemoveCommand}" IsEnabled="{Binding CanRemove}"
+                                Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Left" Margin="0,12,0,0" />
+                    </StackPanel>
+                </Border>
 
                 <Border Style="{StaticResource CardStyle}" DataContext="{Binding Dns}">
                     <StackPanel>
-                        <TextBlock Text="DNS" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,14" />
+                        <TextBlock TextWrapping="Wrap" Text="DNS" Style="{StaticResource SectionTitleTextStyle}" Margin="0,0,0,16" />
 
-                        <TextBlock Text="Режим" Foreground="{DynamicResource MutedBrush}" />
-                        <ComboBox SelectedValue="{Binding DnsMode}" SelectedValuePath="Tag" Margin="0,6,0,12">
+                        <TextBlock TextWrapping="Wrap" Text="Режим" Foreground="{DynamicResource MutedBrush}" />
+                        <ComboBox SelectedValue="{Binding DnsMode}" SelectedValuePath="Tag" Margin="{StaticResource FieldMargin}">
                             <ComboBoxItem Content="Системный DNS" Tag="{x:Static m:DnsMode.System}" />
                             <ComboBoxItem Content="Защищённый DNS (DoH)" Tag="{x:Static m:DnsMode.Doh}" />
                         </ComboBox>
 
-                        <TextBlock Text="Готовая настройка" Foreground="{DynamicResource MutedBrush}" />
+                        <TextBlock TextWrapping="Wrap" Text="Готовая настройка" Foreground="{DynamicResource MutedBrush}" />
                         <ComboBox IsEnabled="{Binding IsDohMode}" SelectedValue="{Binding DnsPreset}" SelectedValuePath="Tag"
-                                  Margin="0,6,0,12">
+                                  Margin="{StaticResource FieldMargin}">
                             <ComboBoxItem Content="Свои параметры" Tag="{x:Static m:DnsPreset.Custom}" />
                             <ComboBoxItem Content="Cloudflare" Tag="{x:Static m:DnsPreset.Cloudflare}" />
                             <ComboBoxItem Content="Google" Tag="{x:Static m:DnsPreset.Google}" />
@@ -34,13 +71,13 @@
                             <ComboBoxItem Content="AdGuard" Tag="{x:Static m:DnsPreset.AdGuard}" />
                         </ComboBox>
 
-                        <TextBlock Text="Маршрут DNS" Foreground="{DynamicResource MutedBrush}" />
+                        <TextBlock TextWrapping="Wrap" Text="Маршрут DNS" Foreground="{DynamicResource MutedBrush}" />
                         <ComboBox SelectedValue="{Binding DnsDetour}" SelectedValuePath="Tag" IsEnabled="{Binding IsDnsDetourEditable}"
-                                  Margin="0,6,0,4">
+                                  Margin="0,8,0,8">
                             <ComboBoxItem Content="Напрямую" Tag="{x:Static m:DnsDetour.Direct}" />
                             <ComboBoxItem Content="Через VPN" Tag="{x:Static m:DnsDetour.Proxy}" />
                         </ComboBox>
-                        <TextBlock Text="{Binding DnsDetourHint}" Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,0,0,12">
+                        <TextBlock TextWrapping="Wrap" Text="{Binding DnsDetourHint}" Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,0,0,12">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
                                     <Setter Property="Visibility" Value="Visible" />
@@ -53,63 +90,63 @@
                             </TextBlock.Style>
                         </TextBlock>
 
-                        <TextBlock Text="Сервер" Foreground="{DynamicResource MutedBrush}" />
-                        <TextBox IsEnabled="{Binding IsDohMode}" Text="{Binding DohServer, UpdateSourceTrigger=PropertyChanged}" Padding="10"
-                                 Margin="0,6,0,10" />
-                        <TextBlock Text="SNI" Foreground="{DynamicResource MutedBrush}" />
-                        <TextBox IsEnabled="{Binding IsDohMode}" Text="{Binding DohSni, UpdateSourceTrigger=PropertyChanged}" Padding="10"
-                                 Margin="0,6,0,10" />
-                        <TextBlock Text="Путь" Foreground="{DynamicResource MutedBrush}" />
-                        <TextBox IsEnabled="{Binding IsDohMode}" Text="{Binding DohPath, UpdateSourceTrigger=PropertyChanged}" Padding="10"
-                                 Margin="0,6,0,0" />
+                        <TextBlock TextWrapping="Wrap" Text="Сервер" Foreground="{DynamicResource MutedBrush}" />
+                        <TextBox IsEnabled="{Binding IsDohMode}" Text="{Binding DohServer, UpdateSourceTrigger=PropertyChanged}"
+                                 Margin="{StaticResource FieldMargin}" />
+                        <TextBlock TextWrapping="Wrap" Text="SNI" Foreground="{DynamicResource MutedBrush}" />
+                        <TextBox IsEnabled="{Binding IsDohMode}" Text="{Binding DohSni, UpdateSourceTrigger=PropertyChanged}"
+                                 Margin="{StaticResource FieldMargin}" />
+                        <TextBlock TextWrapping="Wrap" Text="Путь" Foreground="{DynamicResource MutedBrush}" />
+                        <TextBox IsEnabled="{Binding IsDohMode}" Text="{Binding DohPath, UpdateSourceTrigger=PropertyChanged}"
+                                 Margin="{StaticResource LastFieldMargin}" />
                     </StackPanel>
                 </Border>
 
-                <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0" DataContext="{Binding Tun}">
+                <Border Style="{StaticResource CardStyle}" Margin="{StaticResource SectionMargin}" DataContext="{Binding Tun}">
                     <StackPanel>
-                        <TextBlock Text="TUN" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,14" />
-                        <TextBlock Text="Имя интерфейса" Foreground="{DynamicResource MutedBrush}" />
-                        <TextBox Text="{Binding InterfaceName, UpdateSourceTrigger=PropertyChanged}" Padding="10" Margin="0,6,0,10" />
-                        <TextBlock Text="Адрес CIDR или auto" Foreground="{DynamicResource MutedBrush}" />
-                        <TextBox Text="{Binding AddressCidr, UpdateSourceTrigger=PropertyChanged}" Padding="10" Margin="0,6,0,10" />
-                        <TextBlock Text="MTU" Foreground="{DynamicResource MutedBrush}" />
-                        <TextBox Text="{Binding MtuText, UpdateSourceTrigger=PropertyChanged}" Padding="10" Margin="0,6,0,10" />
-                        <TextBlock Text="Сетевой стек" Foreground="{DynamicResource MutedBrush}" />
-                        <ComboBox SelectedValue="{Binding Stack}" SelectedValuePath="Tag" Margin="0,6,0,10">
+                        <TextBlock TextWrapping="Wrap" Text="TUN" Style="{StaticResource SectionTitleTextStyle}" Margin="0,0,0,16" />
+                        <TextBlock TextWrapping="Wrap" Text="Имя интерфейса" Foreground="{DynamicResource MutedBrush}" />
+                        <TextBox Text="{Binding InterfaceName, UpdateSourceTrigger=PropertyChanged}" Margin="{StaticResource FieldMargin}" />
+                        <TextBlock TextWrapping="Wrap" Text="Адрес CIDR или auto" Foreground="{DynamicResource MutedBrush}" />
+                        <TextBox Text="{Binding AddressCidr, UpdateSourceTrigger=PropertyChanged}" Margin="{StaticResource FieldMargin}" />
+                        <TextBlock TextWrapping="Wrap" Text="MTU" Foreground="{DynamicResource MutedBrush}" />
+                        <TextBox Text="{Binding MtuText, UpdateSourceTrigger=PropertyChanged}" Margin="{StaticResource FieldMargin}" />
+                        <TextBlock TextWrapping="Wrap" Text="Сетевой стек" Foreground="{DynamicResource MutedBrush}" />
+                        <ComboBox SelectedValue="{Binding Stack}" SelectedValuePath="Tag" Margin="{StaticResource FieldMargin}">
                             <ComboBoxItem Content="Системный" Tag="{x:Static m:TunStack.Default}" />
                             <ComboBoxItem Content="Смешанный" Tag="{x:Static m:TunStack.Mixed}" />
                             <ComboBoxItem Content="gVisor" Tag="{x:Static m:TunStack.Gvisor}" />
                         </ComboBox>
                         <CheckBox Content="Автоматически настраивать маршруты" IsChecked="{Binding AutoRoute}" />
-                        <CheckBox Content="Строгая маршрутизация" IsChecked="{Binding StrictRoute}" Margin="0,8,0,0" />
+                        <CheckBox Content="Строгая маршрутизация" IsChecked="{Binding StrictRoute}" Margin="0,12,0,0" />
                     </StackPanel>
                 </Border>
 
-                <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0" DataContext="{Binding Xray}">
+                <Border Style="{StaticResource CardStyle}" Margin="{StaticResource SectionMargin}" DataContext="{Binding Xray}">
                     <StackPanel>
-                        <TextBlock Text="Xray (XHTTP)" FontSize="17" FontWeight="SemiBold" />
+                        <TextBlock TextWrapping="Wrap" Text="Xray (XHTTP)" Style="{StaticResource SectionTitleTextStyle}" />
                         <TextBlock Text="Мультиплексирование XMUX для профилей XHTTP, если ссылка не задаёт своё. Число или диапазон «N-M»; значения по умолчанию совпадают с Xray."
-                                   Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,6,0,12" TextWrapping="Wrap" />
-                        <TextBlock Text="Запросов на соединение (maxConcurrency)" Foreground="{DynamicResource MutedBrush}" />
-                        <TextBox Text="{Binding MaxConcurrency, UpdateSourceTrigger=PropertyChanged}" Padding="10" Margin="0,6,0,10" />
-                        <TextBlock Text="Максимум соединений (maxConnections, 0 — без ограничения)" Foreground="{DynamicResource MutedBrush}" />
-                        <TextBox Text="{Binding MaxConnections, UpdateSourceTrigger=PropertyChanged}" Padding="10" Margin="0,6,0,10" />
-                        <TextBlock Text="Повторных использований соединения (cMaxReuseTimes, 0 — без ограничения)" Foreground="{DynamicResource MutedBrush}" />
-                        <TextBox Text="{Binding CMaxReuseTimes, UpdateSourceTrigger=PropertyChanged}" Padding="10" Margin="0,6,0,10" />
-                        <TextBlock Text="HTTP-запросов на соединение (hMaxRequestTimes)" Foreground="{DynamicResource MutedBrush}" />
-                        <TextBox Text="{Binding HMaxRequestTimes, UpdateSourceTrigger=PropertyChanged}" Padding="10" Margin="0,6,0,10" />
-                        <TextBlock Text="Время жизни соединения, с (hMaxReusableSecs)" Foreground="{DynamicResource MutedBrush}" />
-                        <TextBox Text="{Binding HMaxReusableSecs, UpdateSourceTrigger=PropertyChanged}" Padding="10" Margin="0,6,0,10" />
+                                   Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="{StaticResource FieldMargin}" TextWrapping="Wrap" />
+                        <TextBlock TextWrapping="Wrap" Text="Запросов на соединение (maxConcurrency)" Foreground="{DynamicResource MutedBrush}" />
+                        <TextBox Text="{Binding MaxConcurrency, UpdateSourceTrigger=PropertyChanged}" Margin="{StaticResource FieldMargin}" />
+                        <TextBlock TextWrapping="Wrap" Text="Максимум соединений (maxConnections, 0 — без ограничения)" Foreground="{DynamicResource MutedBrush}" />
+                        <TextBox Text="{Binding MaxConnections, UpdateSourceTrigger=PropertyChanged}" Margin="{StaticResource FieldMargin}" />
+                        <TextBlock TextWrapping="Wrap" Text="Повторных использований соединения (cMaxReuseTimes, 0 — без ограничения)" Foreground="{DynamicResource MutedBrush}" />
+                        <TextBox Text="{Binding CMaxReuseTimes, UpdateSourceTrigger=PropertyChanged}" Margin="{StaticResource FieldMargin}" />
+                        <TextBlock TextWrapping="Wrap" Text="HTTP-запросов на соединение (hMaxRequestTimes)" Foreground="{DynamicResource MutedBrush}" />
+                        <TextBox Text="{Binding HMaxRequestTimes, UpdateSourceTrigger=PropertyChanged}" Margin="{StaticResource FieldMargin}" />
+                        <TextBlock TextWrapping="Wrap" Text="Время жизни соединения, с (hMaxReusableSecs)" Foreground="{DynamicResource MutedBrush}" />
+                        <TextBox Text="{Binding HMaxReusableSecs, UpdateSourceTrigger=PropertyChanged}" Margin="{StaticResource FieldMargin}" />
                         <Button Content="Значения по умолчанию" Command="{Binding ResetCommand}" Style="{StaticResource SecondaryButtonStyle}"
                                 HorizontalAlignment="Left" />
                     </StackPanel>
                 </Border>
 
-                <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0" DataContext="{Binding Apps}">
+                <Border Style="{StaticResource CardStyle}" Margin="{StaticResource SectionMargin}" DataContext="{Binding Apps}">
                     <StackPanel>
-                        <TextBlock Text="Приложения через TUN" FontSize="17" FontWeight="SemiBold" />
+                        <TextBlock TextWrapping="Wrap" Text="Приложения через TUN" Style="{StaticResource SectionTitleTextStyle}" />
                         <ListBox ItemsSource="{Binding TunApps}" SelectedItem="{Binding SelectedTunApp}" MinHeight="92" MaxHeight="300"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" Margin="0,10,0,10">
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" Margin="0,12,0,12">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <Grid Margin="2">
@@ -117,52 +154,52 @@
                                             <ColumnDefinition Width="40" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <Border Width="32" Height="32" CornerRadius="7" Background="{DynamicResource SubtleBrush}">
+                                        <Border Width="32" Height="32" CornerRadius="{StaticResource ControlCornerRadius}" Background="{DynamicResource SubtleBrush}">
                                             <Image Source="{Binding Icon}" Width="24" Height="24" Stretch="Uniform" />
                                         </Border>
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Text="{Binding Path}" Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,2,0,0"
+                                            <TextBlock TextWrapping="Wrap" Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock TextWrapping="Wrap" Text="{Binding Path}" Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,2,0,0"
                                                        TextTrimming="CharacterEllipsis" />
                                         </StackPanel>
                                     </Grid>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
-                        <StackPanel Orientation="Horizontal">
-                            <Button Content="Найти приложение" Click="OnFindTunApp" />
-                            <Button Content="Выбрать .exe" Click="OnAddTunApp" Style="{StaticResource SecondaryButtonStyle}" Margin="10,0,0,0" />
-                            <Button Content="Удалить" Click="OnRemoveTunApp" IsEnabled="{Binding CanRemoveTunApp}"
-                                    Style="{StaticResource DangerButtonStyle}" Margin="10,0,0,0" />
-                        </StackPanel>
+                        <WrapPanel Orientation="Horizontal">
+                            <Button Margin="0,0,12,8" Content="Найти приложение" Click="OnFindTunApp" />
+                            <Button Margin="0,0,12,8" Content="Выбрать .exe" Click="OnAddTunApp" Style="{StaticResource SecondaryButtonStyle}" />
+                            <Button Margin="0,0,12,8" Content="Удалить" Click="OnRemoveTunApp" IsEnabled="{Binding CanRemoveTunApp}"
+                                    Style="{StaticResource DangerButtonStyle}" />
+                        </WrapPanel>
                     </StackPanel>
                 </Border>
 
-                <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0" DataContext="{Binding Proxy}">
+                <Border Style="{StaticResource CardStyle}" Margin="{StaticResource SectionMargin}" DataContext="{Binding Proxy}">
                     <StackPanel>
-                        <TextBlock Text="Исключения прокси" FontSize="17" FontWeight="SemiBold" />
-                        <TextBox Text="{Binding ProxyOverride, UpdateSourceTrigger=PropertyChanged}" Padding="10" Margin="0,10,0,0"
-                                 TextWrapping="Wrap" AcceptsReturn="True" MinHeight="70" />
+                        <TextBlock TextWrapping="Wrap" Text="Исключения прокси" Style="{StaticResource SectionTitleTextStyle}" />
+                        <TextBox Text="{Binding ProxyOverride, UpdateSourceTrigger=PropertyChanged}" Margin="0,12,0,0"
+                                 TextWrapping="Wrap" AcceptsReturn="True" VerticalContentAlignment="Stretch" MinHeight="88" />
                     </StackPanel>
                 </Border>
 
-                <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0" DataContext="{Binding Updates}">
+                <Border Style="{StaticResource CardStyle}" Margin="{StaticResource SectionMargin}" DataContext="{Binding Updates}">
                     <StackPanel>
-                        <TextBlock Text="Обновления" FontSize="17" FontWeight="SemiBold" />
-                        <TextBlock Margin="0,8,0,10"><Run Text="Текущая версия: " /><Run Text="{Binding CurrentVersion, Mode=OneWay}" /></TextBlock>
-                        <TextBlock Text="{Binding Status, Mode=OneWay}" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,10" />
-                        <ProgressBar Value="{Binding Progress, Mode=OneWay}" Height="5" Margin="0,0,0,10" />
-                        <StackPanel Orientation="Horizontal">
-                            <Button Content="Проверить" Command="{Binding CheckCommand}" Style="{StaticResource SecondaryButtonStyle}" />
-                            <Button Content="Установить" Command="{Binding InstallCommand}" Margin="10,0,0,0" />
-                        </StackPanel>
+                        <TextBlock TextWrapping="Wrap" Text="Обновления" Style="{StaticResource SectionTitleTextStyle}" />
+                        <TextBlock TextWrapping="Wrap" Margin="0,8,0,12"><Run Text="Текущая версия: " /><Run Text="{Binding CurrentVersion, Mode=OneWay}" /></TextBlock>
+                        <TextBlock TextWrapping="Wrap" Text="{Binding Status, Mode=OneWay}" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,12" />
+                        <ProgressBar Value="{Binding Progress, Mode=OneWay}" Height="4" Margin="0,0,0,12" />
+                        <WrapPanel Orientation="Horizontal">
+                            <Button Margin="0,0,12,8" Content="Проверить" Command="{Binding CheckCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                            <Button Margin="0,0,12,8" Content="Установить" Command="{Binding InstallCommand}" />
+                        </WrapPanel>
                     </StackPanel>
                 </Border>
 
-                <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0" DataContext="{Binding Behavior}">
+                <Border Style="{StaticResource CardStyle}" Margin="{StaticResource SectionMargin}" DataContext="{Binding Behavior}">
                     <StackPanel>
-                        <TextBlock Text="Приложение" FontSize="17" FontWeight="SemiBold" />
-                        <TextBlock Text="При закрытии окна" Foreground="{DynamicResource MutedBrush}" Margin="0,12,0,6" />
+                        <TextBlock TextWrapping="Wrap" Text="Приложение" Style="{StaticResource SectionTitleTextStyle}" />
+                        <TextBlock TextWrapping="Wrap" Text="При закрытии окна" Foreground="{DynamicResource MutedBrush}" Margin="0,16,0,8" />
                         <ComboBox SelectedValue="{Binding CloseBehavior}" SelectedValuePath="Tag">
                             <ComboBoxItem Content="Скрывать в системный трей" Tag="{x:Static am:AppCloseBehavior.HideToTray}" />
                             <ComboBoxItem Content="Полностью завершать приложение" Tag="{x:Static am:AppCloseBehavior.Exit}" />
@@ -170,10 +207,10 @@
                     </StackPanel>
                 </Border>
 
-                <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0" DataContext="{Binding Behavior}">
+                <Border Style="{StaticResource CardStyle}" Margin="{StaticResource SectionMargin}" DataContext="{Binding Behavior}">
                     <StackPanel>
-                        <TextBlock Text="Журнал" FontSize="17" FontWeight="SemiBold" />
-                        <TextBlock Text="Уровень сообщений" Foreground="{DynamicResource MutedBrush}" Margin="0,12,0,6" />
+                        <TextBlock TextWrapping="Wrap" Text="Журнал" Style="{StaticResource SectionTitleTextStyle}" />
+                        <TextBlock TextWrapping="Wrap" Text="Уровень сообщений" Foreground="{DynamicResource MutedBrush}" Margin="0,16,0,8" />
                         <ComboBox SelectedValue="{Binding LogLevel}" SelectedValuePath="Tag">
                             <ComboBoxItem Content="Ошибки" Tag="{x:Static m:LogLevel.Error}" />
                             <ComboBoxItem Content="Предупреждения" Tag="{x:Static m:LogLevel.Warn}" />
@@ -183,72 +220,76 @@
                     </StackPanel>
                 </Border>
 
-                <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0" DataContext="{Binding RuleSets}">
+                <Border Style="{StaticResource CardStyle}" Margin="{StaticResource SectionMargin}" DataContext="{Binding RuleSets}">
                     <StackPanel>
-                        <TextBlock Text="Правила маршрутизации" FontSize="17" FontWeight="SemiBold" />
+                        <TextBlock TextWrapping="Wrap" Text="Правила маршрутизации" Style="{StaticResource SectionTitleTextStyle}" />
 
-                        <TextBlock Text="Встроенные списки" Foreground="{DynamicResource MutedBrush}" Margin="0,12,0,5" />
-                        <DataGrid ItemsSource="{Binding BuiltinRuleSets}" SelectedItem="{Binding SelectedBuiltinRuleSet}" AutoGenerateColumns="False"
-                                  CanUserAddRows="False" CanUserDeleteRows="False" IsEnabled="{Binding CanEditRuleSets}" MinHeight="110">
-                            <DataGrid.Columns>
-                                <DataGridTemplateColumn Header="Вкл.">
-                                    <DataGridTemplateColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <CheckBox IsChecked="{Binding Enabled, Mode=OneWay}" Click="OnBuiltinEnabledClick" HorizontalAlignment="Center"
-                                                      VerticalAlignment="Center" />
-                                        </DataTemplate>
-                                    </DataGridTemplateColumn.CellTemplate>
-                                </DataGridTemplateColumn>
-                                <DataGridTextColumn Header="Название" Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Width="*" />
-                                <DataGridTemplateColumn Header="Действие">
-                                    <DataGridTemplateColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <ComboBox SelectedValue="{Binding Action, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Tag">
-                                                <ComboBoxItem Content="Напрямую" Tag="{x:Static m:RuleSetAction.Direct}" />
-                                                <ComboBoxItem Content="Блокировать" Tag="{x:Static m:RuleSetAction.Block}" />
-                                            </ComboBox>
-                                        </DataTemplate>
-                                    </DataGridTemplateColumn.CellTemplate>
-                                </DataGridTemplateColumn>
-                            </DataGrid.Columns>
-                        </DataGrid>
-                        <StackPanel Orientation="Horizontal" Margin="0,8,0,12">
-                            <Button Content="Скачать или обновить" Click="OnDownloadBuiltin" IsEnabled="{Binding CanUseBuiltinRuleSet}" />
-                            <Button Content="Удалить файл" Click="OnRemoveBuiltin" IsEnabled="{Binding CanUseBuiltinRuleSet}"
-                                    Style="{StaticResource DangerButtonStyle}" Margin="10,0,0,0" />
-                            <Button Content="Другие списки" Click="OnOpenRuleCatalog" Style="{StaticResource SecondaryButtonStyle}" Margin="10,0,0,0" />
-                        </StackPanel>
+                        <TextBlock TextWrapping="Wrap" Text="Встроенные списки" Foreground="{DynamicResource MutedBrush}" Margin="0,16,0,8" />
+                        <Border Style="{StaticResource TableFrameStyle}">
+                            <DataGrid BorderThickness="0" ItemsSource="{Binding BuiltinRuleSets}" SelectedItem="{Binding SelectedBuiltinRuleSet}" AutoGenerateColumns="False"
+                                      CanUserAddRows="False" CanUserDeleteRows="False" IsEnabled="{Binding CanEditRuleSets}" MinHeight="110">
+                                <DataGrid.Columns>
+                                    <DataGridTemplateColumn Header="Вкл.">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsChecked="{Binding Enabled, Mode=OneWay}" Click="OnBuiltinEnabledClick" HorizontalAlignment="Center"
+                                                          VerticalAlignment="Center" />
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="Название" EditingElementStyle="{StaticResource TableEditingTextBoxStyle}" Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Width="*" />
+                                    <DataGridTemplateColumn Header="Действие">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <ComboBox Style="{StaticResource CompactComboBoxStyle}" SelectedValue="{Binding Action, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Tag">
+                                                    <ComboBoxItem Content="Напрямую" Tag="{x:Static m:RuleSetAction.Direct}" />
+                                                    <ComboBoxItem Content="Блокировать" Tag="{x:Static m:RuleSetAction.Block}" />
+                                                </ComboBox>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Border>
+                        <WrapPanel Orientation="Horizontal" Margin="0,8,0,12">
+                            <Button Margin="0,0,12,8" Content="Скачать или обновить" Click="OnDownloadBuiltin" IsEnabled="{Binding CanUseBuiltinRuleSet}" />
+                            <Button Margin="0,0,12,8" Content="Удалить файл" Click="OnRemoveBuiltin" IsEnabled="{Binding CanUseBuiltinRuleSet}"
+                                    Style="{StaticResource DangerButtonStyle}" />
+                            <Button Margin="0,0,12,8" Content="Другие списки" Click="OnOpenRuleCatalog" Style="{StaticResource SecondaryButtonStyle}" />
+                        </WrapPanel>
 
-                        <TextBlock Text="Пользовательские списки" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,5" />
-                        <DataGrid ItemsSource="{Binding UserRuleSets}" SelectedItem="{Binding SelectedUserRuleSet}" AutoGenerateColumns="False"
-                                  CanUserAddRows="False" CanUserDeleteRows="False" IsEnabled="{Binding CanEditRuleSets}" MinHeight="110">
-                            <DataGrid.Columns>
-                                <DataGridTemplateColumn Header="Вкл.">
-                                    <DataGridTemplateColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <CheckBox IsChecked="{Binding Enabled, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center"
-                                                      VerticalAlignment="Center" />
-                                        </DataTemplate>
-                                    </DataGridTemplateColumn.CellTemplate>
-                                </DataGridTemplateColumn>
-                                <DataGridTextColumn Header="Название" Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Width="*" />
-                                <DataGridTemplateColumn Header="Действие">
-                                    <DataGridTemplateColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <ComboBox SelectedValue="{Binding Action, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Tag">
-                                                <ComboBoxItem Content="Напрямую" Tag="{x:Static m:RuleSetAction.Direct}" />
-                                                <ComboBoxItem Content="Блокировать" Tag="{x:Static m:RuleSetAction.Block}" />
-                                            </ComboBox>
-                                        </DataTemplate>
-                                    </DataGridTemplateColumn.CellTemplate>
-                                </DataGridTemplateColumn>
-                            </DataGrid.Columns>
-                        </DataGrid>
-                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                            <Button Content="Добавить .srs" Click="OnImportRuleSet" IsEnabled="{Binding CanEditRuleSets}" />
-                            <Button Content="Удалить" Click="OnRemoveRuleSet" IsEnabled="{Binding CanRemoveUserRuleSet}"
-                                    Style="{StaticResource DangerButtonStyle}" Margin="10,0,0,0" />
-                        </StackPanel>
+                        <TextBlock TextWrapping="Wrap" Text="Пользовательские списки" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8" />
+                        <Border Style="{StaticResource TableFrameStyle}">
+                            <DataGrid BorderThickness="0" ItemsSource="{Binding UserRuleSets}" SelectedItem="{Binding SelectedUserRuleSet}" AutoGenerateColumns="False"
+                                      CanUserAddRows="False" CanUserDeleteRows="False" IsEnabled="{Binding CanEditRuleSets}" MinHeight="110">
+                                <DataGrid.Columns>
+                                    <DataGridTemplateColumn Header="Вкл.">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsChecked="{Binding Enabled, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center"
+                                                          VerticalAlignment="Center" />
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="Название" EditingElementStyle="{StaticResource TableEditingTextBoxStyle}" Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Width="*" />
+                                    <DataGridTemplateColumn Header="Действие">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <ComboBox Style="{StaticResource CompactComboBoxStyle}" SelectedValue="{Binding Action, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Tag">
+                                                    <ComboBoxItem Content="Напрямую" Tag="{x:Static m:RuleSetAction.Direct}" />
+                                                    <ComboBoxItem Content="Блокировать" Tag="{x:Static m:RuleSetAction.Block}" />
+                                                </ComboBox>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Border>
+                        <WrapPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <Button Margin="0,0,12,8" Content="Добавить .srs" Click="OnImportRuleSet" IsEnabled="{Binding CanEditRuleSets}" />
+                            <Button Margin="0,0,12,8" Content="Удалить" Click="OnRemoveRuleSet" IsEnabled="{Binding CanRemoveUserRuleSet}"
+                                    Style="{StaticResource DangerButtonStyle}" />
+                        </WrapPanel>
                     </StackPanel>
                 </Border>
             </StackPanel>
@@ -256,7 +297,7 @@
 
         <Border Grid.Row="1" Background="{DynamicResource WindowBrush}" Padding="0,12,0,0">
             <StackPanel>
-                <TextBlock Text="{Binding ConnectionNotice}" Foreground="{DynamicResource WarningBrush}" Margin="0,16,0,0" TextWrapping="Wrap">
+                <TextBlock Text="{Binding ConnectionNotice}" Foreground="{DynamicResource WarningBrush}" Margin="{StaticResource SectionMargin}" TextWrapping="Wrap">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock">
                             <Setter Property="Visibility" Value="Visible" />
@@ -274,3 +315,4 @@
         </Border>
     </Grid>
 </UserControl>
+

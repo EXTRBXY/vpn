@@ -46,6 +46,9 @@ public sealed class EngineConnectRequest
     public List<string> TunAppProcessPaths { get; set; } = new();
 
     /// <summary>Только включённые rule-set, в порядке пользователя (порядок route-правил значим).</summary>
+    [JsonPropertyName("domainExceptions")]
+    public List<DomainExceptionModel> DomainExceptions { get; set; } = new();
+
     [JsonPropertyName("ruleSets")]
     public List<EngineRuleSet> RuleSets { get; set; } = new();
 }

@@ -8,6 +8,20 @@ namespace NothingVpn.Application.Tests;
 /// <summary>Ядро отдельно от оркестрации: валидация запроса, запуск, откат и выход процесса.</summary>
 public sealed class SingBoxVpnEngineTests
 {
+    [Theory]
+    [InlineData("https://hitmos.fm")]
+    [InlineData("*.hitmos.fm")]
+    [InlineData(null)]
+    public async Task ConnectAsync_RejectsInvalidDomainExceptionBeforeWritingConfig(string? domain)
+    {
+        var singBox = new FakeSingBoxPort();
+        var request = ValidRequest();
+        request.DomainExceptions = [domain is null ? null! : new() { Domain = domain }];
+        await Assert.ThrowsAsync<ArgumentException>(() => CreateEngine(singBox).ConnectAsync(request));
+        Assert.Null(singBox.WrittenState);
+        Assert.False(singBox.StartCalled);
+    }
+
     [Fact]
     public async Task ConnectAsync_RejectsIncompatibleContractVersion()
     {

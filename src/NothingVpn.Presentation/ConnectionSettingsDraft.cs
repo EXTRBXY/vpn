@@ -10,6 +10,7 @@ public sealed record ConnectionSettingsDraft(
 {
     public IReadOnlyList<string>? TunAppPaths { get; init; }
     public IReadOnlyList<UserRuleSetModel>? RuleSets { get; init; }
+    public IReadOnlyList<DomainExceptionModel>? DomainExceptions { get; init; }
     public LogLevel? LogLevel { get; init; }
     public AppCloseBehavior? CloseBehavior { get; init; }
     public XmuxSettings? Xmux { get; init; }

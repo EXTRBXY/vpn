@@ -204,7 +204,7 @@ UAC-перезапуска и механизма UPDATE-HANDOFF.
   (`EngineConnectRequest`), `status` (`EngineStatus`), `error` (`code`, `message`) или `log` (`timestampUtc`, `level`
   со строками уровней как в state.json, `source`, `message`). Пустые поля не пишутся. Поля `contractVersion`, `type`,
   `id`, `error` не меняются между версиями — по ним любая версия распознаёт собеседника другой версии.
-- **Версия**: `contractVersion` в каждом сообщении равен `EngineContract.Version` (сейчас 3). На чужую версию служба
+- **Версия**: `contractVersion` в каждом сообщении равен `EngineContract.Version` (сейчас 4). На чужую версию служба
   отвечает `error` с кодом `version` и текстом «Несовместимая версия протокола ядра (…). Обновите приложение.» и
   закрывает соединение; клиент, получив событие чужой версии, завершает запросы той же ошибкой.
 - **Команды** (клиент → служба; ответ — `result` со `status` или `error` с тем же `id`):
@@ -391,3 +391,11 @@ ACL (без окна с унаследованными правами). Не в�
 Ручная проверка — [чек-лист, раздел 7](../SERVICE-INSTALL-CHECKLIST.md#7-обновление-из-интерфейса). Тесты:
 `InstallerLaunchServiceTests`, `UpdateViewModelTests` (порядок «проверки → выход → запуск»),
 `VpnConnectionServiceTests.ConnectAsync_InProcessEngineTunWithoutAdmin_FailsWithoutStartingOrRestarting`.
+
+## Дополнение: доменные исключения (08.11.2026)
+
+Контракт v4 добавляет `EngineConnectRequest.domainExceptions`: массив типизированных записей
+`{ "domain": "hitmos.fm", "includeSubdomains": true, "enabled": true }`. Клиент передаёт только включённые
+записи, служба повторно валидирует их Domain-политикой. Нет файлов, путей или сырого JSON конфигурации.
+Версия повышена с 3 до 4: старая служба могла бы проигнорировать новое поле и отправить исключённый домен
+через VPN. Несовпадение версий требует обновления клиента и службы; поля конверта не меняются.

@@ -154,6 +154,7 @@ public sealed class SingBoxVpnEngine : IVpnEngine
         XhttpProfileValidator.Validate(profile);
         var engine = OutboundEnginePolicy.Resolve(profile.Engine, profile.Type, profile.Security);
 
+        DomainExceptionPolicy.Validate((request.DomainExceptions ?? []).Select(x => x?.Domain));
         var state = EngineRequestMapper.ToState(request);
         AppStateNormalizer.Normalize(state, _pathPolicy);
         if (!ConnectionPolicy.IsTunMode(state.Mode))

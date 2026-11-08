@@ -3,33 +3,33 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Nothing VPN" Width="920" Height="650" MinWidth="760" MinHeight="560"
         WindowStartupLocation="CenterScreen" Icon="Assets/app.ico" Style="{StaticResource AppWindowStyle}">
-    <Grid Margin="24">
+    <Grid Margin="{StaticResource PagePadding}">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="190" />
             <ColumnDefinition Width="24" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
-        <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="18">
+        <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="16">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Top">
-                    <TextBlock Text="Nothing VPN" Margin="4,8,0,34" FontSize="16" FontWeight="SemiBold" />
+                    <TextBlock Text="Nothing VPN" Margin="0,8,0,32" FontSize="16" FontWeight="SemiBold" />
                     <ToggleButton Content="Главная" Command="{Binding ShowHomeCommand}" IsChecked="{Binding IsHomeActive, Mode=OneWay}"
-                                  Style="{StaticResource NavigationToggleButtonStyle}" Margin="0,0,0,6" />
+                                  Style="{StaticResource NavigationToggleButtonStyle}" Margin="0,0,0,8" />
                     <ToggleButton Content="Профили" Command="{Binding ShowProfilesCommand}" IsChecked="{Binding IsProfilesActive, Mode=OneWay}"
                                   Style="{StaticResource NavigationToggleButtonStyle}" />
                     <ToggleButton Content="Настройки" Command="{Binding ShowSettingsCommand}" IsChecked="{Binding IsSettingsActive, Mode=OneWay}"
-                                  Style="{StaticResource NavigationToggleButtonStyle}" Margin="0,6,0,0" />
+                                  Style="{StaticResource NavigationToggleButtonStyle}" Margin="{StaticResource LastFieldMargin}" />
                     <ToggleButton Content="Диагностика" Command="{Binding ShowDiagnosticsCommand}" IsChecked="{Binding IsDiagnosticsActive, Mode=OneWay}"
-                                  Style="{StaticResource NavigationToggleButtonStyle}" Margin="0,6,0,0" />
+                                  Style="{StaticResource NavigationToggleButtonStyle}" Margin="{StaticResource LastFieldMargin}" />
                 </StackPanel>
             </DockPanel>
         </Border>
 
-        <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" Visibility="{Binding HomeVisibility}">
+        <ScrollViewer Grid.Column="2" Padding="0,0,12,0" VerticalScrollBarVisibility="Auto" Visibility="{Binding HomeVisibility}">
             <StackPanel>
-                <TextBlock Text="Подключение" FontSize="28" FontWeight="SemiBold" />
-                <TextBlock Text="Выберите профиль и режим работы" Foreground="{DynamicResource MutedBrush}" Margin="0,5,0,24" />
+                <TextBlock Text="Подключение" Style="{StaticResource PageTitleTextStyle}" />
+                <TextBlock Text="Выберите профиль и режим работы" Foreground="{DynamicResource MutedBrush}" Margin="0,8,0,24" />
 
                 <Border Style="{StaticResource CardStyle}">
                     <Grid>
@@ -42,14 +42,14 @@
                                 <Ellipse Width="10" Height="10" Fill="{Binding StatusBrush}" Margin="0,1,9,0" />
                                 <TextBlock Text="{Binding StatusText}" FontSize="18" FontWeight="SemiBold" />
                             </StackPanel>
-                            <TextBlock Text="{Binding StatusDetail}" Foreground="{DynamicResource MutedBrush}" Margin="19,7,0,0" />
+                            <TextBlock Text="{Binding StatusDetail}" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="19,7,0,0" />
                         </StackPanel>
                         <Button Grid.Column="1" Content="{Binding ConnectionActionText}" Command="{Binding ToggleConnectionCommand}"
-                                MinWidth="142" Background="{Binding ActionBrush}" />
+                                MinWidth="142" Margin="16,0,0,0" Background="{Binding ActionBrush}" />
                     </Grid>
                 </Border>
 
-                <Grid Margin="0,18,0,0">
+                <Grid Margin="{StaticResource SectionMargin}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="16" />
@@ -58,10 +58,10 @@
                     <Border Grid.Column="0" Style="{StaticResource CardStyle}">
                         <StackPanel>
                             <TextBlock Text="Профиль" Foreground="{DynamicResource MutedBrush}" FontSize="12" />
-                            <ComboBox Margin="0,9,0,0" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" IsEnabled="{Binding CanEdit}">
+                            <ComboBox Margin="{StaticResource LastFieldMargin}" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" IsEnabled="{Binding CanEdit}">
                                 <ComboBox.ItemTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding Name}" />
+                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
                                     </DataTemplate>
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
@@ -70,10 +70,10 @@
                     <Border Grid.Column="2" Style="{StaticResource CardStyle}">
                         <StackPanel>
                             <TextBlock Text="Режим" Foreground="{DynamicResource MutedBrush}" FontSize="12" />
-                            <ComboBox Margin="0,9,0,0" ItemsSource="{Binding Modes}" SelectedItem="{Binding SelectedMode}" IsEnabled="{Binding CanEdit}">
+                            <ComboBox Margin="{StaticResource LastFieldMargin}" ItemsSource="{Binding Modes}" SelectedItem="{Binding SelectedMode}" IsEnabled="{Binding CanEdit}">
                                 <ComboBox.ItemTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding Name}" />
+                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
                                     </DataTemplate>
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
@@ -81,27 +81,27 @@
                     </Border>
                 </Grid>
 
-                <Border Style="{StaticResource CardStyle}" Margin="0,18,0,0">
+                <Border Style="{StaticResource CardStyle}" Margin="{StaticResource SectionMargin}">
                     <StackPanel>
-                        <TextBlock Text="Сведения" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,15" />
+                        <TextBlock Text="Сведения" Style="{StaticResource SectionTitleTextStyle}" Margin="0,0,0,16" />
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <TextBlock Text="Профиль" Foreground="{DynamicResource MutedBrush}" />
-                            <TextBlock Grid.Column="1" Text="{Binding ProfileDetail}" />
+                            <TextBlock Grid.Column="1" Text="{Binding ProfileDetail}" TextWrapping="Wrap" />
                             <TextBlock Grid.Row="1" Text="Режим" Foreground="{DynamicResource MutedBrush}" Margin="0,12,0,0" />
                             <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ModeDetail}" Margin="0,12,0,0" />
                             <TextBlock Grid.Row="2" Text="DNS" Foreground="{DynamicResource MutedBrush}" Margin="0,12,0,0" />
                             <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding DnsDetail}" TextWrapping="Wrap" Margin="0,12,0,0" />
                             <TextBlock Grid.Row="3" Text="Правила" Foreground="{DynamicResource MutedBrush}" Margin="0,12,0,0" />
-                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding RuleSetsDetail}" Margin="0,12,0,0" />
+                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding RuleSetsDetail}" TextWrapping="Wrap" Margin="0,12,0,0" />
                         </Grid>
                     </StackPanel>
                 </Border>
 
-                <Border Background="{DynamicResource WarningSurfaceBrush}" CornerRadius="10" Padding="14" Margin="0,18,0,0"
+                <Border Background="{DynamicResource WarningSurfaceBrush}" CornerRadius="{StaticResource ControlCornerRadius}" Padding="16" Margin="{StaticResource SectionMargin}"
                         Visibility="{Binding ErrorVisibility}">
                     <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" />
                 </Border>
