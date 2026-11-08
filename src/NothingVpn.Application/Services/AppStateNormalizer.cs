@@ -17,6 +17,11 @@ public static class AppStateNormalizer
 {
     public static void Normalize(AppStateModel state, IPathPolicyPort pathPolicy)
     {
+        state.DomainExceptions ??= [];
+        DomainExceptionPolicy.Validate(state.DomainExceptions.Select(x => x?.Domain));
+        foreach (var entry in state.DomainExceptions)
+            entry.Domain = DomainExceptionPolicy.NormalizeDomain(entry.Domain);
+
         state.Mode = ConnectionPolicy.Modes.Normalize(state.Mode);
         state.DnsDetour = DnsDetourPolicy.EffectiveDetour(state.Mode, state.DnsDetour);
         state.CloseBehavior = AppCloseBehaviors.Values.Normalize(state.CloseBehavior);

@@ -21,6 +21,9 @@ public sealed class AppStateModel
     [JsonPropertyName("tunAppProcessPaths")]
     public List<string> TunAppProcessPaths { get; set; } = new();
 
+    [JsonPropertyName("domainExceptions")]
+    public List<DomainExceptionModel> DomainExceptions { get; set; } = new();
+
     [JsonPropertyName("userRuleSets")]
     public List<UserRuleSetModel> UserRuleSets { get; set; } = new();
 

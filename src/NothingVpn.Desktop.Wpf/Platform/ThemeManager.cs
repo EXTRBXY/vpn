@@ -6,9 +6,10 @@ namespace NothingVpn.Desktop.Wpf;
 
 internal static class ThemeManager
 {
-    public static void ApplySystemTheme()
+    public static void ApplySystemTheme() => ApplyTheme(IsDarkTheme());
+
+    internal static void ApplyTheme(bool dark)
     {
-        var dark = IsDarkTheme();
         var resources = System.Windows.Application.Current.Resources.MergedDictionaries.FirstOrDefault(x =>
                 x.Source?.OriginalString.EndsWith("Theme.xaml", StringComparison.OrdinalIgnoreCase) == true)
             ?? System.Windows.Application.Current.Resources;

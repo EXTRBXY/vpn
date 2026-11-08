@@ -441,7 +441,7 @@ public sealed class StorageFormatCompatibilityTests : IDisposable
 
     private static readonly string[] StateSchema =
     [
-        "activeProfileId", "mode", "tunAppProcessPaths", "userRuleSets", "localMixedPort", "proxyWasEnabledByUs",
+        "activeProfileId", "mode", "tunAppProcessPaths", "domainExceptions", "userRuleSets", "localMixedPort", "proxyWasEnabledByUs",
         "previousProxySettings", "proxyOverride", "tunInterfaceName", "tunAddressCidr", "tunMtu", "tunStack",
         "tunAutoRoute", "tunStrictRoute", "dnsMode", "dohServer", "dohPath", "dohSni", "dnsDetour",
         "xhttpXmuxMaxConcurrency", "xhttpXmuxMaxConnections", "xhttpXmuxCMaxReuseTimes", "xhttpXmuxHMaxRequestTimes",

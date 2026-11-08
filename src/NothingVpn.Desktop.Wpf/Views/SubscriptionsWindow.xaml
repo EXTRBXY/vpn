@@ -3,27 +3,25 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Подписки" Width="820" Height="560" MinWidth="700" MinHeight="460" WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Icon="../Assets/app.ico" Style="{StaticResource AppWindowStyle}">
-    <Grid Margin="26" IsEnabled="{Binding CanInteract}">
+    <Grid Margin="{StaticResource PagePadding}" IsEnabled="{Binding CanInteract}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="22" />
+            <RowDefinition Height="24" />
             <RowDefinition Height="*" />
             <RowDefinition Height="16" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        <Grid>
-            <StackPanel>
-                <TextBlock Text="Подписки" FontSize="26" FontWeight="SemiBold" />
-                <TextBlock Text="Автоматическое получение и обновление профилей" Foreground="{DynamicResource MutedBrush}" Margin="0,5,0,0" />
-            </StackPanel>
-            <Button Content="Добавить" Click="OnAdd" HorizontalAlignment="Right" VerticalAlignment="Center" />
-        </Grid>
+        <StackPanel>
+            <TextBlock Text="Подписки" Style="{StaticResource DialogTitleTextStyle}" />
+            <TextBlock Text="Автоматическое получение и обновление профилей" Style="{StaticResource SubtitleTextStyle}" Margin="0,8,0,16" />
+            <Button Content="Добавить" Click="OnAdd" HorizontalAlignment="Left" />
+        </StackPanel>
         <Border Grid.Row="2" Style="{StaticResource CardStyle}" Padding="0">
             <ListBox ItemsSource="{Binding Items}" SelectedItem="{Binding Selected}" BorderThickness="0" Padding="8"
                      Background="Transparent" MouseDoubleClick="OnDoubleClick">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <Grid Margin="10,9" MinHeight="54">
+                        <Grid Margin="4" MinHeight="54">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="2*" />
                                 <ColumnDefinition Width="1.3*" />
@@ -35,15 +33,15 @@
                                 <TextBlock Text="{Binding State}" Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,4,0,0" />
                             </StackPanel>
                             <StackPanel Grid.Column="1">
-                                <TextBlock Text="Обновление" Foreground="{DynamicResource MutedBrush}" FontSize="11" />
+                                <TextBlock Text="Обновление" Foreground="{DynamicResource MutedBrush}" FontSize="12" />
                                 <TextBlock Text="{Binding LastSync}" Margin="0,4,0,0" />
                             </StackPanel>
                             <StackPanel Grid.Column="2">
-                                <TextBlock Text="Трафик" Foreground="{DynamicResource MutedBrush}" FontSize="11" />
+                                <TextBlock Text="Трафик" Foreground="{DynamicResource MutedBrush}" FontSize="12" />
                                 <TextBlock Text="{Binding Traffic}" Margin="0,4,0,0" />
                             </StackPanel>
                             <StackPanel Grid.Column="3">
-                                <TextBlock Text="Срок" Foreground="{DynamicResource MutedBrush}" FontSize="11" />
+                                <TextBlock Text="Срок" Foreground="{DynamicResource MutedBrush}" FontSize="12" />
                                 <TextBlock Text="{Binding Expires}" Margin="0,4,0,0" />
                             </StackPanel>
                         </Grid>
@@ -51,17 +49,11 @@
                 </ListBox.ItemTemplate>
             </ListBox>
         </Border>
-        <Grid Grid.Row="4">
-            <StackPanel Orientation="Horizontal">
-                <Button Content="Удалить" Click="OnDelete" IsEnabled="{Binding HasSelection}" Style="{StaticResource DangerButtonStyle}" />
-                <Button Content="Изменить" Click="OnEdit" IsEnabled="{Binding HasSelection}" Style="{StaticResource SecondaryButtonStyle}"
-                        Margin="10,0,0,0" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="Обновить выбранную" Click="OnRefreshSelected" IsEnabled="{Binding HasSelection}"
-                        Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,0" />
-                <Button Content="Обновить все" Click="OnRefreshAll" />
-            </StackPanel>
-        </Grid>
+        <WrapPanel Grid.Row="4">
+            <Button Content="Удалить" Click="OnDelete" IsEnabled="{Binding HasSelection}" Style="{StaticResource DangerButtonStyle}" Margin="0,0,12,8" />
+            <Button Content="Изменить" Click="OnEdit" IsEnabled="{Binding HasSelection}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,12,8" />
+            <Button Content="Обновить выбранную" Click="OnRefreshSelected" IsEnabled="{Binding HasSelection}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,12,8" />
+            <Button Content="Обновить все" Click="OnRefreshAll" Margin="0,0,0,8" />
+        </WrapPanel>
     </Grid>
 </Window>

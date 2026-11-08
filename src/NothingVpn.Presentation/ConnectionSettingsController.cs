@@ -38,6 +38,9 @@ public sealed class ConnectionSettingsController : IConnectionSettingsController
         if (xmux is not null)
             XhttpPolicy.Validate(xmux);
 
+        if (draft.DomainExceptions is not null)
+            DomainExceptionPolicy.Validate(draft.DomainExceptions.Select(x => x?.Domain));
+
         // Merge only the edited fields into the latest state under the settings lock.
         // Background updates and connection recovery data must survive a UI save.
         _settingsService.UpdateState(current =>
@@ -53,6 +56,7 @@ public sealed class ConnectionSettingsController : IConnectionSettingsController
             ConnectionSettingsMapper.ApplyTunSettings(target, tun);
             ConnectionSettingsMapper.ApplyDnsSettings(target, dns);
             if (draft.TunAppPaths is not null) target.TunAppProcessPaths = draft.TunAppPaths.ToList();
+            if (draft.DomainExceptions is not null) target.DomainExceptions = draft.DomainExceptions.Select(x => x.Copy()).ToList();
             if (draft.RuleSets is not null) target.UserRuleSets = draft.RuleSets.ToList();
             if (draft.LogLevel is { } logLevel) target.SingBoxLogLevel = logLevel;
             if (draft.CloseBehavior is { } closeBehavior) target.CloseBehavior = closeBehavior;

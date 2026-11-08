@@ -77,7 +77,7 @@ public sealed class StorageRoundtripTests : IDisposable
     {
         // state.json и profiles.json сериализуют Application-модели напрямую: имя JSON-свойства должно
         // быть зафиксировано атрибутом, чтобы переименование свойства в C# не меняло формат на диске.
-        var missing = new[] { typeof(AppStateModel), typeof(UserRuleSetModel), typeof(ProxySettingsSnapshotModel), typeof(VpnProfile) }
+        var missing = new[] { typeof(AppStateModel), typeof(UserRuleSetModel), typeof(DomainExceptionModel), typeof(ProxySettingsSnapshotModel), typeof(VpnProfile) }
             .SelectMany(type => PublicProperties(type)
                 .Where(p => p.GetCustomAttribute<JsonPropertyNameAttribute>() is null)
                 .Select(p => $"{type.Name}.{p.Name}"))
@@ -99,6 +99,7 @@ public sealed class StorageRoundtripTests : IDisposable
 
     private static AppStateModel FilledState() => new()
     {
+        DomainExceptions = [new() { Domain = "hitmos.fm", IncludeSubdomains = false, Enabled = false }],
         ActiveProfileId = "state-active-profile",
         Mode = ConnectionMode.TunApps,
         TunAppProcessPaths = [@"C:\Apps\one.exe", @"D:\Apps\two.exe"],

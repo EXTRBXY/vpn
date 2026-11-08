@@ -43,6 +43,31 @@ public sealed class WpfSettingsBindingTests
                 view.Arrange(new Rect(0, 0, 850, 700));
                 Pump(view);
 
+                var domainInput = Descendants<TextBox>(view).Single(x =>
+                    x.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path.Path == nameof(ExceptionsSettingsViewModel.NewDomain));
+                domainInput.Text = "hitmos.fm";
+                Pump(view);
+                Descendants<Button>(view).Single(x => ReferenceEquals(x.Command, vm.Exceptions.AddCommand)).Command.Execute(null);
+                Pump(view);
+                Assert.Equal("hitmos.fm", Assert.Single(vm.Exceptions.Entries).Domain);
+                var exceptionsGrid = Descendants<DataGrid>(view).Single(x => ReferenceEquals(x.ItemsSource, vm.Exceptions.Entries));
+                exceptionsGrid.SelectedIndex = 0;
+                Pump(view);
+                Assert.Same(vm.Exceptions.Entries[0], vm.Exceptions.SelectedEntry);
+                var enabledBox = Descendants<System.Windows.Controls.CheckBox>(exceptionsGrid).Single(x =>
+                    x.GetBindingExpression(ToggleButton.IsCheckedProperty)?.ParentBinding.Path.Path == "Enabled");
+                enabledBox.IsChecked = false;
+                Pump(view);
+                Assert.False(vm.Exceptions.Entries[0].Enabled);
+                var subdomainsBox = Descendants<System.Windows.Controls.CheckBox>(exceptionsGrid).Single(x =>
+                    x.GetBindingExpression(ToggleButton.IsCheckedProperty)?.ParentBinding.Path.Path == "IncludeSubdomains");
+                subdomainsBox.IsChecked = false;
+                Pump(view);
+                Assert.False(vm.Exceptions.Entries[0].IncludeSubdomains);
+                Descendants<Button>(view).Single(x => ReferenceEquals(x.Command, vm.Exceptions.RemoveCommand)).Command.Execute(null);
+                Pump(view);
+                Assert.Empty(vm.Exceptions.Entries);
+
                 var list = Descendants<ListBox>(view).Single(x => ReferenceEquals(x.ItemsSource, vm.Apps.TunApps));
                 list.SelectedIndex = 1;
                 Pump(view);
@@ -103,6 +128,7 @@ public sealed class WpfSettingsBindingTests
                 CheckSettingsWheelScrolling();
                 CheckViewsLoad();
                 CheckDiagnosticsLevelFilter();
+                WpfThemeChecks.Check();
                 app.Shutdown();
             }
             catch (Exception ex) { failure = ex; }
@@ -241,6 +267,20 @@ public sealed class WpfSettingsBindingTests
         var main = new MainViewModel(screen, connection, profiles, settings, null!, new EmptyLog(), () => { });
         var window = new MainWindow(main); // Разметка главного окна загружается и привязывается без показа.
         Assert.Same(main, window.DataContext);
+        WpfThemeChecks.Capture(window, "main-home");
+        main.ShowProfilesCommand.Execute(null);
+        WpfThemeChecks.Capture(window, "main-profiles");
+        main.ShowSettingsCommand.Execute(null);
+        WpfThemeChecks.Capture(window, "main-settings");
+        var settingsView = Descendants<SettingsView>((DependencyObject)window.Content).Single();
+        var settingsScroll = (ScrollViewer)settingsView.FindName("SettingsScroll");
+        settingsScroll.ScrollToEnd();
+        Pump(settingsView);
+        WpfThemeChecks.Capture(window, "main-settings-rules");
+        settingsScroll.ScrollToHome();
+        main.ShowDiagnosticsCommand.Execute(null);
+        WpfThemeChecks.Capture(window, "main-diagnostics");
+        main.ShowHomeCommand.Execute(null);
         var combo = new ComboBox { DataContext = main };
         combo.SetBinding(ItemsControl.ItemsSourceProperty, new System.Windows.Data.Binding(nameof(MainViewModel.Profiles)));
         combo.SetBinding(Selector.SelectedItemProperty, new System.Windows.Data.Binding(nameof(MainViewModel.SelectedProfile)) { Mode = System.Windows.Data.BindingMode.TwoWay });
@@ -282,10 +322,29 @@ public sealed class WpfSettingsBindingTests
     {
         // Переформатированная разметка остальных окон должна загружаться из BAML.
         Assert.NotNull(new DiagnosticsView().Content);
-        Assert.NotNull(new TunAppPickerWindow().Content);
-        Assert.NotNull(new SubscriptionsWindow(new SubscriptionViewModel(new EmptySubscriptions())).Content);
-        Assert.NotNull(new SubscriptionEditorWindow(new SubscriptionViewModel(new EmptySubscriptions()), null).Content);
-        Assert.NotNull(new ReleaseChangelogWindow(ReleaseChangelog.Failed("1.0.0")).Content);
+        var subscriptions = new SubscriptionViewModel(new EmptySubscriptions(new() { Id = "demo", Name = "Личная подписка", Url = "https://example.org/subscription", Enabled = true }));
+        subscriptions.Selected = subscriptions.Items[0];
+        Window[] windows =
+        [
+            new TunAppPickerWindow(),
+            new SubscriptionsWindow(subscriptions),
+            new SubscriptionEditorWindow(subscriptions, subscriptions.Selected.Model),
+            new ProfileEditorWindow(null!, new VpnProfile { Id = "demo", Name = "Основной профиль", Host = "node.example.org", Uuid = "11111111-2222-3333-4444-555555555555", Type = "tcp", Security = "tls" }),
+            new ReleaseChangelogWindow(new("1.0.0", "Что нового", "Версия 1.0.0", string.Join(Environment.NewLine, Enumerable.Repeat("Изменения приложения: улучшены оформление, отступы и читаемость интерфейса.", 30)), false)),
+            new ReleaseChangelogWindow(ReleaseChangelog.Failed("1.0.0"))
+        ];
+        string[] names = ["app-picker", "subscriptions", "subscription-editor", "profile-editor", "changelog", "changelog-error"];
+        for (var i = 0; i < windows.Length; i++)
+        {
+            Assert.NotNull(windows[i].Content);
+            if (windows[i].FindName("ErrorText") is TextBlock error)
+            {
+                error.Text = "Пример сообщения об ошибке. Проверьте введённые данные и повторите сохранение.";
+                error.Visibility = Visibility.Visible;
+            }
+            WpfThemeChecks.Capture(windows[i], names[i]);
+            windows[i].Close();
+        }
     }
 
     /// <summary>Фильтр уровня в «Диагностике»: по умолчанию «Информация», меняется комбобоксом, «Сохранить» — весь журнал.</summary>
@@ -390,9 +449,9 @@ public sealed class WpfSettingsBindingTests
         public void Clear() { }
     }
 
-    private sealed class EmptySubscriptions : ISubscriptionManagementController
+    private sealed class EmptySubscriptions(SubscriptionModel? sample = null) : ISubscriptionManagementController
     {
-        public IReadOnlyList<SubscriptionModel> Load() => [];
+        public IReadOnlyList<SubscriptionModel> Load() => sample is null ? [] : [sample];
         public SubscriptionModel Save(string? id, string name, string url, bool enabled) => throw new NotSupportedException();
         public void Delete(string id) => throw new NotSupportedException();
         public Task<SubscriptionRefreshResult> RefreshAsync(string id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -415,3 +474,4 @@ public sealed class WpfSettingsBindingTests
         }
     }
 }
+

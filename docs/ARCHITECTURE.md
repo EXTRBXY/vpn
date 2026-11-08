@@ -58,7 +58,7 @@ UI / Presentation ──► VpnConnectionService (оркестрация, про
   DNS (`EngineDnsSettings`), TUN (`EngineTunSettings`), пути `.exe` для `tun_apps`, включённые rule-set
   (`EngineRuleSet`: tag, простое имя `.srs`, действие, для службы — содержимое). Ни готового JSON sing-box, ни путей, куда ядро пишет.
   `ProxyOverride` не передаётся: это настройка WinINET, её применяет интерфейс.
-- **Версия контракта** — `EngineContract.Version` (сейчас 3) в каждом запросе и статусе; ядро отклоняет чужую версию
+- **Версия контракта** — `EngineContract.Version` (сейчас 4) в каждом запросе и статусе; ядро отклоняет чужую версию
   ошибкой «Обновите приложение». v3 — движок профиля, поля XHTTP и XMUX по умолчанию (ADR-0002).
 - **Rule-set**: внутри процесса — по ссылке, имя файла в общем `rulesets\` пользователя (`ReferencedRuleSetStore`).
   В службу — содержимым (контракт v2): его дописывает `PipeVpnEngine`, служба пишет файлы в свой каталог
@@ -467,3 +467,12 @@ rule-set. Сообщения разделы показывают через `Set
 | Автозапуск | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\NothingVpn` пользователя, запустившего установщик (задача установщика; пишет `--migrate-user-install` от его имени) |
 
 Подробно о файлах данных — [STORAGE.md](STORAGE.md).
+
+## Доменные исключения
+
+Раздел `ExceptionsSettingsViewModel` держит черновик доменов; `SettingsViewModel.Save` передаёт его
+в `ConnectionSettingsDraft`, а контроллер сохраняет через общий `ISettingsService.UpdateState`.
+`DomainExceptionPolicy` проверяет имена, IDN, уникальность и ограничение числа записей;
+`AppStateNormalizer` приводит имена к нижнему регистру и ASCII/Punycode.
+`EngineRequestMapper` копирует включённые записи в типизированный запрос; служба повторяет проверку.
+Генератор формирует direct-правила и split DNS. Новое подключение применяет сохранённые изменения.

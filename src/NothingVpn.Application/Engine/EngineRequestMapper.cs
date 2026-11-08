@@ -63,6 +63,7 @@ public static class EngineRequestMapper
             HMaxRequestTimes = state.XhttpXmuxHMaxRequestTimes,
             HMaxReusableSecs = state.XhttpXmuxHMaxReusableSecs
         },
+        DomainExceptions = state.DomainExceptions.Where(x => x.Enabled).Select(x => x.Copy()).ToList(),
         TunAppProcessPaths = [.. state.TunAppProcessPaths],
         RuleSets = state.UserRuleSets
             .Where(rs => rs.Enabled)
@@ -125,6 +126,7 @@ public static class EngineRequestMapper
             XhttpXmuxCMaxReuseTimes = xmux.CMaxReuseTimes ?? string.Empty,
             XhttpXmuxHMaxRequestTimes = xmux.HMaxRequestTimes ?? string.Empty,
             XhttpXmuxHMaxReusableSecs = xmux.HMaxReusableSecs ?? string.Empty,
+            DomainExceptions = (request.DomainExceptions ?? []).Select(x => x.Copy()).ToList(),
             TunAppProcessPaths = [.. request.TunAppProcessPaths ?? []],
             UserRuleSets = (request.RuleSets ?? [])
                 .Select(rs => new UserRuleSetModel

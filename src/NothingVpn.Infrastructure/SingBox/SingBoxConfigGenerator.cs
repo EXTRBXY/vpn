@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using NothingVpn.Application.Mappers;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Ports;
@@ -205,6 +205,7 @@ internal static class SingBoxConfigGenerator
                 new() { Action = "sniff" },
                 new() { Protocol = "stun", Action = "reject" }
             };
+            proxyRules.AddRange(BuildDomainExceptionRules(state));
             proxyRules.AddRange(userRules);
 
             return new SingBoxRoute
@@ -219,6 +220,7 @@ internal static class SingBoxConfigGenerator
 
         var rules = BuildTunHeadRules(profile, mode, upstream);
         rules.Add(new SingBoxRouteRule { Protocol = "stun", Action = "reject" });
+        rules.AddRange(BuildDomainExceptionRules(state));
         rules.AddRange(userRules);
         AddTunFallbackRules(rules, mode);
 
@@ -264,6 +266,15 @@ internal static class SingBoxConfigGenerator
             Rules = rules
         };
     }
+
+    private static IEnumerable<SingBoxRouteRule> BuildDomainExceptionRules(AppStateModel state) =>
+        state.DomainExceptions.Where(x => x.Enabled).Select(x => new SingBoxRouteRule
+        {
+            Domain = x.IncludeSubdomains ? null : [x.Domain],
+            DomainSuffix = x.IncludeSubdomains ? [x.Domain] : null,
+            Action = "route",
+            Outbound = "direct"
+        });
 
     private static (List<SingBoxRuleSet> RuleSets, List<SingBoxRouteRule> Rules) BuildUserRuleSetPolicy(AppPaths paths, AppStateModel state)
     {
@@ -355,7 +366,8 @@ internal static class SingBoxConfigGenerator
     {
         var useDoh = state.DnsMode == DnsMode.Doh;
         var hasEnabledUserRuleSets = state.UserRuleSets.Any(x => x.Enabled);
-        if (!useTun && !useDoh && !hasEnabledUserRuleSets) return null;
+        var exceptions = state.DomainExceptions.Where(x => x.Enabled).ToList();
+        if (!useTun && !useDoh && !hasEnabledUserRuleSets && exceptions.Count == 0) return null;
 
         if (useDoh)
         {
@@ -372,7 +384,7 @@ internal static class SingBoxConfigGenerator
                 : Array.Empty<string>();
 
             var servers = new List<SingBoxDnsServer>();
-            if (useTun || routing.RequiresSplitDns || dnsDetour == "proxy")
+            if (useTun || routing.RequiresSplitDns || exceptions.Count > 0 || dnsDetour == "proxy")
             {
                 servers.Add(new SingBoxDnsServer
                 {
@@ -397,6 +409,12 @@ internal static class SingBoxConfigGenerator
             rules.AddRange(bootstrapDomains.Select(domain => new SingBoxDnsRule
             {
                 Domain = new List<string> { domain },
+                Server = TunBootstrapPolicy.BootstrapLocalDnsTag
+            }));
+            rules.AddRange(exceptions.Select(x => new SingBoxDnsRule
+            {
+                Domain = x.IncludeSubdomains ? null : [x.Domain],
+                DomainSuffix = x.IncludeSubdomains ? [x.Domain] : null,
                 Server = TunBootstrapPolicy.BootstrapLocalDnsTag
             }));
             rules.AddRange(routing.DnsDirectRuleSetTags.Select(tag => new SingBoxDnsRule
@@ -613,6 +631,7 @@ internal sealed class SingBoxRouteRule
     public List<int>? Port { get; set; }
 
     public List<string>? Domain { get; set; }
+    public List<string>? DomainSuffix { get; set; }
 
     public string? Protocol { get; set; }
 
@@ -652,6 +671,7 @@ internal sealed class SingBoxDns
 internal sealed class SingBoxDnsRule
 {
     public List<string>? Domain { get; set; }
+    public List<string>? DomainSuffix { get; set; }
     public List<string>? RuleSet { get; set; }
     public string Server { get; set; } = "";
 }

@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using NothingVpn.Application.Engine;
 using NothingVpn.Application.Models;
@@ -23,7 +23,7 @@ public sealed class EngineContractTests : IDisposable
     {
         // Смена версии — осознанное несовместимое изменение протокола: обновите тест и ADR-0001.
         // v2 (шаг 7а): rule-set содержимым для службы. v3 (ADR-0002): движок профиля, XHTTP, XMUX.
-        Assert.Equal(3, EngineContract.Version);
+        Assert.Equal(4, EngineContract.Version);
         Assert.Equal(EngineContract.Version, new EngineConnectRequest().ContractVersion);
         Assert.Equal(EngineContract.Version, new EngineStatus().ContractVersion);
     }
@@ -83,6 +83,7 @@ public sealed class EngineContractTests : IDisposable
             },
             Xmux = new EngineXmuxSettings { MaxConcurrency = "4-8", HMaxReusableSecs = "60" },
             TunAppProcessPaths = [@"C:\Apps\browser.exe"],
+            DomainExceptions = [new() { Domain = "hitmos.fm", IncludeSubdomains = false }],
             RuleSets = [new EngineRuleSet { Tag = "ads", FileName = "ads.srs", Action = RuleSetAction.Block }]
         };
 
@@ -91,7 +92,9 @@ public sealed class EngineContractTests : IDisposable
 
         Assert.Equal(json, JsonSerializer.Serialize(restored));
         var node = JsonNode.Parse(json)!;
-        Assert.Equal(3, (int)node["contractVersion"]!);
+        Assert.Equal(4, (int)node["contractVersion"]!);
+        Assert.Equal("hitmos.fm", (string?)node["domainExceptions"]![0]!["domain"]);
+        Assert.False((bool)node["domainExceptions"]![0]!["includeSubdomains"]!);
         Assert.Null(node["ruleSets"]![0]!["content"]);
         Assert.Equal("tun_apps", (string?)node["mode"]);
         Assert.Equal("debug", (string?)node["logLevel"]);
@@ -127,6 +130,7 @@ public sealed class EngineContractTests : IDisposable
     {
         var request = new EngineConnectRequest
         {
+            DomainExceptions = [new() { Domain = "hitmos.fm", IncludeSubdomains = false }],
             RuleSets = [new EngineRuleSet { Tag = "ads", FileName = "ads.srs", Content = [1, 2, 3, 250] }]
         };
 
