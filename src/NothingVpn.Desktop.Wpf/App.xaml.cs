@@ -17,6 +17,7 @@ public partial class App : System.Windows.Application
     private TrayIcon? _tray;
     private UpdateCheckScheduler? _updateChecks;
     private SubscriptionRefreshScheduler? _subscriptionRefresh;
+    private BuiltinRuleSetRefreshScheduler? _builtinRuleSetRefresh;
     private ILogPort? _log;
     private bool _exitInProgress;
 
@@ -90,6 +91,10 @@ public partial class App : System.Windows.Application
                 composition.Subscriptions,
                 composition.Log);
             _subscriptionRefresh.Start();
+            _builtinRuleSetRefresh = new BuiltinRuleSetRefreshScheduler(
+                composition.BuiltinRuleSetUpdateService,
+                composition.Log);
+            _builtinRuleSetRefresh.Start();
 
             _singleInstance.StartServer(args => Dispatcher.Invoke(async () =>
             {
@@ -156,6 +161,7 @@ public partial class App : System.Windows.Application
         {
             _updateChecks?.Stop();
             _subscriptionRefresh?.Stop();
+            _builtinRuleSetRefresh?.Stop();
             _tray?.Dispose();
             _singleInstance?.Dispose();
             if (launchAfterRelease is not null)

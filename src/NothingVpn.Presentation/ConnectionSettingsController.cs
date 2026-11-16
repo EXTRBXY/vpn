@@ -58,6 +58,11 @@ public sealed class ConnectionSettingsController : IConnectionSettingsController
             if (draft.TunAppPaths is not null) target.TunAppProcessPaths = draft.TunAppPaths.ToList();
             if (draft.DomainExceptions is not null) target.DomainExceptions = draft.DomainExceptions.Select(x => x.Copy()).ToList();
             if (draft.RuleSets is not null) target.UserRuleSets = draft.RuleSets.ToList();
+            if (draft.BuiltinRuleSetsAutoUpdate is { } autoUpdate)
+                target.BuiltinRuleSetsAutoUpdate = autoUpdate;
+            if (draft.BuiltinRuleSetsUpdateIntervalHours is { } intervalHours)
+                target.BuiltinRuleSetsUpdateIntervalHours =
+                    BuiltinRuleSetSyncPolicy.NormalizeIntervalHours(intervalHours);
             if (draft.LogLevel is { } logLevel) target.SingBoxLogLevel = logLevel;
             if (draft.CloseBehavior is { } closeBehavior) target.CloseBehavior = closeBehavior;
             if (xmux is not null) ConnectionSettingsMapper.ApplyXmuxSettings(target, xmux);

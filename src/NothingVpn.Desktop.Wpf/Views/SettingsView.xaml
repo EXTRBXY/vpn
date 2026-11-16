@@ -225,6 +225,14 @@
                         <TextBlock TextWrapping="Wrap" Text="Правила маршрутизации" Style="{StaticResource SectionTitleTextStyle}" />
 
                         <TextBlock TextWrapping="Wrap" Text="Встроенные списки" Foreground="{DynamicResource MutedBrush}" Margin="0,16,0,8" />
+                        <CheckBox Content="Автоматически обновлять встроенные списки" IsChecked="{Binding AutoUpdateEnabled}"
+                                  IsEnabled="{Binding CanEditRuleSets}" Margin="0,0,0,8" />
+                        <DockPanel Margin="0,0,0,12" LastChildFill="False">
+                            <TextBlock Text="Интервал (часы)" VerticalAlignment="Center" Margin="0,0,12,0"
+                                       Foreground="{DynamicResource MutedBrush}" />
+                            <TextBox Width="80" Text="{Binding UpdateIntervalHoursText, UpdateSourceTrigger=PropertyChanged}"
+                                     IsEnabled="{Binding CanEditRuleSets}" />
+                        </DockPanel>
                         <Border Style="{StaticResource TableFrameStyle}">
                             <DataGrid BorderThickness="0" ItemsSource="{Binding BuiltinRuleSets}" SelectedItem="{Binding SelectedBuiltinRuleSet}" AutoGenerateColumns="False"
                                       CanUserAddRows="False" CanUserDeleteRows="False" IsEnabled="{Binding CanEditRuleSets}" MinHeight="110">

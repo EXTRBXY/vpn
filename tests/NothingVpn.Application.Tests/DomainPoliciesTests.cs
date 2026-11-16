@@ -267,6 +267,25 @@ public sealed class DomainPoliciesTests
     }
 
     [Theory]
+    [InlineData(0, 24)]
+    [InlineData(1, 1)]
+    [InlineData(24, 24)]
+    [InlineData(720, 720)]
+    [InlineData(721, 720)]
+    public void BuiltinRuleSetSyncPolicy_NormalizeIntervalHours(int input, int expected) =>
+        Assert.Equal(expected, BuiltinRuleSetSyncPolicy.NormalizeIntervalHours(input));
+
+    [Fact]
+    public void BuiltinRuleSetSyncPolicy_IsDue_RespectsToggleAndInterval()
+    {
+        var now = new DateTimeOffset(2026, 5, 1, 12, 0, 0, TimeSpan.Zero);
+        Assert.False(BuiltinRuleSetSyncPolicy.IsDue(false, null, 24, now));
+        Assert.True(BuiltinRuleSetSyncPolicy.IsDue(true, null, 24, now));
+        Assert.False(BuiltinRuleSetSyncPolicy.IsDue(true, now.AddHours(-23), 24, now));
+        Assert.True(BuiltinRuleSetSyncPolicy.IsDue(true, now.AddHours(-24), 24, now));
+    }
+
+    [Theory]
     [InlineData("tun", true)]
     [InlineData("tun_apps", false)]
     [InlineData("proxy", false)]

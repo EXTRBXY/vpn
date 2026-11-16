@@ -176,7 +176,10 @@ public sealed class StorageRoundtripTests : IDisposable
         CloseBehavior = AppCloseBehavior.Exit,
         UpdateDismissedModalForTag = "v9.8.7",
         LastRecordedAppSemver = "1.2.3",
-        UpdateLastCheckUtc = new DateTimeOffset(2026, 3, 4, 5, 6, 7, TimeSpan.FromHours(-5))
+        UpdateLastCheckUtc = new DateTimeOffset(2026, 3, 4, 5, 6, 7, TimeSpan.FromHours(-5)),
+        BuiltinRuleSetsAutoUpdate = false,
+        BuiltinRuleSetsUpdateIntervalHours = 48,
+        BuiltinRuleSetsLastAutoUpdateUtc = new DateTimeOffset(2026, 4, 5, 6, 7, 8, TimeSpan.FromHours(2))
     };
 
     private static VpnProfile FilledProfile() => new()

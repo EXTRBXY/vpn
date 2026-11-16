@@ -71,6 +71,9 @@
 | `mode` | `proxy` | `proxy` / `tun` / `tun_apps` |
 | `tunAppProcessPaths` | `[]` | полные пути `.exe` для `tun_apps`; существование файла не требуется |
 | `userRuleSets[]` | 3 встроенных, выключены | `tag`, `name`, `fileName`, `enabled`, `action` (`direct`/`block`), `builtinId`, `remoteEtag`, `lastDownloadedUtc` |
+| `builtinRuleSetsAutoUpdate` | `true` | автообновление встроенных `.srs` |
+| `builtinRuleSetsUpdateIntervalHours` | `24` | интервал автообновления, часы (1…720; вне диапазона → 24) |
+| `builtinRuleSetsLastAutoUpdateUtc` | null | время последнего успешного цикла автообновления |
 | `localMixedPort` | 1080 | порт `mixed`-inbound; в UI не редактируется |
 | `proxyWasEnabledByUs` | false | **runtime-флаг**: системный прокси включил клиент |
 | `previousProxySettings` | null | **runtime**: снимок WinINET до включения (`proxyEnable`, `proxyServer`, `proxyOverride`) |
