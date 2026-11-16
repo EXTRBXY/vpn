@@ -303,9 +303,13 @@ Domain не содержит UI: подписи значений — `Presentati
 
 ### Отключение и восстановление
 
-`DisconnectCoreAsync` (оркестрация): `IVpnEngine.DisconnectAsync` (ядро: `SingBoxRunner.Stop()` — kill всего дерева
-процессов, ожидание 2 с — и удаление конфига) → восстановление WinINET по снимку, если прокси включали мы → одним
-`AppStateStore.Update` сброс флагов и `ActiveProfileId = null` → `ConnectionStateChanged(false)`.
+`DisconnectCoreAsync` (оркестрация) сначала ждёт успешного `IVpnEngine.DisconnectAsync`. Ядро завершает sing-box и
+Xray (`ChildProcess`/`SupervisedProcess`: kill дерева, ожидание выхода; отказ или тайм-аут — исключение, процесс
+остаётся под наблюдением). Только после подтверждённой остановки оркестрация сбрасывает сессию, восстанавливает
+WinINET (если прокси включали мы), одним `AppStateStore.Update` снимает runtime-флаги и `ActiveProfileId`, затем
+`ConnectionStateChanged(false)`. При сбое остановки профиль и флаги прокси сохраняются — можно повторить отключение.
+`GetStatus` считает ядро остановленным, только если не бегут ни sing-box, ни Xray. Это проверка завершения процесса,
+а не гарантия очистки маршрутов TUN/WFP Windows; механизм принудительной остановки (kill) не менялся.
 
 Неожиданный выход sing-box: раннер поднимает `ProcessExited` → ядро удаляет конфиг, сбрасывает свою сессию и
 поднимает `StatusChanged(IsRunning = false)` → оркестрация вызывает `RecoverStaleRuntimeState` (восстановление

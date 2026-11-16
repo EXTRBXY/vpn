@@ -100,20 +100,26 @@ rule `action`).
 
 1. `sniff`
 2. `protocol: dns` → `hijack-dns`
-3. `ip_is_private` → `direct`
-4. Домен сервера профиля (если это не IP) → `direct` — иначе туннель зациклится на себя
-4а. Только с выходом через Xray: `process_path: [путь xray.exe]` → `direct`, затем `ip_cidr: [IP сервера/32|128]`
+3. Собственные префиксы TUN (`TunInterfacePolicy` IPv4/IPv6) → `reject` / `method: drop` —
+   иначе на Windows в sing-box 1.13 трафик к шлюзу/DNS-адресу адаптера (`.2`) уходит в `direct`
+   и снова в тот же TUN ([sing-box#4455](https://github.com/SagerNet/sing-box/issues/4455)): лавина
+   сокетов, высокая загрузка CPU, Winsock 10055. Правило обязано стоять **до** `ip_is_private`.
+4. `ip_is_private` → `direct`
+5. Домен сервера профиля (если это не IP) → `direct` — иначе туннель зациклится на себя
+5а. Только с выходом через Xray: `process_path: [путь xray.exe]` → `direct`, затем `ip_cidr: [IP сервера/32|128]`
     → `direct` (если адрес сервера — IP). Иначе соединения Xray к серверу вернулись бы в TUN.
-5. Только `tun`: известные DoH-домены (`TunRoutingPolicy.KnownSecureDnsDomains`) → `proxy`
 6. `protocol: stun` → `reject`
-7. Пользовательские rule-set → `direct` | `block`
-8. Только `tun`: `protocol: quic` → `proxy`, затем `ip_version: 6` → `proxy`
-9. Только `tun_apps`: `process_path: [...]` → `proxy`, затем `process_name: [...]` → `proxy`
+7. Ручные доменные исключения → `direct`
+8. Только `tun`: известные DoH-домены (`TunRoutingPolicy.KnownSecureDnsDomains`) → `proxy`
+   (после исключений: иначе нельзя вывести `cloudflare-dns.com` и т.п. в direct)
+9. Пользовательские rule-set → `direct` | `block`
+10. Только `tun`: `protocol: quic` → `proxy`, затем `ip_version: 6` → `proxy`
+11. Только `tun_apps`: `process_path: [...]` → `proxy`, затем `process_name: [...]` → `proxy`
 
 `default_domain_resolver = bootstrap-local`.
 
-Пункт 8 стоит **после** пользовательских правил намеренно: иначе direct/block-списки не срабатывали для HTTP/3 и IPv6
-(тест `Build_FullTun_UserRuleSetsTakePriorityOverIpv6AndQuicFallbacks`). Пункт 9 — после пользовательских правил
+Пункт 10 стоит **после** пользовательских правил намеренно: иначе direct/block-списки не срабатывали для HTTP/3 и IPv6
+(тест `Build_FullTun_UserRuleSetsTakePriorityOverIpv6AndQuicFallbacks`). Пункт 11 — после пользовательских правил
 (тест `Build_TunApps_UserRuleSetsBeforeProcessPath`).
 
 `process_name` дублирует `process_path` именами файлов: это расширяет совпадение на любые `.exe` с тем же именем.
@@ -224,8 +230,9 @@ IP-списки и смешанные списки с IP-условиями ос
 
 Включённые `domainExceptions` формируют правила `action: route`, `outbound: direct` во всех режимах.
 Без поддоменов используется `domain: [имя]`, с поддоменами — `domain_suffix: [имя]` (без начальной точки:
-совпадают сам домен и его поддомены). Они стоят после служебных head-правил/STUN и **перед всеми `.srs`**,
-QUIC/IPv6-фолбэками и правилами приложений. Отключённые записи не создают правил.
+совпадают сам домен и его поддомены). Они стоят после служебных head-правил/STUN и **перед** уводом
+известных DoH-доменов в proxy, всеми `.srs`, QUIC/IPv6-фолбэками и правилами приложений.
+Отключённые записи не создают правил.
 При DoH для тех же matcher-ов перед правилами `.srs` добавляется DNS-маршрут на `bootstrap-local`;
 локальный DNS-сервер создаётся даже в proxy без `.srs`. В системном режиме используется существующий
 локальный DNS; TUN сохраняет `reverse_mapping`. Поддержка `domain`/`domain_suffix` проверена по

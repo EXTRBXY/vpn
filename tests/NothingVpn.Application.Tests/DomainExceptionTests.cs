@@ -147,6 +147,53 @@ public sealed class DomainExceptionTests
     }
 
     [Fact]
+    public void Tun_ExceptionPrecedesKnownSecureDnsProxyRule()
+    {
+        var state = new AppStateModel
+        {
+            Mode = ConnectionMode.Tun,
+            DnsMode = DnsMode.Doh,
+            DnsDetour = DnsDetour.Proxy,
+            DohServer = "1.1.1.1",
+            DohSni = "cloudflare-dns.com",
+            DomainExceptions = [new() { Domain = "cloudflare-dns.com", IncludeSubdomains = false }]
+        };
+        AppStateNormalizer.Normalize(state, new PathPolicyPort());
+        var paths = new AppPaths("root", "configs", "rulesets", "logs", "profiles", "subscriptions", "state");
+        var config = SingBoxConfigGenerator.Build(paths,
+            new() { Host = "node.example", Security = "tls", Type = "tcp" }, state);
+        var rules = config.Route!.Rules!;
+        var exceptionIndex = rules.FindIndex(x =>
+            x.Outbound == "direct" && x.Domain?.Contains("cloudflare-dns.com") == true);
+        var secureDnsIndex = rules.FindIndex(x =>
+            x.Outbound == "proxy" && x.Domain?.Contains("cloudflare-dns.com") == true);
+        Assert.True(exceptionIndex >= 0, "ожидалось route-исключение на cloudflare-dns.com → direct");
+        Assert.True(secureDnsIndex > exceptionIndex,
+            "KnownSecureDns → proxy должен идти после пользовательского исключения");
+    }
+
+    [Fact]
+    public void Tun_RejectsOwnPrefixesBeforePrivateDirect()
+    {
+        var state = new AppStateModel { Mode = ConnectionMode.Tun, DnsMode = DnsMode.System };
+        AppStateNormalizer.Normalize(state, new PathPolicyPort());
+        var profile = new VpnProfile { Id = "abcdef12-3456-7890-abcd-ef1234567890", Host = "1.2.3.4", Security = "tls", Type = "tcp" };
+        var paths = new AppPaths("root", "configs", "rulesets", "logs", "profiles", "subscriptions", "state");
+        var config = SingBoxConfigGenerator.Build(paths, profile, state);
+        var rules = config.Route!.Rules!;
+        var ipv4 = TunInterfacePolicy.Ipv4Address(state.TunAddressCidr, profile.Id);
+        var ipv6 = TunInterfacePolicy.Ipv6Address(profile.Id);
+        var rejectIndex = rules.FindIndex(x =>
+            x.Action == "reject" && x.Method == "drop" &&
+            x.IpCidr is not null && x.IpCidr.Contains(ipv4) && x.IpCidr.Contains(ipv6));
+        var privateIndex = rules.FindIndex(x => x.IpIsPrivate == true && x.Outbound == "direct");
+        Assert.True(rejectIndex >= 0, "ожидался reject/drop собственных префиксов TUN");
+        Assert.True(privateIndex > rejectIndex, "reject TUN self должен быть до ip_is_private → direct");
+        var hijackIndex = rules.FindIndex(x => x.Action == "hijack-dns");
+        Assert.True(hijackIndex >= 0 && hijackIndex < rejectIndex, "hijack-dns должен быть до reject self");
+    }
+
+    [Fact]
     public void OldState_DefaultsToNoExceptions() =>
         Assert.Empty(JsonSerializer.Deserialize<AppStateModel>("{}")!.DomainExceptions);
 }

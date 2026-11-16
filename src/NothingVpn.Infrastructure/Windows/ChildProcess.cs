@@ -58,20 +58,27 @@ internal static class ChildProcess
         return (process.ExitCode, stdout, stderr);
     }
 
-    /// <summary>Закрывает потоки, убивает дерево процесса и ждёт выхода; ошибки не выбрасывает.</summary>
+    /// <summary>Завершает дерево процесса и подтверждает выход; отказ или тайм-аут передаёт вызывающему коду.</summary>
     public static void Stop(Process process, TimeSpan timeout)
     {
+        if (process.HasExited)
+            return;
+
         try
         {
-            if (process.HasExited)
-                return;
-
-            try { process.StandardOutput?.BaseStream.Close(); } catch { }
-            try { process.StandardError?.BaseStream.Close(); } catch { }
-            TryKillProcessTree(process);
-            process.WaitForExit((int)Math.Clamp(timeout.TotalMilliseconds, 0, int.MaxValue));
+            process.Kill(entireProcessTree: true);
         }
-        catch { }
+        catch (InvalidOperationException) when (process.HasExited)
+        {
+            // Процесс мог завершиться между проверкой HasExited и Kill.
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            throw new InvalidOperationException("Не удалось завершить процесс ядра VPN.", ex);
+        }
+
+        if (!process.WaitForExit((int)Math.Clamp(timeout.TotalMilliseconds, 0, int.MaxValue)))
+            throw new TimeoutException("Процесс ядра VPN не завершился за отведённое время. Повторите отключение.");
     }
 
     /// <summary>Последняя строка FATAL/ERROR из вывода проверки конфига, иначе последняя строка.</summary>

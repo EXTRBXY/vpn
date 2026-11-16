@@ -134,7 +134,7 @@ public sealed class SingBoxVpnEngine : IVpnEngine
 
     public EngineStatus GetStatus()
     {
-        if (!_singBoxPort.IsRunning)
+        if (!_singBoxPort.IsRunning && _activeOutbound?.IsRunning != true)
             return EngineStatus.Stopped;
 
         var session = Volatile.Read(ref _session);
@@ -217,25 +217,18 @@ public sealed class SingBoxVpnEngine : IVpnEngine
 
     private void StopCore()
     {
-        try
-        {
-            _singBoxPort.Stop();
-        }
-        finally
-        {
-            StopOutbound();
-            Volatile.Write(ref _session, EngineStatus.Stopped);
-            _singBoxPort.TryDeleteLastConfig();
-            ClearRuleSets();
-        }
+        _singBoxPort.Stop();
+        StopOutbound();
+        Volatile.Write(ref _session, EngineStatus.Stopped);
+        _singBoxPort.TryDeleteLastConfig();
+        ClearRuleSets();
     }
 
     private void StopOutbound()
     {
         var outbound = _activeOutbound;
+        outbound?.Stop();
         _activeOutbound = null;
-        try { outbound?.Stop(); }
-        catch { }
     }
 
     private void ClearRuleSets()

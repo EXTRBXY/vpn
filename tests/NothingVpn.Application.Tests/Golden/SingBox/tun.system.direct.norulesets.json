@@ -82,6 +82,14 @@
         "action": "hijack-dns"
       },
       {
+        "ip_cidr": [
+          "198.18.26.161/30",
+          "fdfe:dcba:9876:97ab::1/126"
+        ],
+        "action": "reject",
+        "method": "drop"
+      },
+      {
         "ip_is_private": true,
         "action": "route",
         "outbound": "direct"
@@ -92,6 +100,10 @@
         ],
         "action": "route",
         "outbound": "direct"
+      },
+      {
+        "protocol": "stun",
+        "action": "reject"
       },
       {
         "domain": [
@@ -112,10 +124,6 @@
         ],
         "action": "route",
         "outbound": "proxy"
-      },
-      {
-        "protocol": "stun",
-        "action": "reject"
       },
       {
         "protocol": "quic",

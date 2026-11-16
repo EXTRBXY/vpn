@@ -100,22 +100,43 @@ internal static class SingBoxConfigGenerator
             requestedProxy ? DnsDetour.Proxy : DnsDetour.Direct);
     }
 
-    private static List<SingBoxRouteRule> BuildTunHeadRules(VpnProfile profile, ConnectionMode mode, LocalSocksUpstream? upstream)
+    private static List<SingBoxRouteRule> BuildTunHeadRules(
+        AppStateModel state,
+        VpnProfile profile,
+        ConnectionMode mode,
+        LocalSocksUpstream? upstream)
     {
         var rules = new List<SingBoxRouteRule>
         {
-            new() { Action = "sniff" },
-            new() { IpIsPrivate = true, Action = "route", Outbound = "direct" }
+            new() { Action = "sniff" }
         };
 
         if (TunRoutingPolicy.HijackDns(mode))
         {
-            rules.Insert(1, new SingBoxRouteRule
+            rules.Add(new SingBoxRouteRule
             {
                 Protocol = "dns",
                 Action = "hijack-dns"
             });
         }
+
+        // sing-box 1.13 / Windows: без этого трафик к шлюзу TUN (.2) и DNS-адресу
+        // адаптера уходит в direct и снова в тот же TUN → лавина сокетов и CPU (#4455).
+        if (TunRoutingPolicy.RejectTunSelfPrefixes(mode))
+        {
+            rules.Add(new SingBoxRouteRule
+            {
+                IpCidr =
+                [
+                    TunInterfacePolicy.Ipv4Address(state.TunAddressCidr, profile.Id),
+                    TunInterfacePolicy.Ipv6Address(profile.Id)
+                ],
+                Action = "reject",
+                Method = "drop"
+            });
+        }
+
+        rules.Add(new SingBoxRouteRule { IpIsPrivate = true, Action = "route", Outbound = "direct" });
 
         foreach (var domain in TunBootstrapPolicy.CollectEndpointDomains(profile.Host))
         {
@@ -144,16 +165,6 @@ internal static class SingBoxConfigGenerator
                     Outbound = "direct"
                 });
             }
-        }
-
-        if (TunRoutingPolicy.RouteSecureDnsThroughProxy(mode))
-        {
-            rules.Add(new SingBoxRouteRule
-            {
-                Domain = [.. TunRoutingPolicy.KnownSecureDnsDomains],
-                Action = "route",
-                Outbound = "proxy"
-            });
         }
 
         return rules;
@@ -220,9 +231,19 @@ internal static class SingBoxConfigGenerator
             };
         }
 
-        var rules = BuildTunHeadRules(profile, mode, upstream);
+        var rules = BuildTunHeadRules(state, profile, mode, upstream);
         rules.Add(new SingBoxRouteRule { Protocol = "stun", Action = "reject" });
         rules.AddRange(BuildDomainExceptionRules(state));
+        // После исключений: иначе cloudflare-dns.com и др. из KnownSecureDns нельзя вывести в direct.
+        if (TunRoutingPolicy.RouteSecureDnsThroughProxy(mode))
+        {
+            rules.Add(new SingBoxRouteRule
+            {
+                Domain = [.. TunRoutingPolicy.KnownSecureDnsDomains],
+                Action = "route",
+                Outbound = "proxy"
+            });
+        }
         rules.AddRange(userRules);
         AddTunFallbackRules(rules, mode);
 
@@ -650,6 +671,7 @@ internal sealed class SingBoxRouteRule
     public List<string>? RuleSet { get; set; }
 
     public string Action { get; set; } = "route";
+    public string? Method { get; set; }
     public string? Outbound { get; set; }
 }
 

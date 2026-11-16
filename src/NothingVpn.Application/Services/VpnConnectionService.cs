@@ -248,26 +248,20 @@ public sealed class VpnConnectionService : IVpnConnectionService
     {
         cancellationToken.ThrowIfCancellationRequested();
         var runtime = ConnectionRuntimeState.From(_stateStore.Load());
-        try
+        await _engine.DisconnectAsync(CancellationToken.None).ConfigureAwait(false);
+        Volatile.Write(ref _session, null);
+        if (runtime.ProxyWasEnabledByUs)
         {
-            await _engine.DisconnectAsync(CancellationToken.None).ConfigureAwait(false);
+            _proxyPort.Restore(runtime.PreviousProxySettings);
+            Log(LogLevel.Info, "Системный прокси восстановлен.");
         }
-        finally
-        {
-            Volatile.Write(ref _session, null);
-            if (runtime.ProxyWasEnabledByUs)
-            {
-                _proxyPort.Restore(runtime.PreviousProxySettings);
-                Log(LogLevel.Info, "Системный прокси восстановлен.");
-            }
 
-            _stateStore.Update(current =>
-            {
-                if (runtime.ProxyWasEnabledByUs)
-                    ClearProxyFlags(current);
-                current.ActiveProfileId = null;
-            });
-        }
+        _stateStore.Update(current =>
+        {
+            if (runtime.ProxyWasEnabledByUs)
+                ClearProxyFlags(current);
+            current.ActiveProfileId = null;
+        });
 
         Log(LogLevel.Info, "Отключено.");
         ConnectionStateChanged?.Invoke(this, false);

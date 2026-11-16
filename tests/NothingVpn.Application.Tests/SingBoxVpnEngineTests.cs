@@ -205,6 +205,27 @@ public sealed class SingBoxVpnEngineTests
     }
 
     [Fact]
+    public async Task DisconnectAsync_FailedStopPreservesSessionForRetry()
+    {
+        var singBox = new FakeSingBoxPort();
+        var engine = CreateEngine(singBox);
+        var request = ValidRequest();
+        request.Mode = ConnectionMode.Tun;
+        await engine.ConnectAsync(request);
+        singBox.StopError = new TimeoutException("test stop timeout");
+
+        await Assert.ThrowsAsync<TimeoutException>(() => engine.DisconnectAsync());
+
+        Assert.True(engine.GetStatus().IsRunning);
+        Assert.Equal("p1", engine.GetStatus().ProfileId);
+        Assert.Equal(ConnectionMode.Tun, engine.GetStatus().Mode);
+        Assert.False(singBox.DeleteConfigCalled);
+        singBox.StopError = null;
+        await engine.DisconnectAsync();
+        Assert.False(engine.GetStatus().IsRunning);
+    }
+
+    [Fact]
     public async Task DisconnectAsync_StopsAndDeletesConfig()
     {
         var singBox = new FakeSingBoxPort();
@@ -348,6 +369,27 @@ public sealed class SingBoxVpnEngineTests
     }
 
     [Fact]
+    public async Task DisconnectAsync_FailedXrayStopRemainsVisibleAndAllowsRetry()
+    {
+        var singBox = new FakeSingBoxPort();
+        var xray = new FakeOutboundEnginePort();
+        var engine = CreateEngine(singBox, outbound: xray);
+        await engine.ConnectAsync(XhttpRequest());
+        xray.StopError = new TimeoutException("test Xray stop timeout");
+
+        await Assert.ThrowsAsync<TimeoutException>(() => engine.DisconnectAsync());
+
+        Assert.False(singBox.IsRunning);
+        Assert.True(xray.IsRunning);
+        Assert.True(engine.GetStatus().IsRunning);
+        Assert.Equal("p1", engine.GetStatus().ProfileId);
+        xray.StopError = null;
+        await engine.DisconnectAsync();
+        Assert.False(xray.IsRunning);
+        Assert.False(engine.GetStatus().IsRunning);
+    }
+
+    [Fact]
     public async Task DisconnectAsync_StopsXray()
     {
         var singBox = new FakeSingBoxPort();
@@ -387,6 +429,7 @@ public sealed class SingBoxVpnEngineTests
 
     private sealed class FakeOutboundEnginePort : IOutboundEnginePort
     {
+        public Exception? StopError { get; set; }
         private static long _clock;
         private long _startedAt;
 
@@ -408,6 +451,7 @@ public sealed class SingBoxVpnEngineTests
 
         public void Stop()
         {
+            if (StopError is not null) throw StopError;
             StopCalled = true;
             IsRunning = false;
         }
@@ -425,6 +469,7 @@ public sealed class SingBoxVpnEngineTests
 
     private sealed class FakeSingBoxPort : ISingBoxPort
     {
+        public Exception? StopError { get; set; }
         public event EventHandler? ProcessExited;
         public bool IsRunning { get; set; }
         public bool StartCalled { get; private set; }
@@ -454,6 +499,7 @@ public sealed class SingBoxVpnEngineTests
 
         public void Stop()
         {
+            if (StopError is not null) throw StopError;
             StopCalled = true;
             IsRunning = false;
         }

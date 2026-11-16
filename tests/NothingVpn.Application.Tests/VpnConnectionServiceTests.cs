@@ -109,6 +109,30 @@ public sealed class VpnConnectionServiceTests
     }
 
     [Fact]
+    public async Task DisconnectAsync_FailedServiceStopPreservesProxyAndProfileForRetry()
+    {
+        var stateStore = new FakeStateStorePort();
+        var proxy = new FakeProxyPort();
+        var engine = new FakeServiceEngine();
+        var service = CreateService(new FakeProfileStorePort(), stateStore, isAdmin: false,
+            engine: engine, proxyPort: proxy);
+        await service.ConnectAsync(new ConnectRequest { ProfileId = "p1" });
+        engine.StopError = new TimeoutException("test stop timeout");
+
+        await Assert.ThrowsAsync<TimeoutException>(() => service.DisconnectAsync());
+
+        Assert.True(service.GetStatus().IsRunning);
+        Assert.Equal("p1", stateStore.State.ActiveProfileId);
+        Assert.True(stateStore.State.ProxyWasEnabledByUs);
+        Assert.False(proxy.RestoreCalled);
+        engine.StopError = null;
+        await service.DisconnectAsync();
+        Assert.False(service.GetStatus().IsRunning);
+        Assert.True(proxy.RestoreCalled);
+        Assert.False(stateStore.State.ProxyWasEnabledByUs);
+    }
+
+    [Fact]
     public async Task DisconnectAsync_ClearsActiveProfileAndProxyFlags()
     {
         var stateStore = new FakeStateStorePort
@@ -560,6 +584,7 @@ public sealed class VpnConnectionServiceTests
     /// <summary>Ядро в службе: TUN без повышения интерфейса, статус задаётся тестом.</summary>
     private sealed class FakeServiceEngine : IVpnEngine
     {
+        public Exception? StopError { get; set; }
         public EngineStatus Status { get; set; } = EngineStatus.Stopped;
         public int ConnectCalls { get; private set; }
         public int DisconnectCalls { get; private set; }
@@ -576,6 +601,7 @@ public sealed class VpnConnectionServiceTests
         public Task DisconnectAsync(CancellationToken cancellationToken = default)
         {
             DisconnectCalls++;
+            if (StopError is not null) throw StopError;
             Status = EngineStatus.Stopped;
             return Task.CompletedTask;
         }
