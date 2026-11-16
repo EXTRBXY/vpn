@@ -140,6 +140,9 @@ rule `action`).
 | `sing-geoip:ru` | `geoip-ru` | `geoip-ru.srs` | direct |
 
 Скачиваются с `raw.githubusercontent.com/SagerNet/sing-geosite|sing-geoip/rule-set/…` с поддержкой `ETag`.
+Автообновление встроенных списков (клиент, не служба): по умолчанию включено, интервал 24 ч
+(`BuiltinRuleSetSyncPolicy`); условный GET по `ETag`. Обновляются включённые или уже лежащие на диске
+наборы. Смена файла на диске применяется к VPN после переподключения.
 
 ## DNS
 

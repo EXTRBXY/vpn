@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using NothingVpn.Application.Models;
 using NothingVpn.Application.Services;
+using NothingVpn.Domain.Policies;
 using NothingVpn.Presentation;
 
 namespace NothingVpn.Desktop.Wpf;
@@ -16,6 +18,8 @@ public sealed class RuleSetsSettingsViewModel : SettingsSection
     private readonly ISettingsFeedback _feedback;
     private readonly List<UserRuleSetModel> _pendingFileDeletes = [];
     private bool _isBusy;
+    private bool _autoUpdateEnabled = BuiltinRuleSetSyncPolicy.DefaultAutoUpdate;
+    private string _updateIntervalHoursText = BuiltinRuleSetSyncPolicy.DefaultUpdateIntervalHours.ToString(CultureInfo.InvariantCulture);
     private UserRuleSetModel? _selectedBuiltinRuleSet;
     private UserRuleSetModel? _selectedUserRuleSet;
 
@@ -61,6 +65,28 @@ public sealed class RuleSetsSettingsViewModel : SettingsSection
     public bool CanUseBuiltinRuleSet => CanEditRuleSets && SelectedBuiltinRuleSet is not null;
     public bool CanRemoveUserRuleSet => CanEditRuleSets && SelectedUserRuleSet is not null;
     public string RuleSetCatalogUrl => _files.CatalogUrl;
+
+    public bool AutoUpdateEnabled
+    {
+        get => _autoUpdateEnabled;
+        set
+        {
+            if (_autoUpdateEnabled == value) return;
+            _autoUpdateEnabled = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string UpdateIntervalHoursText
+    {
+        get => _updateIntervalHoursText;
+        set
+        {
+            if (_updateIntervalHoursText == value) return;
+            _updateIntervalHoursText = value;
+            OnPropertyChanged();
+        }
+    }
 
     public void ImportRuleSet(string sourcePath)
     {
@@ -124,6 +150,41 @@ public sealed class RuleSetsSettingsViewModel : SettingsSection
         var rules = _controller.Load(state);
         foreach (var item in rules.Builtin) BuiltinRuleSets.Add(Clone(item));
         foreach (var item in rules.User) UserRuleSets.Add(Clone(item));
+        AutoUpdateEnabled = state.BuiltinRuleSetsAutoUpdate;
+        UpdateIntervalHoursText = BuiltinRuleSetSyncPolicy
+            .NormalizeIntervalHours(state.BuiltinRuleSetsUpdateIntervalHours)
+            .ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Подтягивает ETag/время загрузки из state, если фон обновил списки раньше сохранения черновика.
+    /// </summary>
+    internal void SyncDownloadMetadataFrom(AppStateModel state)
+    {
+        foreach (var draft in BuiltinRuleSets)
+        {
+            var saved = state.UserRuleSets.FirstOrDefault(x =>
+                string.Equals(x.BuiltinId, draft.BuiltinId, StringComparison.OrdinalIgnoreCase));
+            if (saved?.LastDownloadedUtc is not { } savedAt)
+                continue;
+            if (draft.LastDownloadedUtc is { } draftAt && draftAt >= savedAt)
+                continue;
+            draft.RemoteEtag = saved.RemoteEtag;
+            draft.LastDownloadedUtc = saved.LastDownloadedUtc;
+        }
+    }
+
+    internal (bool AutoUpdate, int IntervalHours) AutoUpdateSettings()
+    {
+        if (!int.TryParse(UpdateIntervalHoursText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var hours) ||
+            hours < BuiltinRuleSetSyncPolicy.MinUpdateIntervalHours ||
+            hours > BuiltinRuleSetSyncPolicy.MaxUpdateIntervalHours)
+        {
+            throw new InvalidOperationException(
+                $"Интервал автообновления списков — целое число от {BuiltinRuleSetSyncPolicy.MinUpdateIntervalHours} до {BuiltinRuleSetSyncPolicy.MaxUpdateIntervalHours} часов.");
+        }
+
+        return (AutoUpdateEnabled, hours);
     }
 
     /// <summary>Копии всех записей для сохранения; помеченные на удаление файлы сохраняются выключенными.</summary>

@@ -20,6 +20,7 @@ internal sealed record DesktopComposition(
     UpdateViewModel Updates,
     IConnectionController Connection,
     ISubscriptionService SubscriptionService,
+    IBuiltinRuleSetUpdateService BuiltinRuleSetUpdateService,
     IStorageHealthService StorageHealth,
     ILogPort Log);
 
@@ -78,6 +79,7 @@ internal static class DesktopCompositionRoot
             updateViewModel,
             connectionController,
             services.SubscriptionService,
+            services.BuiltinRuleSetUpdateService,
             services.StorageHealthService,
             services.Log);
     }

@@ -411,7 +411,8 @@ rule-set. Сообщения разделы показывают через `Set
 - `SingBoxRunner.ValidateConfig` синхронно ждёт `sing-box check` (`GetAwaiter().GetResult()`), тайм-аут 2 с.
 - Таймеры WPF (`DispatcherTimer`): тема — 1 с (`SystemThemeWatcher`), обновление журнала в диагностике — 1 с (снимок
   берётся, только если изменилась `ILogPort.Version`), проверка обновлений — 30 мин (`UpdateCheckScheduler`),
-  подписки — 15 мин (`SubscriptionRefreshScheduler`).
+  подписки — 15 мин (`SubscriptionRefreshScheduler`), встроенные rule-set — 15 мин опроса
+  (`BuiltinRuleSetRefreshScheduler`, due по `builtinRuleSetsUpdateIntervalHours`, по умолчанию 24 ч).
 
 ## Логирование
 
@@ -437,6 +438,7 @@ rule-set. Сообщения разделы показывают через `Set
 | `app` | `App.xaml.cs`, `GlobalExceptionHandler`, `ApplicationServicesFactory` | запуск с версией, выход, необработанные исключения, недоступная служба, ядро в процессе |
 | `app/connection` | `VpnConnectionService` | подключено (режим и имя профиля), отключено, ошибки подключения и отключения, включение и восстановление системного прокси, неожиданная остановка ядра, сброс прерванного сеанса, подхват сессии службы |
 | `app/subscriptions` | `SubscriptionService`, `SubscriptionRefreshScheduler` | обновление подписки (число добавленных, обновлённых, удалённых профилей), ошибки, итог автообновления |
+| `app/rule-sets` | `BuiltinRuleSetUpdateService`, `BuiltinRuleSetRefreshScheduler` | автообновление встроенных `.srs`, ошибки загрузки отдельных списков |
 | `app/update` | `UpdateViewModel` | результат проверки, переход на новую версию, загрузка, запуск установщика, ошибки |
 | `app/storage` | `StorageHealthService.DrainIssues` | повреждённые файлы данных (только имя файла) |
 | `app/ui` | `DiagnosticsViewModel` | сохранение журнала в файл (только имя файла) |

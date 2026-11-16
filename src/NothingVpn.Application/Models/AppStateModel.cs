@@ -27,6 +27,18 @@ public sealed class AppStateModel
     [JsonPropertyName("userRuleSets")]
     public List<UserRuleSetModel> UserRuleSets { get; set; } = new();
 
+    /// <summary>Автоматически обновлять встроенные .srs по расписанию.</summary>
+    [JsonPropertyName("builtinRuleSetsAutoUpdate")]
+    public bool BuiltinRuleSetsAutoUpdate { get; set; } = BuiltinRuleSetSyncPolicy.DefaultAutoUpdate;
+
+    /// <summary>Интервал автообновления встроенных списков, часы.</summary>
+    [JsonPropertyName("builtinRuleSetsUpdateIntervalHours")]
+    public int BuiltinRuleSetsUpdateIntervalHours { get; set; } = BuiltinRuleSetSyncPolicy.DefaultUpdateIntervalHours;
+
+    /// <summary>Время последнего успешного цикла автообновления встроенных списков (включая NotModified).</summary>
+    [JsonPropertyName("builtinRuleSetsLastAutoUpdateUtc")]
+    public DateTimeOffset? BuiltinRuleSetsLastAutoUpdateUtc { get; set; }
+
     [JsonPropertyName("localMixedPort")]
     public int LocalMixedPort { get; set; } = ConnectionPolicy.DefaultLocalMixedPort;
 

@@ -54,6 +54,7 @@ public static class ApplicationServicesFactory
         var diagnosticsService = new DiagnosticsService(diagnosticsPort, stateStore);
         var storageHealthService = new StorageHealthService(storageHealthPort, logPort);
         var ruleSetFileService = new RuleSetFileService(appPaths);
+        var builtinRuleSetUpdateService = new BuiltinRuleSetUpdateService(settingsService, ruleSetFileService, logPort);
         var appUpdateService = new GitHubAppUpdateService();
         var installerUpdateService = new InstallerUpdateService();
         var installerLaunchService = new InstallerLaunchService();
@@ -80,6 +81,7 @@ public static class ApplicationServicesFactory
             ElevationPort = elevationPort,
             StorageHealthService = storageHealthService,
             RuleSetFileService = ruleSetFileService,
+            BuiltinRuleSetUpdateService = builtinRuleSetUpdateService,
             AppUpdateService = appUpdateService,
             InstallerUpdateService = installerUpdateService,
             InstallerLaunchService = installerLaunchService,

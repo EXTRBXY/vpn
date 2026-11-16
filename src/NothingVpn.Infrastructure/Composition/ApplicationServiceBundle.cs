@@ -12,6 +12,7 @@ public sealed class ApplicationServiceBundle
     public required NothingVpn.Application.Ports.IElevationPort ElevationPort { get; init; }
     public required IStorageHealthService StorageHealthService { get; init; }
     public required IRuleSetFileService RuleSetFileService { get; init; }
+    public required IBuiltinRuleSetUpdateService BuiltinRuleSetUpdateService { get; init; }
     public required IAppUpdateService AppUpdateService { get; init; }
     public required IInstallerUpdateService InstallerUpdateService { get; init; }
     public required IInstallerLaunchService InstallerLaunchService { get; init; }

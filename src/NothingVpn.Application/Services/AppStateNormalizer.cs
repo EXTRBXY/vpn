@@ -43,5 +43,8 @@ public static class AppStateNormalizer
         var proxy = ConnectionSettingsMapper.ToProxySettings(state);
         ProxyConnectionPolicy.Normalize(proxy);
         ConnectionSettingsMapper.ApplyProxySettings(state, proxy);
+
+        state.BuiltinRuleSetsUpdateIntervalHours =
+            BuiltinRuleSetSyncPolicy.NormalizeIntervalHours(state.BuiltinRuleSetsUpdateIntervalHours);
     }
 }

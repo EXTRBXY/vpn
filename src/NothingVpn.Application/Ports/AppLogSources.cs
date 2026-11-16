@@ -6,6 +6,7 @@ public static class AppLogSources
     public const string App = "app";
     public const string Connection = "app/connection";
     public const string Subscriptions = "app/subscriptions";
+    public const string RuleSets = "app/rule-sets";
     public const string Update = "app/update";
     public const string Storage = "app/storage";
     public const string Ui = "app/ui";

@@ -98,11 +98,15 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, ISettingsFeedbac
         {
             var tun = Tun.ToSettings();
             var paths = Apps.NormalizedPaths();
+            RuleSets.SyncDownloadMetadataFrom(_settingsService.GetState());
             var rules = RuleSets.BuildForSave();
+            var autoUpdate = RuleSets.AutoUpdateSettings();
             _controller.Save(_settingsService.GetState(), new ConnectionSettingsDraft(Proxy.ToSettings(), tun, Dns.ToSettings())
             {
                 TunAppPaths = paths,
                 RuleSets = rules,
+                BuiltinRuleSetsAutoUpdate = autoUpdate.AutoUpdate,
+                BuiltinRuleSetsUpdateIntervalHours = autoUpdate.IntervalHours,
                 DomainExceptions = Exceptions.ToSettings(),
                 LogLevel = Behavior.LogLevel,
                 CloseBehavior = Behavior.CloseBehavior,
