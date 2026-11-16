@@ -49,6 +49,7 @@ internal static class XrayConfigGenerator
                         Address = profile.Host,
                         Port = profile.Port,
                         Id = profile.Uuid,
+                        Encryption = profile.Encryption,
                         Flow = network == "raw" && profile.Security is "tls" or "reality" ? profile.Flow : null
                     },
                     StreamSettings = BuildStream(profile, state, network)
@@ -66,7 +67,8 @@ internal static class XrayConfigGenerator
             {
                 ServerName = p.Sni,
                 Fingerprint = p.Fingerprint,
-                Alpn = p.Alpn.Count > 0 ? p.Alpn : null
+                Alpn = p.Alpn.Count > 0 ? p.Alpn : null,
+                EchConfigList = NothingVpn.Application.Services.VlessProfileSecurity.Ech(p)
             }
             : null,
         RealitySettings = p.Security == "reality"
@@ -194,6 +196,7 @@ internal sealed class XrayStreamSettings
 
 internal sealed class XrayTlsSettings
 {
+    public string? EchConfigList { get; set; }
     public string? ServerName { get; set; }
     public string? Fingerprint { get; set; }
     public List<string>? Alpn { get; set; }

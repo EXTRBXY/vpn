@@ -32,6 +32,26 @@ public sealed class ServiceChannelTests : IAsyncDisposable
     private readonly List<PipeVpnEngine> _clients = new();
 
     [Fact]
+    public async Task Connect_EncryptionAndEchReachXrayThroughServicePipe()
+    {
+        var outbound = new CapturingOutboundPort();
+        StartService(outbound);
+        var profile = new ProfileParserPort().ParseVlessLink(
+            "vless://11111111-2222-3333-4444-555555555555@node.example:443?type=xhttp&security=tls&mode=auto&path=%2Fxhttp");
+        var key = Convert.ToBase64String(Enumerable.Range(1, 32).Select(i => (byte)i).ToArray()).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        profile.Encryption = "mlkem768x25519plus.native.0rtt." + key;
+        profile.ExtraQuery["ech"] = "AAH+DQ==";
+        await CreateClient(out _).ConnectAsync(EngineRequestMapper.CreateRequest(profile, new()));
+        Assert.Equal(profile.Encryption, outbound.Profile!.Encryption);
+        Assert.Equal(profile.ExtraQuery["ech"], outbound.Profile.ExtraQuery["ech"]);
+        Assert.Equal("/xhttp", outbound.Profile.XhttpPath);
+        var json = JsonNode.Parse(NothingVpn.Infrastructure.Xray.XrayConfigGenerator.Serialize(
+            outbound.Profile, new(), new LocalSocksUpstream(41000, "test", "test", "xray.exe")))!;
+        Assert.Equal(profile.Encryption, (string?)json["outbounds"]![0]!["settings"]!["encryption"]);
+        Assert.Equal(profile.ExtraQuery["ech"], (string?)json["outbounds"]![0]!["streamSettings"]!["tlsSettings"]!["echConfigList"]);
+    }
+
+    [Fact]
     public async Task Connect_HitmosException_ReachesServiceWithoutRuleSetFiles()
     {
         var service = StartService();
@@ -578,7 +598,7 @@ public sealed class ServiceChannelTests : IAsyncDisposable
         return request;
     }
 
-    private RunningService StartService()
+    private RunningService StartService(IOutboundEnginePort? outbound = null)
     {
         var logStore = new InMemoryLogStore();
         var singBox = new FakeSingBoxPort(logStore);
@@ -588,7 +608,8 @@ public sealed class ServiceChannelTests : IAsyncDisposable
             new FakeDiagnosticsPort(),
             new PathPolicyPort(),
             new LogPort(logStore),
-            new ServiceRuleSetStore(ruleSets));
+            new ServiceRuleSetStore(ruleSets),
+            outboundEngines: outbound is null ? null : [outbound]);
         Directory.CreateDirectory(ruleSets);
         var server = new ServicePipeServer(engine, logStore, ServerOptions());
         server.Start();
@@ -658,6 +679,21 @@ public sealed class ServiceChannelTests : IAsyncDisposable
     }
 
     private sealed record RunningService(ServicePipeServer Server, FakeSingBoxPort SingBox, InMemoryLogStore LogStore, string RuleSetsDirectory);
+
+    private sealed class CapturingOutboundPort : IOutboundEnginePort
+    {
+        public OutboundEngine Engine => OutboundEngine.Xray;
+        public event EventHandler? ProcessExited { add { } remove { } }
+        public bool IsRunning { get; private set; }
+        public VpnProfile? Profile { get; private set; }
+        public LocalSocksUpstream Start(VpnProfile profile, AppStateModel state)
+        {
+            Profile = profile;
+            IsRunning = true;
+            return new(41000, "test", "test", "xray.exe");
+        }
+        public void Stop() => IsRunning = false;
+    }
 
     private sealed class AcceptingVerifier : IPipeServerVerifier
     {

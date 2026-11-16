@@ -52,7 +52,7 @@ public sealed class ProfileService(IProfileStorePort profileStore, IProfileParse
         var parsed = profileParser.ParseVlessLink(link);
         if (!string.IsNullOrWhiteSpace(nameOverride))
             parsed.Name = SanitizeName(nameOverride);
-        OutboundEnginePolicy.Resolve(engine, parsed.Type, parsed.Security);
+        OutboundEnginePolicy.Resolve(engine, parsed.Type, parsed.Security, parsed.Encryption, VlessProfileSecurity.Ech(parsed));
         parsed.Engine = OutboundEnginePolicy.Preferences.Normalize(engine);
 
         var updated = profileStore.Upsert(parsed);

@@ -47,7 +47,7 @@ public sealed class ServiceProtocolTests
         var json = Encoding.UTF8.GetString(frame, 4, frame.Length - 4);
         Assert.Equal(frame.Length - 4, (int)length);
         Assert.StartsWith(
-            "{\"contractVersion\":4,\"type\":\"error\",\"id\":3,\"error\":{\"code\":\"version\",\"message\":",
+            "{\"contractVersion\":5,\"type\":\"error\",\"id\":3,\"error\":{\"code\":\"version\",\"message\":",
             json,
             StringComparison.Ordinal);
         Assert.DoesNotContain("request", json, StringComparison.Ordinal);

@@ -88,7 +88,7 @@ public sealed class VpnProfile
     [JsonPropertyName("xhttpExtra")]
     public XhttpExtraModel? XhttpExtra { get; set; }
 
-    /// <summary>Параметры ссылки, которые клиент не разбирает (например ech). Ключи без учёта регистра.</summary>
+    /// <summary>Дополнительные параметры ссылки; ech передаётся Xray как echConfigList. Ключи без учёта регистра.</summary>
     // Populate: при чтении словарь из инициализатора заполняется, а не заменяется — компаратор сохраняется.
     [JsonPropertyName("extraQuery")]
     [JsonObjectCreationHandling(JsonObjectCreationHandling.Populate)]

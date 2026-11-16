@@ -1,4 +1,4 @@
-﻿using System.Text.RegularExpressions;
+using System.Text.RegularExpressions;
 
 namespace NothingVpn.Infrastructure.Security;
 
@@ -31,6 +31,9 @@ internal static class LogRedactor
         s = UuidKvRegex.Replace(s, "$1***");
         s = TokenRegex.Replace(s, "$1***");
         s = AuthHeaderRegex.Replace(s, "$1***");
+        // Xray может включить всю строку encryption в сообщение об ошибке.
+        s = Regex.Replace(s, @"mlkem768x25519plus\.[A-Za-z0-9_.-]+", "mlkem768x25519plus.***", RegexOptions.IgnoreCase);
+        s = Regex.Replace(s, "(\\b(?:ech|echConfigList)\\s*[=:]\\s*)[^\\s,;]+", "$1***", RegexOptions.IgnoreCase);
         return s;
     }
 }

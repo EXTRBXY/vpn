@@ -17,7 +17,7 @@ public sealed class SecurityRegressionTests
     [InlineData("zz#fragment", "value")]
     [InlineData("zz%26security", "none")]
     [InlineData("параметр", "значение & = #")]
-    [InlineData("ech", "ordinary-value")]
+    [InlineData("ech", "AAH+DQ==")]
     public void VlessRoundTrip_PreservesUnknownKeysWithoutChangingTls(string key, string value)
     {
         var original = VlessLinkParser.Parse(

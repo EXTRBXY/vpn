@@ -105,6 +105,14 @@ AdGuard, остальные поля SRS и повреждённые данны�
 после переименования файлов хранилищем службы. IP-списки сохраняются в маршрутизации, доменный split DNS и ручные
 исключения работают; отключённые/block-списки и системный DNS не запускают анализ для split DNS.
 
+## VLESS Encryption и ECH
+
+`AdvancedVlessLinkTests` проверяет импорт XHTTP, extra.mode, alias padding, конфликты,
+сохранение регистра ключей, Id и экспорт, выбор движка, JSON-контракт и конфиг Xray.
+`ServiceChannelTests.Connect_EncryptionAndEchReachXrayThroughServicePipe` проверяет передачу
+параметров через настоящий канал до генератора Xray; `SingBoxVpnEngineTests` — повторную
+валидацию параметров службой до записи конфига. Тестовые ключи синтетические.
+
 ## Передача доменных исключений службе
 
 `ServiceChannelTests.Connect_HitmosException_ReachesServiceWithoutRuleSetFiles` воспроизводит путь
