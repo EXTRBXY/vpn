@@ -23,7 +23,7 @@ public sealed class EngineContractTests : IDisposable
     {
         // Смена версии — осознанное несовместимое изменение протокола: обновите тест и ADR-0001.
         // v2 (шаг 7а): rule-set содержимым для службы. v3 (ADR-0002): движок профиля, XHTTP, XMUX.
-        Assert.Equal(4, EngineContract.Version);
+        Assert.Equal(5, EngineContract.Version);
         Assert.Equal(EngineContract.Version, new EngineConnectRequest().ContractVersion);
         Assert.Equal(EngineContract.Version, new EngineStatus().ContractVersion);
     }
@@ -92,7 +92,7 @@ public sealed class EngineContractTests : IDisposable
 
         Assert.Equal(json, JsonSerializer.Serialize(restored));
         var node = JsonNode.Parse(json)!;
-        Assert.Equal(4, (int)node["contractVersion"]!);
+        Assert.Equal(5, (int)node["contractVersion"]!);
         Assert.Equal("hitmos.fm", (string?)node["domainExceptions"]![0]!["domain"]);
         Assert.False((bool)node["domainExceptions"]![0]!["includeSubdomains"]!);
         Assert.Null(node["ruleSets"]![0]!["content"]);

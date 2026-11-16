@@ -34,7 +34,7 @@ public sealed class VlessStableIdTests
         var a = VlessLinkParser.Parse(
             "vless://11111111-2222-3333-4444-555555555555@tls.example.com:443?type=tcp&security=tls&sni=tls.example.com#First");
         var b = VlessLinkParser.Parse(
-            "vless://11111111-2222-3333-4444-555555555555@tls.example.com:443?type=tcp&security=tls&sni=tls.example.com&ech=x&fp=firefox&alpn=h2#Second");
+            "vless://11111111-2222-3333-4444-555555555555@tls.example.com:443?type=tcp&security=tls&sni=tls.example.com&ech=AAH%2BDQ%3D%3D&fp=firefox&alpn=h2#Second");
 
         Assert.Equal(a.Id, b.Id);
     }

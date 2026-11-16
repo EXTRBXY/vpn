@@ -75,6 +75,12 @@ public sealed class EngineProfile
     [JsonPropertyName("security")]
     public string Security { get; set; } = "tls";
 
+    [JsonPropertyName("encryption")]
+    public string Encryption { get; set; } = "none";
+
+    [JsonPropertyName("echConfigList")]
+    public string? EchConfigList { get; set; }
+
     [JsonPropertyName("sni")]
     public string? Sni { get; set; }
 

@@ -152,7 +152,8 @@ public sealed class SingBoxVpnEngine : IVpnEngine
         var profile = EngineRequestMapper.ToProfile(request);
         VlessEndpointPolicy.EnsureConnectable(profile.Id, profile.Uuid, profile.Host, profile.Port);
         XhttpProfileValidator.Validate(profile);
-        var engine = OutboundEnginePolicy.Resolve(profile.Engine, profile.Type, profile.Security);
+        VlessProfileSecurity.Validate(profile);
+        var engine = OutboundEnginePolicy.Resolve(profile.Engine, profile.Type, profile.Security, profile.Encryption, VlessProfileSecurity.Ech(profile));
 
         DomainExceptionPolicy.Validate((request.DomainExceptions ?? []).Select(x => x?.Domain));
         var state = EngineRequestMapper.ToState(request);

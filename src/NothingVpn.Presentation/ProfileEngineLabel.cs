@@ -11,7 +11,7 @@ public static class ProfileEngineLabel
         try
         {
             return OutboundEnginePolicy.DisplayName(
-                OutboundEnginePolicy.Resolve(profile.Engine, profile.Type, profile.Security));
+                OutboundEnginePolicy.Resolve(profile.Engine, profile.Type, profile.Security, profile.Encryption, NothingVpn.Application.Services.VlessProfileSecurity.Ech(profile)));
         }
         catch (ArgumentException)
         {

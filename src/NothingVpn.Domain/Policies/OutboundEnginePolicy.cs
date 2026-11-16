@@ -29,9 +29,15 @@ public static class OutboundEnginePolicy
     };
 
     /// <summary>Итоговый движок профиля: <see cref="OutboundEngine.SingBox"/> или <see cref="OutboundEngine.Xray"/>.</summary>
-    public static OutboundEngine Resolve(OutboundEngine preference, string? transport, string? security)
+    public static OutboundEngine Resolve(OutboundEngine preference, string? transport, string? security, string? encryption = "none", string? ech = null)
     {
         var xrayOnly = XhttpPolicy.IsXhttp(transport);
+        if (VlessSecurityPolicy.RequiresXray(encryption, ech))
+        {
+            if (preference == OutboundEngine.SingBox)
+                throw new ArgumentException("VLESS Encryption и ECH поддерживает только движок Xray.");
+            xrayOnly = true;
+        }
         return Preferences.Normalize(preference) switch
         {
             OutboundEngine.SingBox when xrayOnly =>

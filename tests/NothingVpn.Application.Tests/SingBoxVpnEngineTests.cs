@@ -9,6 +9,20 @@ namespace NothingVpn.Application.Tests;
 public sealed class SingBoxVpnEngineTests
 {
     [Theory]
+    [InlineData("encryption")]
+    [InlineData("ech")]
+    public async Task ConnectAsync_RejectsInvalidSecurityBeforeWritingConfig(string field)
+    {
+        var singBox = new FakeSingBoxPort();
+        var request = ValidRequest();
+        if (field == "encryption") request.Profile.Encryption = "mlkem768x25519plus.native.0rtt.invalid";
+        else request.Profile.EchConfigList = "invalid";
+        await Assert.ThrowsAsync<ArgumentException>(() => CreateEngine(singBox).ConnectAsync(request));
+        Assert.Null(singBox.WrittenState);
+        Assert.False(singBox.StartCalled);
+    }
+
+    [Theory]
     [InlineData("https://hitmos.fm")]
     [InlineData("*.hitmos.fm")]
     [InlineData(null)]

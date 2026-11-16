@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -76,8 +76,19 @@ internal static class VlessLinkParser
         {
             profile.XhttpPath = Get(query, "path");
             profile.XhttpHost = Get(query, "host");
-            profile.XhttpMode = ParseXhttpMode(Get(query, "mode"));
-            profile.XhttpExtra = ParseXhttpExtra(Get(query, "extra"));
+            profile.XhttpExtra = ParseXhttpExtra(Get(query, "extra"), out var extraMode);
+            var mode = Get(query, "mode");
+            if (mode is not null && extraMode is not null && ParseXhttpMode(mode) != ParseXhttpMode(extraMode))
+                throw new ArgumentException("XHTTP: mode и extra.mode противоречат друг другу.");
+            profile.XhttpMode = ParseXhttpMode(mode ?? extraMode);
+            var padding = Get(query, "x_padding_bytes");
+            if (padding is not null)
+            {
+                profile.XhttpExtra ??= new XhttpExtraModel();
+                if (profile.XhttpExtra.XPaddingBytes is { } existing && existing != padding)
+                    throw new ArgumentException("XHTTP: x_padding_bytes и extra.xPaddingBytes противоречат друг другу.");
+                profile.XhttpExtra.XPaddingBytes = padding;
+            }
         }
         else
         {
@@ -86,7 +97,7 @@ internal static class VlessLinkParser
         }
         profile.GrpcServiceName = Get(query, "serviceName") ?? Get(query, "servicename");
 
-        // Keep extra params we don't map (e.g. ech)
+        // Preserve extra query values; ECH is validated and mapped separately for the service.
         foreach (var kv in query)
         {
             if (!IsKnownKey(kv.Key) && !(isXhttp && IsXhttpKey(kv.Key)))
@@ -119,8 +130,9 @@ internal static class VlessLinkParser
             : throw new ArgumentException("XHTTP: неизвестный mode. Ожидается auto|packet-up|stream-up|stream-one.");
     }
 
-    private static XhttpExtraModel? ParseXhttpExtra(string? json)
+    private static XhttpExtraModel? ParseXhttpExtra(string? json, out string? mode)
     {
+        mode = null;
         if (string.IsNullOrWhiteSpace(json))
             return null;
 
@@ -137,6 +149,14 @@ internal static class VlessLinkParser
 
         foreach (var key in extra.Select(kv => kv.Key).ToList())
         {
+            if (key.Equals("mode", StringComparison.OrdinalIgnoreCase))
+            {
+                if (extra[key] is not JsonValue value || !value.TryGetValue<string>(out mode))
+                    throw new ArgumentException("XHTTP: extra.mode должен быть строкой.");
+                ParseXhttpMode(mode);
+                extra.Remove(key);
+                continue;
+            }
             if (UnsupportedXhttpExtraKeys.Contains(key, StringComparer.OrdinalIgnoreCase))
                 throw new ArgumentException($"XHTTP: параметр extra.{key} не поддерживается.");
             if (ServerOnlyXhttpExtraKeys.Contains(key, StringComparer.OrdinalIgnoreCase))
@@ -161,13 +181,15 @@ internal static class VlessLinkParser
 
         p.Type = XhttpPolicy.NormalizeTransport(NormalizeLower(p.Type, "type"));
         p.Security = NormalizeLower(p.Security, "security");
-        p.Encryption = NormalizeLower(p.Encryption, "encryption");
+        // Ключ Base64URL чувствителен к регистру.
+        p.Encryption = p.Encryption.Trim();
+        if (p.Encryption.Equals("none", StringComparison.OrdinalIgnoreCase))
+            p.Encryption = "none";
         p.Flow = string.IsNullOrWhiteSpace(p.Flow) ? null : p.Flow.Trim();
         p.Fingerprint = string.IsNullOrWhiteSpace(p.Fingerprint) ? null : p.Fingerprint.Trim();
         p.Sni = string.IsNullOrWhiteSpace(p.Sni) ? null : p.Sni.Trim();
 
-        if (p.Encryption is not "none")
-            throw new ArgumentException("Only encryption=none is supported for VLESS links.");
+        VlessProfileSecurity.Validate(p);
 
         if (p.Security is not ("tls" or "reality" or "none"))
             throw new ArgumentException("Unsupported security. Expected tls|reality|none.");
@@ -195,6 +217,9 @@ internal static class VlessLinkParser
             var extra = p.XhttpExtra is null ? "" : JsonSerializer.Serialize(p.XhttpExtra);
             key += $"|{p.XhttpPath}|{p.XhttpHost}|{XhttpPolicy.Modes.ToValue(p.XhttpMode)}|{extra}";
         }
+        // Старые Id не меняются; новые профили с Encryption отличаются от encryption=none.
+        if (p.Encryption != "none")
+            key += $"|encryption={p.Encryption}";
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(key));
         return Convert.ToHexString(bytes).ToLowerInvariant()[..16];
     }
@@ -252,7 +277,8 @@ internal static class VlessLinkParser
 
     private static bool IsXhttpKey(string key) =>
         key.Equals("mode", StringComparison.OrdinalIgnoreCase)
-        || key.Equals("extra", StringComparison.OrdinalIgnoreCase);
+        || key.Equals("extra", StringComparison.OrdinalIgnoreCase)
+        || key.Equals("x_padding_bytes", StringComparison.OrdinalIgnoreCase);
 
     private static string SanitizeName(string name)
     {
