@@ -259,6 +259,15 @@ public sealed class DomainPoliciesTests
 
     [Theory]
     [InlineData("tun", true)]
+    [InlineData("tun_apps", true)]
+    [InlineData("proxy", false)]
+    public void TunRoutingPolicy_RejectTunSelfPrefixes_AllTunModes(string mode, bool expected)
+    {
+        Assert.Equal(expected, TunRoutingPolicy.RejectTunSelfPrefixes(Mode(mode)));
+    }
+
+    [Theory]
+    [InlineData("tun", true)]
     [InlineData("tun_apps", false)]
     [InlineData("proxy", false)]
     public void TunRoutingPolicy_RouteQuicAndSecureDns_OnlyFullTun(string mode, bool expected)

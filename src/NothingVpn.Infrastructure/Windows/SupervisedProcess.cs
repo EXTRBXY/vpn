@@ -7,11 +7,13 @@ namespace NothingVpn.Infrastructure.Windows;
 /// Долгоживущий процесс ядра: Job Object (умирает вместе с владельцем), вывод в журнал, событие выхода.
 /// <see cref="Exited"/> срабатывает только при самостоятельном завершении, не после <see cref="Stop"/>.
 /// </summary>
-internal sealed class SupervisedProcess(string logSource, InMemoryLogStore logStore) : IDisposable
+internal sealed class SupervisedProcess(string logSource, InMemoryLogStore logStore,
+    Action<Process, TimeSpan>? stopProcess = null) : IDisposable
 {
     private readonly object _gate = new();
     private Process? _process;
     private ProcessJobScope? _job;
+    private bool _stopping;
 
     public event EventHandler? Exited;
 
@@ -30,7 +32,7 @@ internal sealed class SupervisedProcess(string logSource, InMemoryLogStore logSt
     {
         lock (_gate)
         {
-            if (_process is { HasExited: false })
+            if (_stopping || _process is { HasExited: false })
                 throw new InvalidOperationException($"{logSource} is already running.");
 
             var p = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
@@ -50,27 +52,47 @@ internal sealed class SupervisedProcess(string logSource, InMemoryLogStore logSt
 
     public void Stop(TimeSpan timeout)
     {
-        Process? proc;
-        ProcessJobScope? job;
+        Process proc;
         lock (_gate)
         {
+            if (_stopping)
+                throw new InvalidOperationException($"Остановка {logSource} уже выполняется.");
+            if (_process is null)
+                return;
             proc = _process;
-            job = _job;
-            _process = null;
-            _job = null;
+            _stopping = true;
         }
 
-        if (proc is null)
-            return;
-
+        var completed = false;
         try
         {
-            ChildProcess.Stop(proc, timeout);
+            // WaitForExit может вызывать Exited: ожидание нельзя держать под локом обработчика.
+            (stopProcess ?? ChildProcess.Stop)(proc, timeout);
+            if (!proc.HasExited)
+                throw new InvalidOperationException($"Не удалось остановить {logSource}: процесс продолжает работать.");
+
+            ProcessJobScope? job;
+            lock (_gate)
+            {
+                proc.Exited -= OnExited;
+                _process = null;
+                job = _job;
+                _job = null;
+                completed = true;
+            }
+            job?.Dispose();
+            try { proc.Dispose(); } catch { }
         }
         finally
         {
-            job?.Dispose();
-            try { proc.Dispose(); } catch { }
+            bool exitedAfterFailure;
+            lock (_gate)
+            {
+                exitedAfterFailure = !completed && proc.HasExited;
+                _stopping = false;
+            }
+            if (exitedAfterFailure)
+                OnExited(proc, EventArgs.Empty);
         }
     }
 
@@ -84,7 +106,7 @@ internal sealed class SupervisedProcess(string logSource, InMemoryLogStore logSt
         ProcessJobScope? job;
         lock (_gate)
         {
-            if (!ReferenceEquals(_process, exitedProcess))
+            if (_stopping || !ReferenceEquals(_process, exitedProcess))
                 return;
 
             job = _job;

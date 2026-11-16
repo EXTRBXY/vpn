@@ -48,4 +48,13 @@ public static class TunRoutingPolicy
     /// </summary>
     public static bool RouteSecureDnsThroughProxy(ConnectionMode mode) =>
         mode == ConnectionMode.Tun;
+
+    /// <summary>
+    /// На Windows в sing-box 1.13 трафик к собственным префиксам TUN (шлюз / DNS .2)
+    /// при <c>ip_is_private → direct</c> зацикливается обратно в тот же TUN
+    /// (<see href="https://github.com/SagerNet/sing-box/issues/4455">#4455</see>).
+    /// Reject/drop этих CIDR — после hijack-dns и до private→direct.
+    /// </summary>
+    public static bool RejectTunSelfPrefixes(ConnectionMode mode) =>
+        ConnectionPolicy.IsTunMode(mode);
 }
