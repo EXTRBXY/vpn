@@ -68,7 +68,10 @@ internal static class XrayConfigGenerator
                 ServerName = p.Sni,
                 Fingerprint = p.Fingerprint,
                 Alpn = p.Alpn.Count > 0 ? p.Alpn : null,
-                EchConfigList = NothingVpn.Application.Services.VlessProfileSecurity.Ech(p)
+                EchConfigList = VlessSecurityPolicy.IsAcceptableEchConfigList(
+                    NothingVpn.Application.Services.VlessProfileSecurity.Ech(p))
+                    ? NothingVpn.Application.Services.VlessProfileSecurity.Ech(p)
+                    : null
             }
             : null,
         RealitySettings = p.Security == "reality"

@@ -53,13 +53,19 @@ public sealed class AdvancedVlessLinkTests
         Assert.Throws<ArgumentException>(() => VlessLinkParser.Parse(Prefix + "&" + query));
     }
 
+    // ECHConfigList 0xfe0d с public_name; ключ синтетический.
+    private const string AcceptableEch = "AEH+DQA9AAAgACABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fIAAEAAEAASAOcHVibGljLmV4YW1wbGUAAA==";
+
     [Fact]
     public void EngineSelection_RequiresXrayForEncryptionAndEch()
     {
         Assert.Equal(OutboundEngine.Xray, NothingVpn.Domain.Policies.OutboundEnginePolicy.Resolve(OutboundEngine.Auto, "tcp", "tls", Encryption));
-        Assert.Equal(OutboundEngine.Xray, NothingVpn.Domain.Policies.OutboundEnginePolicy.Resolve(OutboundEngine.Auto, "ws", "tls", "none", "AAH+DQ=="));
+        Assert.Equal(OutboundEngine.Xray, NothingVpn.Domain.Policies.OutboundEnginePolicy.Resolve(OutboundEngine.Auto, "ws", "tls", "none", AcceptableEch));
+        Assert.Equal(OutboundEngine.SingBox, NothingVpn.Domain.Policies.OutboundEnginePolicy.Resolve(OutboundEngine.Auto, "tcp", "tls", "none", "AAH+DQ=="));
+        Assert.Equal(OutboundEngine.SingBox, NothingVpn.Domain.Policies.OutboundEnginePolicy.Resolve(OutboundEngine.Auto, "tcp", "tls", "none", "ADP+DQAvAAAgACABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fIAAEAAEAAQAAAAA="));
         Assert.Throws<ArgumentException>(() => NothingVpn.Domain.Policies.OutboundEnginePolicy.Resolve(OutboundEngine.SingBox, "tcp", "tls", Encryption));
-        Assert.Throws<ArgumentException>(() => NothingVpn.Domain.Policies.OutboundEnginePolicy.Resolve(OutboundEngine.SingBox, "tcp", "tls", "none", "AAH+DQ=="));
+        Assert.Throws<ArgumentException>(() => NothingVpn.Domain.Policies.OutboundEnginePolicy.Resolve(OutboundEngine.SingBox, "tcp", "tls", "none", AcceptableEch));
+        NothingVpn.Domain.Policies.OutboundEnginePolicy.Resolve(OutboundEngine.SingBox, "tcp", "tls", "none", "AAH+DQ==");
     }
 
     [Fact]
@@ -91,13 +97,16 @@ public sealed class AdvancedVlessLinkTests
     {
         var p = VlessLinkParser.Parse(Prefix);
         p.Encryption = Encryption;
-        p.ExtraQuery["ech"] = "AAH+DQ==";
+        p.ExtraQuery["ech"] = AcceptableEch;
         var request = EngineRequestMapper.CreateRequest(p, new AppStateModel());
         var restored = JsonSerializer.Deserialize<EngineConnectRequest>(JsonSerializer.Serialize(request))!;
         var mapped = EngineRequestMapper.ToProfile(restored);
         var config = JsonNode.Parse(XrayConfigGenerator.Serialize(mapped, new AppStateModel(), new LocalSocksUpstream(41000, "test", "test", "xray.exe")))!;
         Assert.Equal(Encryption, (string?)config["outbounds"]![0]!["settings"]!["encryption"]);
-        Assert.Equal("AAH+DQ==", (string?)config["outbounds"]![0]!["streamSettings"]!["tlsSettings"]!["echConfigList"]);
+        Assert.Equal(AcceptableEch, (string?)config["outbounds"]![0]!["streamSettings"]!["tlsSettings"]!["echConfigList"]);
+        mapped.ExtraQuery["ech"] = "AAH+DQ==";
+        var rejected = JsonNode.Parse(XrayConfigGenerator.Serialize(mapped, new AppStateModel(), new LocalSocksUpstream(41000, "test", "test", "xray.exe")))!;
+        Assert.Null(rejected["outbounds"]![0]!["streamSettings"]!["tlsSettings"]!["echConfigList"]);
         Assert.Equal("none", new EngineProfile().Encryption);
     }
 }

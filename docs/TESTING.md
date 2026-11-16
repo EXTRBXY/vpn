@@ -107,6 +107,8 @@ AdGuard, остальные поля SRS и повреждённые данны�
 
 ## VLESS Encryption и ECH
 
+ECH без `public_name` не выбирает Xray и не попадает в `echConfigList` (`VlessSecurityPolicy.IsAcceptableEchConfigList`).
+
 `AdvancedVlessLinkTests` проверяет импорт XHTTP, extra.mode, alias padding, конфликты,
 сохранение регистра ключей, Id и экспорт, выбор движка, JSON-контракт и конфиг Xray.
 `ServiceChannelTests.Connect_EncryptionAndEchReachXrayThroughServicePipe` проверяет передачу

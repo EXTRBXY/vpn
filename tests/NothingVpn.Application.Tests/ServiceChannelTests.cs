@@ -40,7 +40,7 @@ public sealed class ServiceChannelTests : IAsyncDisposable
             "vless://11111111-2222-3333-4444-555555555555@node.example:443?type=xhttp&security=tls&mode=auto&path=%2Fxhttp");
         var key = Convert.ToBase64String(Enumerable.Range(1, 32).Select(i => (byte)i).ToArray()).TrimEnd('=').Replace('+', '-').Replace('/', '_');
         profile.Encryption = "mlkem768x25519plus.native.0rtt." + key;
-        profile.ExtraQuery["ech"] = "AAH+DQ==";
+        profile.ExtraQuery["ech"] = "AEH+DQA9AAAgACABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fIAAEAAEAASAOcHVibGljLmV4YW1wbGUAAA==";
         await CreateClient(out _).ConnectAsync(EngineRequestMapper.CreateRequest(profile, new()));
         Assert.Equal(profile.Encryption, outbound.Profile!.Encryption);
         Assert.Equal(profile.ExtraQuery["ech"], outbound.Profile.ExtraQuery["ech"]);
