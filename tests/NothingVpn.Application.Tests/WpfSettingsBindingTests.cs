@@ -357,6 +357,8 @@ public sealed class WpfSettingsBindingTests
         var vm = new DiagnosticsViewModel(new NoDiagnostics(), log, () => ConnectionMode.Proxy, () => false);
 
         Assert.Equal(LogLevel.Info, vm.MinLevel);
+        Assert.False(vm.PersistentLoggingEnabled);
+        Assert.Equal("Сохранение журнала между подключениями выключено.", vm.PersistentLogInfo);
         Assert.DoesNotContain("debug line", vm.LogText);
         Assert.Contains("info line", vm.LogText);
 
@@ -364,6 +366,9 @@ public sealed class WpfSettingsBindingTests
         view.Measure(new System.Windows.Size(850, 700));
         view.Arrange(new Rect(0, 0, 850, 700));
         Pump(view);
+        var persist = Descendants<System.Windows.Controls.CheckBox>(view).Single(x =>
+            x.GetBindingExpression(ToggleButton.IsCheckedProperty)?.ParentBinding.Path.Path == nameof(DiagnosticsViewModel.PersistentLoggingEnabled));
+        Assert.False(persist.IsChecked);
         var filter = Descendants<ComboBox>(view).Single(x =>
             x.GetBindingExpression(Selector.SelectedValueProperty)?.ParentBinding.Path.Path == nameof(DiagnosticsViewModel.MinLevel));
         Assert.Equal(4, filter.Items.Count);
@@ -395,6 +400,29 @@ public sealed class WpfSettingsBindingTests
         finally
         {
             File.Delete(path);
+        }
+
+        var dir = Path.Combine(Path.GetTempPath(), "nothingvpn-ui-log-" + Guid.NewGuid().ToString("N"));
+        var archive = new PersistentLogArchive(dir);
+        try
+        {
+            var logged = new LogPort(new InMemoryLogStore(), archive);
+            var persisted = new DiagnosticsViewModel(new NoDiagnostics(), logged, () => ConnectionMode.Proxy, () => false);
+            Assert.False(persisted.PersistentLoggingEnabled);
+            Assert.StartsWith("Выключено.", persisted.PersistentLogInfo, StringComparison.Ordinal);
+            Assert.Contains(dir, persisted.PersistentLogInfo, StringComparison.Ordinal);
+            persisted.PersistentLoggingEnabled = true;
+            Assert.True(archive.Enabled);
+            Assert.StartsWith("Журнал пишется в", persisted.PersistentLogInfo, StringComparison.Ordinal);
+            persisted.PersistentLoggingEnabled = false;
+            Assert.False(archive.Enabled);
+            Assert.StartsWith("Выключено.", persisted.PersistentLogInfo, StringComparison.Ordinal);
+        }
+        finally
+        {
+            archive.Dispose();
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, true);
         }
     }
 

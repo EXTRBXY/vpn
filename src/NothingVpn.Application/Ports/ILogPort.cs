@@ -3,8 +3,9 @@ using NothingVpn.Domain.Models;
 namespace NothingVpn.Application.Ports;
 
 /// <summary>
-/// Журнал приложения в памяти: вывод sing-box и события клиента. Реализация маскирует секреты при записи,
+/// Журнал приложения: вывод sing-box и события клиента. Реализация маскирует секреты при записи,
 /// поэтому вызывающему коду не нужно чистить сообщения самому.
+/// Сохранение на диск между подключениями по умолчанию выключено и включается отдельно.
 /// </summary>
 public interface ILogPort
 {
@@ -14,5 +15,11 @@ public interface ILogPort
     string SnapshotText(LogLevel minLevel);
     string? TryGetLatestMessage(LogLevel minLevel);
     void Append(LogLevel level, string source, string message);
+    void AppendAt(LogLevel level, string source, string message, DateTimeOffset timestampUtc) => Append(level, source, message);
     void Clear();
+
+    bool PersistentLoggingEnabled => false;
+    string? PersistentLogDirectory => null;
+    string? PersistentLogError => null;
+    void SetPersistentLogging(bool enabled) => throw new NotSupportedException();
 }

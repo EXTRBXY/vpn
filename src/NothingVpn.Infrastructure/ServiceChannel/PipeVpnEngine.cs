@@ -242,7 +242,7 @@ public sealed class PipeVpnEngine : IVpnEngine, IDisposable
                 break;
             case ServiceMessageTypes.Log when message.Log is not null:
                 var line = message.Log;
-                _log.Append(line.Level, line.Source, line.Message);
+                _log.AppendAt(line.Level, line.Source, line.Message, line.TimestampUtc);
                 break;
             case ServiceMessageTypes.LogCleared:
                 _log.Clear();

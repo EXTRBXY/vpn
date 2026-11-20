@@ -12,7 +12,7 @@ namespace NothingVpn.Desktop.Wpf;
 /// <summary>
 /// Проверка связности и журнал. Фильтр уровня — только вид: в буфере остаются все записи. Выбор живёт, пока открыт
 /// клиент (как в прежнем WinForms-клиенте), и в state.json не пишется. «Копировать» берёт то, что видно с фильтром,
-/// «Сохранить» — весь журнал.
+/// «Сохранить» — весь журнал. Архив между подключениями включается отдельно и в state.json не пишется.
 /// </summary>
 public sealed class DiagnosticsViewModel : INotifyPropertyChanged
 {
@@ -24,6 +24,7 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
     private readonly Func<bool> _running;
     private string _result = "";
     private string _logText = "";
+    private string _persistentLogInfo = "";
     private int? _shownLogVersion;
     private LogLevel _minLevel = DefaultMinLevel;
 
@@ -53,6 +54,21 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
 
     public ICommand RunCommand { get; }
     public ICommand ClearCommand { get; }
+
+    public bool PersistentLoggingEnabled
+    {
+        get => _log.PersistentLoggingEnabled;
+        set
+        {
+            if (value == _log.PersistentLoggingEnabled) return;
+            try { _log.SetPersistentLogging(value); }
+            catch (Exception ex) { Result = $"Не удалось изменить сохранение журнала: {ex.Message}"; }
+            OnChanged();
+            UpdatePersistentLogInfo();
+        }
+    }
+
+    public string PersistentLogInfo => _persistentLogInfo;
 
     public string Result
     {
@@ -116,11 +132,33 @@ public sealed class DiagnosticsViewModel : INotifyPropertyChanged
     private void Refresh()
     {
         // Версия читается до снимка: снимок не старее версии, а пропущенная запись догонится на следующем тике.
+        UpdatePersistentLogInfo();
         var version = _log.Version;
         if (version == _shownLogVersion) return;
         _shownLogVersion = version;
         var text = _log.SnapshotText(_minLevel);
         if (text != LogText) LogText = text;
+    }
+
+    private void UpdatePersistentLogInfo()
+    {
+        var directory = _log.PersistentLogDirectory;
+        string info;
+        if (_log.PersistentLogError is { } error)
+            info = directory is null
+                ? $"Ошибка сохранения журнала: {error}"
+                : $"Ошибка сохранения журнала: {error} Каталог: {directory}.";
+        else if (!_log.PersistentLoggingEnabled)
+            info = directory is null
+                ? "Сохранение журнала между подключениями выключено."
+                : $"Выключено. Включение пишет журнал в {directory}.";
+        else
+            info = $"Журнал пишется в {directory}. В файлах могут быть адреса и имена сайтов — проверьте их перед передачей. Пока приложение закрыто, новые события не сохраняются. Кнопка «Очистить» эти файлы не удаляет.";
+
+        if (info == _persistentLogInfo)
+            return;
+        _persistentLogInfo = info;
+        OnChanged(nameof(PersistentLogInfo));
     }
 
     private void OnChanged([CallerMemberName] string? name = null) =>

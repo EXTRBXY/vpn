@@ -26,6 +26,8 @@
                 </Grid.RowDefinitions>
                 <StackPanel Margin="16">
                     <TextBlock Text="Журнал" Style="{StaticResource SectionTitleTextStyle}" Margin="0,0,0,12" />
+                    <CheckBox Content="Для разработчиков: сохранять журнал между подключениями" IsChecked="{Binding PersistentLoggingEnabled}" Margin="0,0,0,6" />
+                    <TextBlock Text="{Binding PersistentLogInfo}" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,12" />
                     <WrapPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,0,12,8">
                             <TextBlock Text="Показывать" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />

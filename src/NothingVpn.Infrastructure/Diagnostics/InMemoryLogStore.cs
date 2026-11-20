@@ -126,7 +126,7 @@ public sealed class InMemoryLogStore
         return null;
     }
 
-    private static string LevelToText(LogLevel level)
+    internal static string LevelToText(LogLevel level)
     {
         return level switch
         {

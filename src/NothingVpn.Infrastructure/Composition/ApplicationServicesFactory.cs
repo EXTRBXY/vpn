@@ -36,7 +36,7 @@ public static class ApplicationServicesFactory
         var parser = new ProfileParserPort();
         var subscriptionFetcher = new SubscriptionHttpFetcher();
         var diagnosticsPort = new DiagnosticsPort();
-        var logPort = new LogPort(logStore);
+        var logPort = new LogPort(logStore, new PersistentLogArchive(appPaths.Get().LogsDir));
         var proxyPort = new ProxyPort();
         var elevationPort = new ElevationPort();
         var storageHealthPort = new StorageHealthPort();

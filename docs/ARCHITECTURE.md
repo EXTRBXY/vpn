@@ -410,7 +410,7 @@ rule-set. Сообщения разделы показывают через `Set
   опрос статуса (`IsRunning`) диск не трогает.
 - `SingBoxRunner.ValidateConfig` синхронно ждёт `sing-box check` (`GetAwaiter().GetResult()`), тайм-аут 2 с.
 - Таймеры WPF (`DispatcherTimer`): тема — 1 с (`SystemThemeWatcher`), обновление журнала в диагностике — 1 с (снимок
-  берётся, только если изменилась `ILogPort.Version`), проверка обновлений — 30 мин (`UpdateCheckScheduler`),
+  берётся, только если изменилась `ILogPort.Version`; строка состояния архива — если сменился её текст), проверка обновлений — 30 мин (`UpdateCheckScheduler`),
   подписки — 15 мин (`SubscriptionRefreshScheduler`), встроенные rule-set — 15 мин опроса
   (`BuiltinRuleSetRefreshScheduler`, due по `builtinRuleSetsUpdateIntervalHours`, по умолчанию 24 ч).
 
@@ -419,11 +419,14 @@ rule-set. Сообщения разделы показывают через `Set
 `InMemoryLogStore` — кольцевой буфер ≈ 1 МБ, общий для sing-box и UI. Каждая запись проходит `LogRedactor`
 (UUID, `vless://`, путь `/sub/…`, `pbk`/`sid`/`uuid`, токены, `Authorization: Bearer`). Уровни — enum `LogLevel`
 (Trace…Panic, значения 0..6). `SingBoxRunner` разбирает уровень из строки sing-box и понижает до WARN типичные «connection closed».
-Буфер очищается при каждом старте sing-box. На диск журнал пишется только по явному «Сохранить» в диагностике.
+Буфер очищается при каждом старте sing-box. Кнопка «Сохранить» записывает текущий снимок в выбранный файл.
+Флажок на той же странице включает архив между подключениями (`developer.log` в каталоге журналов, см. STORAGE.md):
+по умолчанию выключен, очистка экрана его не стирает, на диск пишет фоновый поток.
 
 Порт `ILogPort` (Application) — то, чем журнал видят сервисы и WPF: `Version` (меняется при записи и очистке; по ней
-диагностика понимает, что снимок устарел), `SnapshotText(minLevel)`, `TryGetLatestMessage`, `Append` (маскирование —
-внутри реализации) и `Clear`.
+диагностика понимает, что снимок устарел), `SnapshotText(minLevel)`, `TryGetLatestMessage`, `Append`, `AppendAt`
+(время исходной строки; его ставит канал службы), `Clear` и `SetPersistentLogging`. Реализация без архива оставляет
+сохранение выключенным.
 
 Диагностика показывает журнал с фильтром минимального уровня (`DiagnosticsViewModel.MinLevel`: «Ошибки»,
 «Предупреждения», «Информация» — по умолчанию, «Отладка (всё)» = `Trace`). Фильтр — только вид: в буфере остаются все
